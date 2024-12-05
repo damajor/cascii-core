@@ -1,0 +1,163 @@
+<html>
+  <head>
+    <style>
+      #container {
+        background: grey;
+        user-select: none;
+      }
+
+      #menu {
+        background: blue;
+        height: 50px;
+      }
+
+      #menu button {
+        background: green;
+        padding: 10px;
+        margin-left: 10px;
+        float: left;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="menu"></div>
+    <div id="container"></div>
+
+  <script defer>
+    let container = document.getElementById("container");
+
+    const masterRowCount = 20;
+    const masterColCount = 10;
+
+    const pixelSize = 13;
+
+    masterUserMode = "draw";
+
+
+    function masterMouseDownEvent(event) {
+
+        switch (masterUserMode) {
+          case "draw":
+            drawMouseDownEvent(event);
+          break;
+          case "erase":
+            eraseMouseDownEvent(event);
+          break;
+        }
+    }
+
+    function masterMouseOverEvent(event) {
+
+        switch (masterUserMode) {
+          case "activedraw":
+            activeDrawMouseOverEvent(event);
+            break;
+          case "activeerase":
+            activeEraseMouseOverEvent(event);
+            break;
+        }
+    }
+
+    function masterMouseUpEvent(event) {
+
+        switch (masterUserMode) {
+          case "activedraw":
+            activeDrawMouseUpEvent(event);
+            break;
+          case "activeerase":
+            activeEraseMouseUpEvent(event);
+            break;
+        }
+    }
+
+    //////////////////
+    ////// DRAW //////
+    //////////////////
+
+    function drawMouseDownEvent(event) {
+        masterUserMode = "activedraw";
+        event.target.innerHTML = "d";
+    }
+
+    function activeDrawMouseOverEvent(event) {
+        event.target.innerHTML = "h";
+    }
+
+    function activeDrawMouseUpEvent(event) {
+        masterUserMode = "draw";
+    }
+
+    ///////////////////
+    ////// ERASE //////
+    ///////////////////
+
+    function eraseMouseDownEvent(event) {
+        masterUserMode = "activeerase";
+        event.target.innerHTML = "";
+    }
+
+    function activeEraseMouseUpEvent(event) {
+        masterUserMode = "erase";
+    }
+
+    function activeEraseMouseOverEvent(event) {
+        event.target.innerHTML = " ";
+    }
+
+
+    function renderPixel(pixelSize, row, col) {
+        let pixel = document.createElement("div");
+        pixel.className = "pixel"
+        pixel.style.position = "absolute";
+        pixel.style.marginLeft = `${col * pixelSize}px`;
+        pixel.style.marginTop = `${row * pixelSize}px`;
+        pixel.style.height = `${pixelSize}px`;
+        pixel.style.width = `${pixelSize}px`;
+        //pixel.style.border = "1px solid black";
+        pixel.innerHTML = " ";
+
+        pixel.setAttribute("row", row);
+        pixel.setAttribute("col", col);
+        pixel.addEventListener('mousedown', masterMouseDownEvent);
+        pixel.addEventListener('mouseover', masterMouseOverEvent);
+        pixel.addEventListener('mouseup', masterMouseUpEvent);
+        container.appendChild(pixel);
+    }
+
+    function renderMasterContainer(rowCount, colCount, pixelSize) {
+      container.style.width  = `${colCount * pixelSize}px`;
+      container.style.height = `${rowCount * pixelSize}px`;
+      container.style.fontSize = `${pixelSize}px`;
+      container.style.fontFamily = `monospace`;
+      for (var row = 0; row < masterRowCount; row++) {
+        for (var col = 0; col < masterColCount; col++) {
+          renderPixel(pixelSize, row, col)
+        }
+      }
+    }
+
+
+    function renderMenuModeButton(mode) {
+      let button = document.createElement("button");
+      button.setAttribute("mode", mode);
+      button.innerHTML = mode.substring(0, 1).toUpperCase() + mode.substring(1);
+      button.addEventListener('mouseup', (event) => {
+        masterUserMode = event.target.getAttribute("mode");
+        document.querySelectorAll("#menu button").forEach((button) => {
+          button.style.backgroundColor = "green";
+        });
+        event.target.style.backgroundColor = "blue";
+      });Draw￼Erase
+      menu.appendChild(button);
+    }
+
+    function renderMasterMenu() {
+      renderMenuModeButton("erase");
+      renderMenuModeButton("draw");
+    }
+
+    renderMasterMenu();
+    renderMasterContainer(masterRowCount, masterColCount, pixelSize);
+    </script>
+  </body>
+</html>
