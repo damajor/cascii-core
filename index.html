@@ -1,7 +1,7 @@
 <html>
   <head>
     <style>
-      #container {
+      #canvas {
         background: grey;
         user-select: none;
       }
@@ -21,143 +21,546 @@
   </head>
   <body>
     <div id="menu"></div>
-    <div id="container"></div>
+    <div id="canvas"></div>
 
   <script defer>
-    let container = document.getElementById("container");
 
-    const masterRowCount = 20;
-    const masterColCount = 10;
+    const masterRowCount = 50;
+    const masterColCount = 50;
 
-    const pixelSize = 13;
-
-    masterUserMode = "draw";
-
-
-    function masterMouseDownEvent(event) {
-
-        switch (masterUserMode) {
-          case "draw":
-            drawMouseDownEvent(event);
-          break;
-          case "erase":
-            eraseMouseDownEvent(event);
-          break;
-        }
+    const pixelSize = 17;
+    
+    function reportError(message) {
+      console.log(message);
     }
 
-    function masterMouseOverEvent(event) {
+    //////////////////
+    ////// MODES /////
+    //////////////////
 
-        switch (masterUserMode) {
-          case "activedraw":
-            activeDrawMouseOverEvent(event);
-            break;
-          case "activeerase":
-            activeEraseMouseOverEvent(event);
-            break;
+    class ModeMaster {
+      constructor() {
+        this._modes = []
+      }
+
+      change(beforeMode, afterMode) {
+        let index = this._modes.indexOf(beforeMode);
+        if (index == -1) {
+          reportError(`Bad mode change ${this._modes}: ${beforeMode} -> ${afterMode}`);
+          return;
         }
+        this._modes[index] = afterMode;
+      }
+
+      remove(...modes) {
+        modes.forEach((mode) => {
+          let index = this._modes.indexOf(mode);
+          if (index == -1) reportError(`Bad mode removal ${this._modes}: ${mode}`);
+          this._modes.splice(index, 1);
+        });
+      }
+
+      reset(...modes) {
+        this._modes = modes;
+      }
+
+      add(...modes) {
+        this._modes = this._modes.concat(modes);
+      }
+
+      has(...modes) {
+        return modes.map((mode) => this._modes.includes(mode)).every(Boolean);
+      }
+
+      is(...modes) {
+        return this._modes.toString() == modes.toString(); 
+      }
+
+      get(modes, insist=false) {
+        let result = modes.filter((mode) => this._modes.includes(mode));
+        if (insist && result.length == 0) reportError(`Bad mode get ${this._modes}: expected ${modes}`);
+        return result
+      }
     }
 
-    function masterMouseUpEvent(event) {
+    ////////////////////
+    ////// LAYERS //////
+    ////////////////////
 
-        switch (masterUserMode) {
-          case "activedraw":
-            activeDrawMouseUpEvent(event);
-            break;
-          case "activeerase":
-            activeEraseMouseUpEvent(event);
-            break;
+    class LayerManager {
+      constructor() {
+        this.layers = [];
+      }
+
+      add(layer) {
+        this.layers.unshift(layer);
+      } 
+
+      getLatestLayer() {
+        return this.layers[0];
+      }
+
+      getLayerByPixelId(id) {
+        for (var layer of this.layers) {
+          if (layer.hasPixel(id)) return layer;
         }
+      }
+
+      getSelectedLayers() {
+        return this.layers.filter((layer) => layer.selectedPixel != null);
+      }
+
+      unselectAll() {
+        this.layers.forEach((layer) => layer.unselect());
+      }
+
+      refreshAll() {
+        canvas.clear();
+        this.layers.forEach((layer) => layer.render());
+      }
+    }
+    
+    let layerManager = new LayerManager();
+
+    class Layer {
+      constructor(layerType, firstPixel) {
+        this.layerType = layerType;
+        this.firstPixel = firstPixel;
+        this.pixels = [];
+        this.values = [];
+        this.selectedPixel = null;
+      }
+
+      draw(pixel, value) {
+        pixel.setValue(value);
+        this.pixels.push(pixel);
+        this.values.push(value);
+      }
+
+      render() {
+        for (var i = 0; i < this.pixels.length; i++) {
+          this.pixels[i].setValue(this.values[i]);
+        }
+      }
+
+      getPreviousPixel() {
+        return this.pixels[this.pixels.length - 1];
+      }
+
+      hasPixel(id) {
+        for (var pixel of this.pixels) {
+          if (pixel.id() == id) return true;
+        }
+        return false;
+      }
+
+      erasePixel(id) {
+        for (var i = 0; i < this.pixels.length; i++) {
+          if (this.pixels[i].id() == id) {
+            this.pixels.splice(i, 1);
+            this.values.splice(i, 1);
+          }   
+        }
+      }
+      
+      isSelected() {
+        return Boolean(this.selectedPixel);
+      }
+
+      select(pixel) {
+        this.selectedPixel = pixel;
+        this.pixels.forEach((pixel) => {
+          pixel.renderSelected();
+        });
+      }
+
+      unselect() {
+        this.selectedPixel = null;
+        this.pixels.forEach((pixel) => {
+          pixel.renderUnselected();
+        });
+      }
+
+      reset() {
+        canvas.clearPixels(this.pixels);
+        this.pixels = [];
+        this.values = [];
+      }
     }
 
     //////////////////
     ////// DRAW //////
     //////////////////
 
+
     function drawMouseDownEvent(event) {
-        masterUserMode = "activedraw";
-        event.target.innerHTML = "d";
+      let activePixel = canvas.getPixelById(event.target.id);
+      let layer = new Layer(
+        layerType=modeMaster.get(["line", "free", "square"], insist=true)[0],
+        firstPixel=activePixel,
+      );
+      layerManager.add(layer);
     }
 
-    function activeDrawMouseOverEvent(event) {
-        event.target.innerHTML = "h";
+    function drawingMouseOverEvent(event) {
+        
     }
 
-    function activeDrawMouseUpEvent(event) {
-        masterUserMode = "draw";
+    function drawingMouseUpEvent(event) {
     }
 
+    function drawingFreeEvent(event) {
+      let activePixel = canvas.getPixelById(event.target.id);
+      let activeLayer = layerManager.getLatestLayer();
+      activeLayer.draw(activePixel, "x");
+    }
+
+    function drawingLineEvent(event) {
+      let activeLayer = layerManager.getLatestLayer();
+      let activePixel = canvas.getPixelById(event.target.id);
+      let firstPixel   = activeLayer.firstPixel;
+      activeLayer.reset();
+      let verticalDiff = Math.abs(activePixel.row - firstPixel.row);
+      let lateralDiff = Math.abs(activePixel.col - firstPixel.col);
+      var drawPixel;
+      if (activePixel.isAbove(firstPixel) && verticalDiff > lateralDiff) {
+          for(var row = firstPixel.row; row >= activePixel.row; row --) {
+            drawPixel = canvas.getPixelByRowCol(row, firstPixel.col);
+            activeLayer.draw(drawPixel, "|");
+          }
+      } else if (activePixel.isBelow(firstPixel) && verticalDiff > lateralDiff) {
+          for(var row = firstPixel.row; row <= activePixel.row; row ++) {
+            drawPixel = canvas.getPixelByRowCol(row, firstPixel.col);
+            activeLayer.draw(drawPixel, "|");
+          }
+      } else if (activePixel.isLeft(firstPixel) && verticalDiff < lateralDiff) {
+          for(var col = firstPixel.col; col >= activePixel.col; col --) {
+            drawPixel = canvas.getPixelByRowCol(firstPixel.row, col);
+            activeLayer.draw(drawPixel, "-");
+          }
+      } else if (activePixel.isRight(firstPixel) && verticalDiff < lateralDiff) {
+          for(var col = firstPixel.col; col <= activePixel.col; col ++) {
+            drawPixel = canvas.getPixelByRowCol(firstPixel.row, col);
+            activeLayer.draw(drawPixel, "-");
+          }
+      }
+      layerManager.refreshAll();
+    }
+
+    
     ///////////////////
     ////// ERASE //////
     ///////////////////
 
+    function erasingMouseUpEvent(event) {
+    }
+
+    function erasePixelEvent(event) {
+      let activePixel = canvas.getPixelById(event.target.id);
+      let layer = layerManager.getLayerByPixelId(activePixel.id());
+      if (layer) layer.erasePixel(activePixel.id());
+      activePixel.clear();
+      
+    }
+
     function eraseMouseDownEvent(event) {
-        masterUserMode = "activeerase";
-        event.target.innerHTML = "";
-    }
-
-    function activeEraseMouseUpEvent(event) {
-        masterUserMode = "erase";
-    }
-
-    function activeEraseMouseOverEvent(event) {
-        event.target.innerHTML = " ";
+      erasePixelEvent(event);
     }
 
 
-    function renderPixel(pixelSize, row, col) {
-        let pixel = document.createElement("div");
-        pixel.className = "pixel"
-        pixel.style.position = "absolute";
-        pixel.style.marginLeft = `${col * pixelSize}px`;
-        pixel.style.marginTop = `${row * pixelSize}px`;
-        pixel.style.height = `${pixelSize}px`;
-        pixel.style.width = `${pixelSize}px`;
-        //pixel.style.border = "1px solid black";
-        pixel.innerHTML = " ";
-
-        pixel.setAttribute("row", row);
-        pixel.setAttribute("col", col);
-        pixel.addEventListener('mousedown', masterMouseDownEvent);
-        pixel.addEventListener('mouseover', masterMouseOverEvent);
-        pixel.addEventListener('mouseup', masterMouseUpEvent);
-        container.appendChild(pixel);
+    function erasingMouseOverEvent(event) {
+      erasePixelEvent(event);
+    }
+    
+    ////////////////
+    //// SELECT ////
+    ////////////////
+    
+    function selectMouseDownEvent(event) {
+      let activePixel = canvas.getPixelById(event.target.id);
+      let layer = layerManager.getLayerByPixelId(activePixel.id());
+      let selectedLayers = layerManager.getSelectedLayers();
+      if (!layer || (!modeMaster.has("multi") && (selectedLayers.length < 2 || !layer.isSelected()))) {
+        layerManager.unselectAll();
+        modeMaster.change("selected", "select");
+      }
+      layer.select(activePixel);
+      layerManager.selectedLatest = layer;
+      modeMaster.change("select", "selected");
+      modeMaster.add("moving");
     }
 
-    function renderMasterContainer(rowCount, colCount, pixelSize) {
-      container.style.width  = `${colCount * pixelSize}px`;
-      container.style.height = `${rowCount * pixelSize}px`;
-      container.style.fontSize = `${pixelSize}px`;
-      container.style.fontFamily = `monospace`;
-      for (var row = 0; row < masterRowCount; row++) {
-        for (var col = 0; col < masterColCount; col++) {
-          renderPixel(pixelSize, row, col)
+    function selectingMouseUpEvent(event) {
+    }
+
+    function selectingMouseOverEvent(event) {
+      let activePixel = canvas.getPixelById(event.target.id);
+      let mainLayer = layerManager.selectedLatest;
+      let verticalDiff = activePixel.row - mainLayer.selectedPixel.row;
+      let lateralDiff = activePixel.col - mainLayer.selectedPixel.col;
+      let layers = layerManager.getSelectedLayers();
+      console.log("MOVING", layers);
+      for (const layer of layers) {
+        console.log(layer.layerType);
+        console.log(verticalDiff, lateralDiff);
+        let newPixels = [];
+        for (var oldPixel of layer.pixels) {
+          let newPixel = canvas.getPixelByRowCol(
+            oldPixel.row + verticalDiff, oldPixel.col + lateralDiff
+          );
+          if (!newPixel) return;
+          newPixels.push(newPixel);
         }
+        layer.pixels = newPixels;
+      }
+      layerManager.refreshAll();
+      for (const layer of layers) {
+        layer.select(activePixel);
       }
     }
 
+    ////////////////
+    //// EVENTS ////
+    ////////////////
 
-    function renderMenuModeButton(mode) {
-      let button = document.createElement("button");
-      button.setAttribute("mode", mode);
-      button.innerHTML = mode.substring(0, 1).toUpperCase() + mode.substring(1);
-      button.addEventListener('mouseup', (event) => {
-        masterUserMode = event.target.getAttribute("mode");
+    const modeMaster = new ModeMaster();
+
+    class EventInstruction {
+      constructor(modeCondition, modeUpdate, callback=()=>{}) {
+        this.callback = callback;
+        this.condition = this.makeFunc(modeCondition);
+        this.update = this.makeFunc(modeUpdate);
+      }
+      
+      makeFunc(instruction) {
+        return (instruction.length)? instruction[0].bind(modeMaster, ...instruction.slice(1)): () => {};
+      }
+
+      run(event) {
+        if (this.condition()) {
+          this.update();
+          this.callback(event);
+          console.log(modeMaster._modes);
+          return true;
+        }
+      }
+    }
+    
+    let documentEventKeyInstructions = {
+      "keydown": {
+        16: [
+          new EventInstruction([modeMaster.is, "select"], [modeMaster.add, "multi"]),
+          new EventInstruction([modeMaster.is, "selected"], [modeMaster.add, "multi"])
+        ],
+      },
+      "keyup": {
+        16: [
+          new EventInstruction([modeMaster.has, "multi"], [modeMaster.remove, "multi"])
+        ],
+      }
+    }
+    let canvasEventInstructions = {
+      "mousedown": [
+        new EventInstruction([modeMaster.has, "draw"],    [modeMaster.change, "draw", "drawing"], drawMouseDownEvent),
+        new EventInstruction([modeMaster.is, "erase"],   [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
+        new EventInstruction([modeMaster.has, "select"],   [], selectMouseDownEvent),
+        new EventInstruction([modeMaster.has, "selected"],   [], selectMouseDownEvent),
+      ],
+      "mouseup": [
+        new EventInstruction([modeMaster.has, "drawing"], [modeMaster.change, "drawing", "draw"], drawingMouseUpEvent), 
+        new EventInstruction([modeMaster.is, "erasing"],  [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
+        new EventInstruction([modeMaster.has, "moving"],   [modeMaster.remove, "moving"], selectingMouseUpEvent),
+      ],
+      "mouseover": [
+        new EventInstruction([modeMaster.has, "drawing", "free"], [], drawingFreeEvent),
+        new EventInstruction([modeMaster.has, "drawing", "line"], [], drawingLineEvent),
+        new EventInstruction([modeMaster.is, "erasing"],  [], erasingMouseOverEvent),
+        new EventInstruction([modeMaster.has, "moving"],  [], selectingMouseOverEvent),
+      ],
+    }
+
+
+    ////////////////
+    //// PIXEL /////
+    ////////////////
+
+    class Pixel {
+      constructor(size, row, col) {
+        this.row = row;
+        this.col = col;
+        this.size = size;
+        this.defaultColor = "#000000";
+        this.defaultBgColor = "none";
+      }
+      
+      id() {
+        return Pixel.makeId(this.row, this.col);
+      }
+
+      static makeId(row, col) {
+        return `pixel-${row},${col}`
+      }
+
+      setValue(value) {
+        this.element.innerHTML = value;
+      }
+
+      renderSelected() {
+        this.setColor("blue");
+      }
+
+      renderUnselected() {
+        this.revertColor();
+      }
+
+      setColor(color) {
+        this.element.style.color = color;
+      }
+
+      setBgColor(color) {
+        this.element.style.backgroundColor = color;
+      }
+
+      revertColor() {
+        this.setColor(this.defaultColor);
+        this.setBgColor(this.defaultBgColor);
+      }
+
+      clear() {
+        this.setValue(" ");
+        this.renderUnselected();
+      }
+
+      isAbove(pixel) {
+        return this.row < pixel.row;
+      }
+
+      isBelow(pixel) {
+        return this.row > pixel.row;
+      }
+
+      isLeft(pixel) {
+        return this.col < pixel.col;
+      }
+
+      isRight(pixel) {
+        return this.col > pixel.col;
+      }
+
+      render(parent) {
+        this.element = document.createElement("div");
+        this.element.className = "pixel";
+        this.element.id = this.id();
+        this.element.style.position = "absolute";
+        //this.element.style.border = "1px solid black";
+        this.element.style.marginLeft = `${this.col * this.size}px`;
+        this.element.style.marginTop = `${this.row * this.size}px`;
+        this.element.style.height = `${this.size}px`;
+        this.element.style.width = `${this.size}px`;
+        this.element.innerHTML = " ";
+        parent.appendChild(this.element);
+      }
+    }
+
+    ////////////////
+    //// CANVAS ////
+    ////////////////
+
+    class Canvas {
+      constructor(rowCount, colCount, pixelSize) {
+        this.rowCount = rowCount;
+        this.colCount = colCount;
+        this.pixelSize = pixelSize;
+        this.pixels = {};
+      }
+
+      getPixelById(id) {
+        return this.pixels[id];
+      }
+
+      getPixelByRowCol(row, col) {
+        return this.getPixelById(Pixel.makeId(row, col));
+      }
+      
+      clearPixels(pixels) {
+        pixels.forEach((pixel) => pixel.clear());
+      }
+
+      clear() {
+        for(var pixel in this.pixels) this.pixels[pixel].clear();
+      }
+
+      render() {
+        this.element = document.getElementById("canvas");
+        this.element.style.width  = `${this.colCount * this.pixelSize}px`;
+        this.element.style.height = `${this.rowCount * this.pixelSize}px`;
+        this.element.style.fontSize = `${this.pixelSize}px`;
+        this.element.style.fontFamily = `monospace`;
+        for (var row = 0; row < this.rowCount; row++) {
+          for (var col = 0; col < this.colCount; col++) {
+            let pixel = new Pixel(this.pixelSize, row, col);
+            pixel.render(this.element);
+            this.pixels[pixel.id()] = pixel;
+          }
+        }
+        assignMouseEventInstructions(this.element, canvasEventInstructions);
+      }
+    }
+
+    function assignMouseEventInstructions(element, instructions) {
+      for (const [eventType, story] of Object.entries(instructions)) {
+        element.addEventListener(eventType, (event) => {
+          for (var eventInstruction of story) {
+            if (eventInstruction.run(event)) return;
+          }
+        })
+      }
+    }
+    function assignKeyEventInstructions(element, instructions) {
+      ["keyup", "keydown"].forEach((eventType) => {
+        element.addEventListener(eventType, (event) => {
+          for (const [key, story] of Object.entries(instructions[eventType])) {
+            console.log(event.keyCode);
+            if (key == event.keyCode) {
+              console.log("KEY EVENT");
+              for (var eventInstruction of story) {
+                if (eventInstruction.run(event)) return;
+              }
+            }
+          }
+        });
+      });
+    }
+    
+    function modeButtonPress(modes) {
+      return (event) => {
+        modeMaster.reset(...modes);
+        layerManager.unselectAll();
         document.querySelectorAll("#menu button").forEach((button) => {
           button.style.backgroundColor = "green";
-        });
+        })
         event.target.style.backgroundColor = "blue";
-      });Draw￼Erase
+      }
+    }
+    function renderMenuModeButton(name, modes) {
+      let button = document.createElement("button");
+      button.innerHTML = name;
+      button.addEventListener('mouseup', modeButtonPress(modes));
       menu.appendChild(button);
     }
 
     function renderMasterMenu() {
-      renderMenuModeButton("erase");
-      renderMenuModeButton("draw");
+      renderMenuModeButton("Draw Square", ["draw", "square"]);
+      renderMenuModeButton("Draw Line", ["draw", "line"]);
+      renderMenuModeButton("Draw Free", ["draw", "free"]);
+      renderMenuModeButton("Erase Free", ["erase"]);
+      renderMenuModeButton("Select", ["select"]);
     }
 
     renderMasterMenu();
-    renderMasterContainer(masterRowCount, masterColCount, pixelSize);
+    canvas = new Canvas(masterRowCount, masterColCount, pixelSize);
+    canvas.render();
+    assignKeyEventInstructions(document, documentEventKeyInstructions);
     </script>
   </body>
 </html>
