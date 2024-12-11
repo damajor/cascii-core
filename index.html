@@ -24,11 +24,23 @@
     <div id="canvas"></div>
 
   <script defer>
+    
+    const KEYS = {
+      "up"      : 38,
+      "right"   : 39,
+      "down"    : 40,
+      "left"    : 37,
 
-    const masterRowCount = 50;
-    const masterColCount = 80;
+      "shift"   : 16,
+      "back"    : 8,
+      "delete"  : 46,
+      "esc"     : 27,
+    }
 
-    const pixelSize = 17;
+    const masterRowCount = 80;
+    const masterColCount = 150;
+
+    const pixelSize = 10;
     
     function reportError(message) {
       console.log(message);
@@ -69,7 +81,8 @@
       }
 
       has(...modes) {
-        return modes.map((mode) => this._modes.includes(mode)).every(Boolean);
+        let r= modes.map((mode) => this._modes.includes(mode)).every(Boolean);
+        return r;
       }
 
       is(...modes) {
@@ -114,7 +127,6 @@
 
       deleteSelectedLayers() {
         this.getSelectedLayers().forEach((layer) => layer.empty());
-        this.refreshAll();
       }
 
       unselectAll() {
@@ -122,9 +134,21 @@
         this.layers.forEach((layer) => layer.unselect());
       }
 
-      refreshAll() {
-        canvas.clear();
+      refresh(updateFunc) {
+        this.clearAll();
+        updateFunc();
+        this.renderAll();
+      }
+
+      tidyLayers() {
         this.layers = this.layers.filter((layer) => layer.pixels.length);
+      }
+
+      clearAll() {
+        this.layers.forEach((layer) => layer.clear());
+      }
+
+      renderAll() {
         this.layers.forEach((layer) => layer.render());
       }
       
@@ -138,11 +162,60 @@
 
       moveSelectedLayers(verticalDiff, lateralDiff) {
         this.getSelectedLayers().forEach((layer) => layer.move(verticalDiff, lateralDiff));
-        layerManager.refreshAll();
+      }
+
+      selectMouseDownEvent(event) {
+        let activePixel = canvas.getPixelById(event.target.id);
+        let layer = this.getLayerByPixelId(activePixel.id());
+        let selectedLayers = this.getSelectedLayers();
+
+        // Unselect all if...
+        // 1. clicked-off (no layer selected)
+        // 2. Single select mode (not multi) and only one selected,
+        //    (otherwise multi was used but not active, so we keep selection).
+        // 3. Single select mode (not multi) and selected other layer
+        if (!layer || (!modeMaster.has("multi") && (selectedLayers.length < 2 || !layer.isSelected()))) {
+          this.unselectAll();
+          modeMaster.change("selected", "select");
+        }
+
+        if (layer) {
+          layer.select();
+          this.setSelectPixel(activePixel);
+          modeMaster.change("select", "selected");
+          modeMaster.add("moving");
+        }
+      }
+      movingMouseOverEvent(event) {
+        let activePixel = canvas.getPixelById(event.target.id);
+        let lastPixelSelected = this.getSelectPixel();
+        let verticalDiff = activePixel.row - lastPixelSelected.row;
+        let lateralDiff = activePixel.col - lastPixelSelected.col;
+        this.refresh(() => this.moveSelectedLayers(verticalDiff, lateralDiff));
+        this.setSelectPixel(activePixel);
+      }
+
+      selectedArrowKeyDownEvent(event) {
+        var verticalDiff = 0;
+        var lateralDiff = 0;
+        switch (event.keyCode) {
+          case KEYS["up"]:
+            verticalDiff = -1;
+            break;
+          case KEYS["right"]:
+            lateralDiff = 1;
+            break;
+          case KEYS["down"]:
+            verticalDiff = 1;
+            break;
+          case KEYS["left"]:
+            lateralDiff = -1;
+            break;
+        }
+        this.refresh(() => this.moveSelectedLayers(verticalDiff, lateralDiff));
       }
     }
     
-    let layerManager = new LayerManager();
 
     class Layer {
       constructor(firstPixelId) {
@@ -156,9 +229,12 @@
       }
 
       draw(pixel, value) {
-        pixel.setValue(value);
         this.pixels.push(pixel);
         this.values.push(value);
+        
+        if (this.pixels.length != this.values.length) {
+          console.log(`layer pixel/value mismatch: ${this.pixels} != ${this.values}`)
+        }
       }
       
       clear() {
@@ -236,9 +312,9 @@
     
 
     function deleteLayersEvent() {
-      layerManager.deleteSelectedLayers();
-
+      layerManager.refresh(() => layerManager.deleteSelectedLayers());
     }
+
     /////////////////////////
     ////// TEXT LAYER ///////
     /////////////////////////
@@ -265,7 +341,7 @@
       }
       
       renderChars() {
-        this.clear();
+        this.empty();
         let pixels = [];
         for (var i = 0; i < this.getLength(); i++) {
           let pixel = canvas.getPixelByRowCol(this.firstPixel.row, this.firstPixel.col + i);
@@ -279,19 +355,19 @@
         let char = String.fromCharCode(key);
         let length = this.getLength();
         switch (key) {
-          case 38: // UP
+          case KEYS["up"]: 
           break;
-          case 39: // RIGHT
+          case KEYS["right"]:
             this.cursor = (this.cursor >= length)? length: this.cursor + 1;
           break;
-          case 40: // DOWN
+          case KEYS["down"]:
           break;
-          case 37: // LEFT
+          case KEYS["left"]:
             this.cursor = (this.cursor <= 0)? 0: this.cursor - 1;
           break;
-          case 13: // ENTER
+          case KEYS["enter"]:
           break;
-          case 8: // BACKSPACE
+          case KEYS["back"]:
             this.cursor = (this.cursor <= 0)? 0: this.cursor - 1;
             this.contents.splice(this.cursor, 1);
           break;
@@ -300,9 +376,7 @@
             this.cursor++;
           break;
         }
-        console.log(this.cursor);
-        console.log(this.contents);
-        this.renderChars();
+        layerManager.refresh(() => this.renderChars());
 
       }
     }
@@ -319,7 +393,7 @@
 
       static mouseOver(event) {
         let layer = layerManager.getLatestLayer();
-        layer.drawLine(event.target.id);
+        layerManager.refresh(() => layer.drawLine(event.target.id));
       }
 
       drawLine(activePixelId) {
@@ -345,9 +419,7 @@
               this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "-");
             }
         }
-        layerManager.refreshAll();
       } 
-
     }
 
     /////////////////////////
@@ -362,7 +434,7 @@
 
       static mouseOver(event) {
         let layer = layerManager.getLatestLayer();
-        layer.drawFree(event.target.id);
+        layerManager.refresh(() => layer.drawFree(event.target.id));
       }
 
       drawFree(activePixelId) {
@@ -403,64 +475,6 @@
       erasePixelEvent(event);
     }
     
-    ////////////////
-    //// SELECT ////
-    ////////////////
-    
-    function selectMouseDownEvent(event) {
-      let activePixel = canvas.getPixelById(event.target.id);
-      let layer = layerManager.getLayerByPixelId(activePixel.id());
-      let selectedLayers = layerManager.getSelectedLayers();
-
-      // Unselect all if...
-      // 1. clicked-off (no layer selected)
-      // 2. Single select mode (not multi) and only one selected,
-      //    (otherwise multi was used but not active, so we keep selection).
-      // 3. Single select mode (not multi) and selected other layer
-      if (!layer || (!modeMaster.has("multi") && (selectedLayers.length < 2 || !layer.isSelected()))) {
-        layerManager.unselectAll();
-        modeMaster.change("selected", "select");
-      }
-
-      if (layer) {
-        layer.select();
-        layerManager.setSelectPixel(activePixel);
-        modeMaster.change("select", "selected");
-        modeMaster.add("moving");
-      }
-    }
-
-    function selectingMouseUpEvent(event) {
-    }
-
-    function selectingMouseOverEvent(event) {
-      let activePixel = canvas.getPixelById(event.target.id);
-      let lastPixelSelected = layerManager.getSelectPixel();
-      let verticalDiff = activePixel.row - lastPixelSelected.row;
-      let lateralDiff = activePixel.col - lastPixelSelected.col;
-      layerManager.moveSelectedLayers(verticalDiff, lateralDiff);
-      layerManager.setSelectPixel(activePixel);
-    }
-
-    function selectedArrowKeyDownEvent(event) {
-      var verticalDiff = 0;
-      var lateralDiff = 0;
-      switch (event.keyCode) {
-        case 38:
-          verticalDiff = -1;
-          break;
-        case 39:
-          lateralDiff = 1;
-          break;
-        case 40:
-          verticalDiff = 1;
-          break;
-        case 37:
-          lateralDiff = -1;
-          break;
-      }
-      layerManager.moveSelectedLayers(verticalDiff, lateralDiff);
-    }
 
     ////////////////
     //// EVENTS ////
@@ -488,63 +502,64 @@
         }
       }
     }
-    
+    const ArrowKeyGroup = ["up", "down", "left", "right"];
+
+    function keyGroup(...names) {
+      let keys = names.map(name => KEYS[name].toString());
+      return keys.join(",");
+    }
+
+
     let documentEventKeyInstructions = {
-      "keydown": {
-        38: [ // UP
-          new EventInstruction([modeMaster.has, "selected"], [], selectedArrowKeyDownEvent),
-        ],                                                                        
-        39: [ // RIGHT                                                            
-          new EventInstruction([modeMaster.has, "selected"], [], selectedArrowKeyDownEvent),
-        ],                                                                        
-        40: [ // DOWN                                                             
-          new EventInstruction([modeMaster.has, "selected"], [], selectedArrowKeyDownEvent),
-        ],                                                                        
-        37: [ // LEFT                                                             
-          new EventInstruction([modeMaster.has, "selected"], [], selectedArrowKeyDownEvent),
+      "keypress": {
+        "*": [
+          new EventInstruction([modeMaster.is, "writing", "text"], [], TextLayer.keyDown),
         ],
-        16: [ // SHIFT
+      },
+      "keydown": {
+        [keyGroup(...ArrowKeyGroup)]: [
+          new EventInstruction([modeMaster.has, "selected"], [], (event) => layerManager.selectedArrowKeyDownEvent(event)),
+        ],                                                                        
+        [keyGroup("shift")]: [
           new EventInstruction([modeMaster.is, "select"], [modeMaster.add, "multi"]),
           new EventInstruction([modeMaster.is, "selected"], [modeMaster.add, "multi"])
         ],
-        8: [ // BACKSPACE
+        [keyGroup("back", "delete")]: [
           new EventInstruction([modeMaster.has, "selected"], [modeMaster.reset, "select"], deleteLayersEvent),
         ],
-        46: [ // DELETE
-          new EventInstruction([modeMaster.has, "selected"], [modeMaster.reset, "select"], deleteLayersEvent),
+        [keyGroup("esc")]: [
+          new EventInstruction([modeMaster.has, "selected"], [modeMaster.reset, "select"], (event) => layerManager.unselectAll()),
         ],
-        "*": [
-          new EventInstruction([modeMaster.is, "drawing", "text"], [], TextLayer.keyDown),
-        ]
+        [keyGroup("back", "delete", ...ArrowKeyGroup)]: [
+          new EventInstruction([modeMaster.is, "writing", "text"], [], TextLayer.keyDown),
+        ],
       },
       "keyup": {
-        16: [
+        [keyGroup("shift")]: [
           new EventInstruction([modeMaster.has, "multi"], [modeMaster.remove, "multi"])
         ],
       }
     }
     let canvasEventInstructions = {
       "mousedown": [
-        new EventInstruction([modeMaster.has, "draw", "text"],    [modeMaster.change, "draw", "drawing"], TextLayer.mouseDown),
+        new EventInstruction([modeMaster.has, "draw", "text"],    [modeMaster.change, "draw", "writing"], TextLayer.mouseDown),
         new EventInstruction([modeMaster.has, "draw", "line"],    [modeMaster.change, "draw", "drawing"], LineLayer.mouseDown),
         new EventInstruction([modeMaster.has, "draw", "free"],    [modeMaster.change, "draw", "drawing"], FreeLayer.mouseDown),
-        new EventInstruction([modeMaster.is, "drawing", "text"], [modeMaster.reset, "select"]),
+        new EventInstruction([modeMaster.is, "writing", "text"], [modeMaster.reset, "select"], (event) => layerManager.tidyLayers()),
         new EventInstruction([modeMaster.is, "erase"],   [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
-        new EventInstruction([modeMaster.has, "select"],   [], selectMouseDownEvent),
-        new EventInstruction([modeMaster.has, "selected"],   [], selectMouseDownEvent),
+        new EventInstruction([modeMaster.has, "select"],   [], (event) => layerManager.selectMouseDownEvent(event)),
+        new EventInstruction([modeMaster.has, "selected"],   [], (event) => layerManager.selectMouseDownEvent(event)),
       ],
       "mouseup": [
-        new EventInstruction([modeMaster.is, "drawing", "line"], [modeMaster.change, "drawing", "draw"]), 
-        new EventInstruction([modeMaster.is, "drawing", "square"], [modeMaster.change, "drawing", "draw"]), 
-        new EventInstruction([modeMaster.is, "drawing", "free"], [modeMaster.change, "drawing", "draw"]), 
+        new EventInstruction([modeMaster.has, "drawing"], [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
         new EventInstruction([modeMaster.is, "erasing"],  [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
-        new EventInstruction([modeMaster.has, "moving"],   [modeMaster.remove, "moving"], selectingMouseUpEvent),
+        new EventInstruction([modeMaster.has, "moving"],   [modeMaster.remove, "moving"]),
       ],
       "mouseover": [
         new EventInstruction([modeMaster.has, "drawing", "free"], [], FreeLayer.mouseOver),
         new EventInstruction([modeMaster.has, "drawing", "line"], [], LineLayer.mouseOver),
         new EventInstruction([modeMaster.is, "erasing"],  [], erasingMouseOverEvent),
-        new EventInstruction([modeMaster.has, "moving"],  [], selectingMouseOverEvent),
+        new EventInstruction([modeMaster.has, "moving"],  [], (event) => layerManager.movingMouseOverEvent(event)),
       ],
     }
 
@@ -689,14 +704,16 @@
       }
     }
     function assignKeyEventInstructions(element, instructions) {
-      ["keyup", "keydown"].forEach((eventType) => {
+      Object.keys(instructions).forEach((eventType) => {
         element.addEventListener(eventType, (event) => {
-          for (const [key, story] of Object.entries(instructions[eventType])) {
-            if (key == event.keyCode || key == "*") {
-              for (var eventInstruction of story) {
-                if (eventInstruction.run(event)) return;
+          for (keys in instructions[eventType]) {
+            keys.split(",").forEach(key => {
+              if (key == event.keyCode.toString() || key == "*") {
+                for (var eventInstruction of instructions[eventType][keys]) {
+                  if (eventInstruction.run(event)) return;
+                }
               }
-            }
+            });
           }
         });
       });
@@ -728,10 +745,13 @@
       renderMenuModeButton("Select", ["select"]);
     }
 
+    let layerManager = new LayerManager();
     renderMasterMenu();
     canvas = new Canvas(masterRowCount, masterColCount, pixelSize);
     canvas.render();
     assignKeyEventInstructions(document, documentEventKeyInstructions);
+
+
     </script>
   </body>
 </html>
