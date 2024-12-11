@@ -24,7 +24,27 @@
     <div id="canvas"></div>
 
   <script defer>
-    
+    /*
+
+    TODO
+
+    - undo/redo
+    - square shape
+    - shape resizing
+    - z-index concepting
+    - file break up?
+    - area selection (all layers in square)
+    - copy / paste selection
+    - export 
+    - choose char for free draw
+    - diagnol shapes
+    - arrow headed lines
+    - proper design / config
+
+    - BE: save, share, manage, user, login google + github,  CRUD
+      - guest auto save (refresh keeps)
+
+    */
     const KEYS = {
       "up"      : 38,
       "right"   : 39,
@@ -35,6 +55,9 @@
       "back"    : 8,
       "delete"  : 46,
       "esc"     : 27,
+      "ctrl"    : 17,
+
+      "z"       : 90,
     }
 
     const masterRowCount = 80;
@@ -95,7 +118,7 @@
         return result
       }
     }
-
+    
     ////////////////////
     ////// LAYERS //////
     ////////////////////
@@ -104,7 +127,8 @@
       constructor() {
         this.layers = [];
         this.selectedPixel = null;
-        this.textCursor = 0;
+        this.layerHistory = [[]];
+        this.historyCursor = 0;
       }
 
       add(layer) {
@@ -142,6 +166,7 @@
 
       tidyLayers() {
         this.layers = this.layers.filter((layer) => layer.pixels.length);
+        this.capture();
       }
 
       clearAll() {
@@ -150,6 +175,34 @@
 
       renderAll() {
         this.layers.forEach((layer) => layer.render());
+      }
+
+      capture() {
+        this.historyCursor = 0;
+        this.layerHistory.unshift(this.copyLayers(this.layers));
+      }
+
+      copyLayers(layers) {
+        return layers.map(layer => layer.copy());
+      }
+
+      undo() {
+        let limit = this.layerHistory.length - 1;
+        this.historyCursor = (this.historyCursor < limit)? this.historyCursor + 1: limit;
+        // Copy historic layers to avoid mutating them now that they're current.
+        // Past will otherwise show as present...
+        this.layers = this.copyLayers(this.layerHistory[this.historyCursor]); 
+        console.log(this.historyCursor);
+        console.log(this.layerHistory);
+      }
+
+      redo() {
+        this.historyCursor = (this.historyCursor > 0)? this.historyCursor - 1: 0;
+        // Copy historic layers to avoid mutating them now that they're current.
+        // Past will otherwise show as present...
+        this.layers = this.copyLayers(this.layerHistory[this.historyCursor]);
+        console.log(this.historyCursor);
+        console.log(this.layerHistory);
       }
       
       setSelectPixel(selectedPixel) {
@@ -174,7 +227,7 @@
         // 2. Single select mode (not multi) and only one selected,
         //    (otherwise multi was used but not active, so we keep selection).
         // 3. Single select mode (not multi) and selected other layer
-        if (!layer || (!modeMaster.has("multi") && (selectedLayers.length < 2 || !layer.isSelected()))) {
+        if (!layer || (!modeMaster.has("shift") && (selectedLayers.length < 2 || !layer.isSelected()))) {
           this.unselectAll();
           modeMaster.change("selected", "select");
         }
@@ -225,7 +278,6 @@
         this._isSelected = false;
 
         layerManager.setSelectPixel(this.firstPixel);
-        layerManager.add(this);
       }
 
       draw(pixel, value) {
@@ -239,6 +291,13 @@
       
       clear() {
         this.pixels.forEach((pixel) => pixel.clear());
+      }
+
+      copy() {
+        let layerCopy = new this.constructor(this.firstPixel.id());
+        layerCopy.pixels = this.pixels.map(pixel => pixel);
+        layerCopy.values = this.values.map(value => value);
+        return layerCopy;
       }
 
       render() {
@@ -315,6 +374,14 @@
       layerManager.refresh(() => layerManager.deleteSelectedLayers());
     }
 
+    function undoEvent(event) {
+      layerManager.refresh(() => layerManager.undo());
+    }
+
+    function redoEvent(event) {
+      layerManager.refresh(() => layerManager.redo());
+    }
+
     /////////////////////////
     ////// TEXT LAYER ///////
     /////////////////////////
@@ -329,6 +396,7 @@
 
       static mouseDown(event) {
         let layer = new TextLayer(event.target.id);
+        layerManager.add(layer);
       }
 
       static keyDown(event) {
@@ -389,6 +457,7 @@
 
       static mouseDown(event) {
         let layer = new LineLayer(event.target.id);
+        layerManager.add(layer);
       }
 
       static mouseOver(event) {
@@ -430,6 +499,7 @@
 
       static mouseDown(event) {
         let layer = new FreeLayer(event.target.id);
+        layerManager.add(layer);
       }
 
       static mouseOver(event) {
@@ -485,7 +555,7 @@
     class EventInstruction {
       constructor(modeCondition, modeUpdate, callback=()=>{}) {
         this.callback = callback;
-        this.condition = this.makeFunc(modeCondition);
+        this.condition = (modeCondition.length)? this.makeFunc(modeCondition): () => true;
         this.update = this.makeFunc(modeUpdate);
       }
       
@@ -521,8 +591,7 @@
           new EventInstruction([modeMaster.has, "selected"], [], (event) => layerManager.selectedArrowKeyDownEvent(event)),
         ],                                                                        
         [keyGroup("shift")]: [
-          new EventInstruction([modeMaster.is, "select"], [modeMaster.add, "multi"]),
-          new EventInstruction([modeMaster.is, "selected"], [modeMaster.add, "multi"])
+          new EventInstruction([], [modeMaster.add, "shift"])
         ],
         [keyGroup("back", "delete")]: [
           new EventInstruction([modeMaster.has, "selected"], [modeMaster.reset, "select"], deleteLayersEvent),
@@ -533,13 +602,24 @@
         [keyGroup("back", "delete", ...ArrowKeyGroup)]: [
           new EventInstruction([modeMaster.is, "writing", "text"], [], TextLayer.keyDown),
         ],
+        [keyGroup("ctrl")]: [
+          new EventInstruction([], [modeMaster.add, "ctrl"]),
+        ],
+        [keyGroup("z")]: [
+          new EventInstruction([modeMaster.has, "shift", "ctrl"], [], redoEvent),
+          new EventInstruction([modeMaster.has, "ctrl"], [], undoEvent),
+        ],
       },
       "keyup": {
         [keyGroup("shift")]: [
-          new EventInstruction([modeMaster.has, "multi"], [modeMaster.remove, "multi"])
+          new EventInstruction([modeMaster.has, "shift"], [modeMaster.remove, "shift"]),
+        ],
+        [keyGroup("ctrl")]: [
+          new EventInstruction([modeMaster.has, "ctrl"], [modeMaster.remove, "ctrl"]),
         ],
       }
     }
+
     let canvasEventInstructions = {
       "mousedown": [
         new EventInstruction([modeMaster.has, "draw", "text"],    [modeMaster.change, "draw", "writing"], TextLayer.mouseDown),
@@ -553,7 +633,7 @@
       "mouseup": [
         new EventInstruction([modeMaster.has, "drawing"], [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
         new EventInstruction([modeMaster.is, "erasing"],  [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
-        new EventInstruction([modeMaster.has, "moving"],   [modeMaster.remove, "moving"]),
+        new EventInstruction([modeMaster.has, "moving"],   [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
       ],
       "mouseover": [
         new EventInstruction([modeMaster.has, "drawing", "free"], [], FreeLayer.mouseOver),
