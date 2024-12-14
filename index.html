@@ -12,7 +12,6 @@
       }
 
       #menu button {
-        background: green;
         padding: 10px;
         margin-left: 10px;
         float: left;
@@ -27,8 +26,9 @@
     /*
 
     TODO
-
+    - fix bug shift caps
     - undo/redo
+    - multi line text, redit text
     - square shape
     - shape resizing
     - z-index concepting
@@ -40,6 +40,8 @@
     - diagnol shapes
     - arrow headed lines
     - proper design / config
+    - unicode v ascii
+    - themes
 
     - BE: save, share, manage, user, login google + github,  CRUD
       - guest auto save (refresh keeps)
@@ -58,12 +60,13 @@
       "ctrl"    : 17,
 
       "z"       : 90,
+      "c"       : 67,
     }
 
-    const masterRowCount = 80;
-    const masterColCount = 150;
+    const masterRowCount = 50;
+    const masterColCount = 90;
 
-    const pixelSize = 10;
+    const pixelSize = 15;
     
     function reportError(message) {
       console.log(message);
@@ -141,7 +144,7 @@
 
       getLayerByPixelId(id) {
         for (var layer of this.layers) {
-          if (layer.hasPixel(id)) return layer;
+          if (layer.getPixelIndex(id) > -1) return layer;
         }
       }
 
@@ -153,8 +156,25 @@
         this.getSelectedLayers().forEach((layer) => layer.empty());
       }
 
+      copySelectedLayers() {
+        this.getSelectedLayers().forEach((layer) => {
+          let layerCopy = layer.copy();
+          while (this.isLayerOverlapped(layerCopy)) layerCopy.move(1, 1);
+          this.add(layerCopy); 
+          layer.unselect();
+          layerCopy.select();
+        });
+        this.capture();
+      }
+
+
+      isLayerOverlapped(subjectLayer) {
+        for (var layer of this.layers) {
+          if (layer.isOverlapping(subjectLayer)) return true;
+        }
+      }
+
       unselectAll() {
-        this.selectedLayers = [];
         this.layers.forEach((layer) => layer.unselect());
       }
 
@@ -177,6 +197,11 @@
         this.layers.forEach((layer) => layer.render());
       }
 
+      empty() {
+        this.layers = [];
+        this.layerHistory = [];
+      }
+
       capture() {
         this.historyCursor = 0;
         this.layerHistory.unshift(this.copyLayers(this.layers));
@@ -192,8 +217,6 @@
         // Copy historic layers to avoid mutating them now that they're current.
         // Past will otherwise show as present...
         this.layers = this.copyLayers(this.layerHistory[this.historyCursor]); 
-        console.log(this.historyCursor);
-        console.log(this.layerHistory);
       }
 
       redo() {
@@ -201,8 +224,6 @@
         // Copy historic layers to avoid mutating them now that they're current.
         // Past will otherwise show as present...
         this.layers = this.copyLayers(this.layerHistory[this.historyCursor]);
-        console.log(this.historyCursor);
-        console.log(this.layerHistory);
       }
       
       setSelectPixel(selectedPixel) {
@@ -233,12 +254,19 @@
         }
 
         if (layer) {
-          layer.select();
-          this.setSelectPixel(activePixel);
           modeMaster.change("select", "selected");
-          modeMaster.add("moving");
+          layer.select();
+          let resizePixel = layer.getResizePixel(activePixel);
+          if (resizePixel) {
+            layer.setFirstPixel(resizePixel);
+            modeMaster.add("resizing", layer.name);
+          } else {
+            this.setSelectPixel(activePixel);
+            modeMaster.add("moving");
+          }
         }
       }
+
       movingMouseOverEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         let lastPixelSelected = this.getSelectPixel();
@@ -272,21 +300,33 @@
 
     class Layer {
       constructor(firstPixelId) {
-        this.firstPixel = canvas.getPixelById(firstPixelId);
         this.pixels = [];
         this.values = [];
         this._isSelected = false;
 
+        this.setFirstPixel(firstPixelId);
         layerManager.setSelectPixel(this.firstPixel);
       }
 
+      setFirstPixel(id) {
+        this.firstPixel = canvas.getPixelById(id);
+      }
+
       draw(pixel, value) {
-        this.pixels.push(pixel);
-        this.values.push(value);
-        
+        let existingPixelIndex = this.getPixelIndex(pixel.id());
+        if (existingPixelIndex == -1) {
+          this.pixels.push(pixel);
+          this.values.push(value);
+        } else {
+          this.values[existingPixelIndex] = value;
+        }
         if (this.pixels.length != this.values.length) {
           console.log(`layer pixel/value mismatch: ${this.pixels} != ${this.values}`)
         }
+      }
+
+      getResizePixel() { // Resizeable layers will override this method
+        return false;
       }
       
       clear() {
@@ -300,11 +340,29 @@
         return layerCopy;
       }
 
+      isOverlapping(subjectLayer) {
+        for (var subjectPixel of subjectLayer.pixels) {
+          var found = false;
+          for (var pixel of this.pixels) {
+            if (pixel.id() == subjectPixel.id()) {
+              found = true;
+              break;
+            }
+          }
+          if (!found) return false;
+        }
+        return true;
+      }
+
       render() {
         for (var i = 0; i < this.pixels.length; i++) {
           this.pixels[i].setValue(this.values[i]);
         }
         if (this.isSelected()) this.select();
+      }
+
+      focusFirstPixel() {
+        this.firstPixel.renderFocus();
       }
       
       move(verticalDiff, lateralDiff) {
@@ -324,12 +382,12 @@
         return this.pixels[this.pixels.length - 1];
       }
 
-      hasPixel(id) {
-        for (var pixel of this.pixels) {
-          if (pixel.id() == id) return true;
+      getPixelIndex(id) {
+        for (var i = 0; i < this.pixels.length; i++) {
+          let pixel = this.pixels[i];
+          if (pixel.id() == id) return i;
         }
-        if (this.firstPixel.id() == id) return true;
-        return false;
+        return -1;
       }
 
       erasePixel(id) {
@@ -387,6 +445,9 @@
     /////////////////////////
 
     class TextLayer extends Layer {
+      
+      name = "text"
+
       constructor(firstPixelId) {
         super(firstPixelId);
         this.cursor = 0;
@@ -394,13 +455,15 @@
         this.layer = null;
       }
 
-      static mouseDown(event) {
+      static drawMouseDown(event) {
         let layer = new TextLayer(event.target.id);
+        menu.unselectAll();
+        layer.focusFirstPixel();
         layerManager.add(layer);
       }
 
       static keyDown(event) {
-        let layer = layerManager.getLayerByPixelId(layerManager.getSelectPixel().id());
+        let layer = layerManager.getLatestLayer();
         layer.writeChar(event.keyCode);
       }
 
@@ -455,14 +518,26 @@
 
     class LineLayer extends Layer {
 
-      static mouseDown(event) {
+      name = "line"
+
+      static drawMouseDown(event) {
         let layer = new LineLayer(event.target.id);
         layerManager.add(layer);
       }
 
-      static mouseOver(event) {
+      static drawingMouseOver(event) {
         let layer = layerManager.getLatestLayer();
         layerManager.refresh(() => layer.drawLine(event.target.id));
+      }
+
+      static resizingMouseOver(event) {
+        let layer = layerManager.getSelectedLayers()[0];
+        layerManager.refresh(() => layer.drawLine(event.target.id));
+      }
+
+      getResizePixel(pixel) {
+        if (pixel.id() == this.pixels[0].id()) return this.pixels[this.pixels.length - 1].id();
+        if (pixel.id() == this.pixels[this.pixels.length - 1].id()) return this.pixels[0].id();
       }
 
       drawLine(activePixelId) {
@@ -472,21 +547,21 @@
         let lateralDiff = Math.abs(activePixel.col - this.firstPixel.col);
 
         if (activePixel.isAbove(this.firstPixel) && verticalDiff > lateralDiff) {
-            for(var row = this.firstPixel.row; row >= activePixel.row; row --) {
-              this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
-            }
+          for(var row = this.firstPixel.row; row >= activePixel.row; row --) {
+            this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
+          }
         } else if (activePixel.isBelow(this.firstPixel) && verticalDiff > lateralDiff) {
-            for(var row = this.firstPixel.row; row <= activePixel.row; row ++) {
-              this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
-            }
+          for(var row = this.firstPixel.row; row <= activePixel.row; row ++) {
+            this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
+          }
         } else if (activePixel.isLeft(this.firstPixel) && verticalDiff < lateralDiff) {
-            for(var col = this.firstPixel.col; col >= activePixel.col; col --) {
-              this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "-");
-            }
+          for(var col = this.firstPixel.col; col >= activePixel.col; col --) {
+            this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
+          }
         } else if (activePixel.isRight(this.firstPixel) && verticalDiff < lateralDiff) {
-            for(var col = this.firstPixel.col; col <= activePixel.col; col ++) {
-              this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "-");
-            }
+          for(var col = this.firstPixel.col; col <= activePixel.col; col ++) {
+            this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
+          }
         }
       } 
     }
@@ -496,13 +571,16 @@
     /////////////////////////
 
     class FreeLayer extends Layer {
+      
+      name = "free";
 
-      static mouseDown(event) {
+      static drawMouseDown(event) {
         let layer = new FreeLayer(event.target.id);
         layerManager.add(layer);
+        layerManager.refresh(() => layer.drawFree(event.target.id));
       }
 
-      static mouseOver(event) {
+      static drawingMouseOver(event) {
         let layer = layerManager.getLatestLayer();
         layerManager.refresh(() => layer.drawFree(event.target.id));
       }
@@ -518,7 +596,96 @@
     //////////////////////
 
     class SquareLayer extends Layer {
+      
+      name = "square" 
 
+      static drawMouseDown(event) {
+        let layer = new SquareLayer(event.target.id);
+        layerManager.add(layer);
+      }
+
+      static drawingMouseOver(event) {
+        let layer = layerManager.getLatestLayer();
+        layerManager.refresh(() => layer.drawSquare(event.target.id));
+      }
+
+      static resizingMouseOver(event) {
+        let layer = layerManager.getSelectedLayers()[0];
+        layerManager.refresh(() => layer.drawSquare(event.target.id));
+      }
+
+      getResizePixel(pixel) {
+        let corners = this.getCornerPixels();
+        let cornerMatch = corners.indexOf(pixel.id());
+        if (cornerMatch == -1) return;
+        let firstPixelIndex = cornerMatch + 2;
+        if (firstPixelIndex > 3) {
+          firstPixelIndex = firstPixelIndex - 4;
+        }
+        return corners[firstPixelIndex];
+      }
+
+      getCornerPixels() {
+        var maxCol = -1;
+        var minCol = -1;
+        var maxRow = -1;
+        var minRow = -1;
+        for (var pixel of this.pixels) {
+          if (pixel.col > maxCol) {
+            maxCol = pixel.col;
+          }
+          if (pixel.col < minCol || minCol == -1) {
+            minCol = pixel.col; 
+          }
+          if (pixel.row > maxRow) {
+            maxRow = pixel.row;
+          }
+          if (pixel.row < minRow || minRow == -1) {
+            minRow = pixel.row; 
+          }
+        }
+        return [
+          Pixel.makeId(minRow, minCol),
+          Pixel.makeId(minRow, maxCol),
+          Pixel.makeId(maxRow, maxCol),
+          Pixel.makeId(maxRow, minCol),
+        ]
+      }
+
+      drawSquare(activePixelId) {
+        this.empty();
+        let activePixel = canvas.getPixelById(activePixelId);
+        if (activePixel.isAbove(this.firstPixel)) {
+          for(var row = this.firstPixel.row; row >= activePixel.row; row --) {
+            this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
+          }
+          for(var row = this.firstPixel.row; row >= activePixel.row; row --) {
+            this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
+          }
+        } else if (activePixel.isBelow(this.firstPixel)) {
+          for(var row = this.firstPixel.row; row <= activePixel.row; row ++) {
+            this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
+          }
+          for(var row = this.firstPixel.row; row <= activePixel.row; row ++) {
+            this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
+          }
+        }
+        if (activePixel.isLeft(this.firstPixel)) {
+          for(var col = this.firstPixel.col; col >= activePixel.col; col --) {
+            this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
+          }
+          for(var col = this.firstPixel.col; col >= activePixel.col; col --) {
+            this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
+          }
+        } else if (activePixel.isRight(this.firstPixel)) {
+          for(var col = this.firstPixel.col; col <= activePixel.col; col ++) {
+            this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
+          }
+          for(var col = this.firstPixel.col; col <= activePixel.col; col ++) {
+            this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
+          }
+        }
+      } 
     }
 
     
@@ -609,6 +776,9 @@
           new EventInstruction([modeMaster.has, "shift", "ctrl"], [], redoEvent),
           new EventInstruction([modeMaster.has, "ctrl"], [], undoEvent),
         ],
+        [keyGroup("c")]: [
+          new EventInstruction([modeMaster.has, "ctrl", "selected"], [], (event) => layerManager.refresh(() => layerManager.copySelectedLayers())),
+        ],
       },
       "keyup": {
         [keyGroup("shift")]: [
@@ -622,24 +792,29 @@
 
     let canvasEventInstructions = {
       "mousedown": [
-        new EventInstruction([modeMaster.has, "draw", "text"],    [modeMaster.change, "draw", "writing"], TextLayer.mouseDown),
-        new EventInstruction([modeMaster.has, "draw", "line"],    [modeMaster.change, "draw", "drawing"], LineLayer.mouseDown),
-        new EventInstruction([modeMaster.has, "draw", "free"],    [modeMaster.change, "draw", "drawing"], FreeLayer.mouseDown),
-        new EventInstruction([modeMaster.is, "writing", "text"], [modeMaster.reset, "select"], (event) => layerManager.tidyLayers()),
-        new EventInstruction([modeMaster.is, "erase"],   [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
-        new EventInstruction([modeMaster.has, "select"],   [], (event) => layerManager.selectMouseDownEvent(event)),
-        new EventInstruction([modeMaster.has, "selected"],   [], (event) => layerManager.selectMouseDownEvent(event)),
+        new EventInstruction([modeMaster.has, "draw", "text"],    [modeMaster.change, "draw", "writing"], TextLayer.drawMouseDown),
+        new EventInstruction([modeMaster.has, "draw", "line"],    [modeMaster.change, "draw", "drawing"], LineLayer.drawMouseDown),
+        new EventInstruction([modeMaster.has, "draw", "free"],    [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDown),
+        new EventInstruction([modeMaster.has, "draw", "square"],    [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDown),
+        new EventInstruction([modeMaster.is, "writing", "text"],  [modeMaster.reset, "select"], (event) => layerManager.tidyLayers()),
+        new EventInstruction([modeMaster.is, "erase"],            [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
+        new EventInstruction([modeMaster.has, "select"],          [], (event) => layerManager.selectMouseDownEvent(event)),
+        new EventInstruction([modeMaster.has, "selected"],        [], (event) => layerManager.selectMouseDownEvent(event)),
       ],
       "mouseup": [
-        new EventInstruction([modeMaster.has, "drawing"], [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
-        new EventInstruction([modeMaster.is, "erasing"],  [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
-        new EventInstruction([modeMaster.has, "moving"],   [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
+        new EventInstruction([modeMaster.has, "drawing"],         [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
+        new EventInstruction([modeMaster.is, "erasing"],          [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
+        new EventInstruction([modeMaster.has, "moving"],          [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
+        new EventInstruction([modeMaster.has, "resizing"],          [modeMaster.reset, "selected"], (event) => layerManager.tidyLayers()),
       ],
       "mouseover": [
-        new EventInstruction([modeMaster.has, "drawing", "free"], [], FreeLayer.mouseOver),
-        new EventInstruction([modeMaster.has, "drawing", "line"], [], LineLayer.mouseOver),
-        new EventInstruction([modeMaster.is, "erasing"],  [], erasingMouseOverEvent),
-        new EventInstruction([modeMaster.has, "moving"],  [], (event) => layerManager.movingMouseOverEvent(event)),
+        new EventInstruction([modeMaster.has, "drawing", "free"], [], FreeLayer.drawingMouseOver),
+        new EventInstruction([modeMaster.has, "drawing", "line"], [], LineLayer.drawingMouseOver),
+        new EventInstruction([modeMaster.has, "drawing", "square"], [], SquareLayer.drawingMouseOver),
+        new EventInstruction([modeMaster.is, "erasing"],          [], erasingMouseOverEvent),
+        new EventInstruction([modeMaster.has, "moving"],          [], (event) => layerManager.movingMouseOverEvent(event)),
+        new EventInstruction([modeMaster.has, "resizing", "line"],          [], LineLayer.resizingMouseOver),
+        new EventInstruction([modeMaster.has, "resizing", "square"],          [], SquareLayer.resizingMouseOver),
       ],
     }
 
@@ -656,6 +831,7 @@
         this.defaultColor = "#000000";
         this.defaultBgColor = "transparent";
         this.defaultBorder = "none";
+        this.cursorFlashInterval = null;
       }
       
       id() {
@@ -675,10 +851,26 @@
       }
 
       renderCursor() {
+        this.renderNormal();
         this.element.style.borderRight = "1px solid orange";
+        setTimeout((pixel) => {
+          pixel.element.style.borderRight = "none";
+        }, 500, this);
+        this.cursorFlashInterval = setInterval(
+            (pixel) => {
+              this.element.style.borderRight = "1px solid orange";
+              setTimeout(() => {
+                pixel.element.style.borderRight = "none";
+              }, 500);
+            }, 1000, this);
+      }
+
+      renderFocus() {
+        this.setBgColor("orange");
       }
 
       renderNormal() {
+        clearInterval(this.cursorFlashInterval);
         this.setColor(this.defaultColor);
         this.setBgColor(this.defaultBgColor);
         this.element.style.border = "none";
@@ -720,7 +912,7 @@
         this.element.id = this.id();
         this.element.style.position = "absolute";
         this.renderNormal();
-        //this.setBorder("1px solid black");
+        //this.element.style.border = "1px solid black";
         this.element.style.marginLeft = `${this.col * this.size}px`;
         this.element.style.marginTop = `${this.row * this.size}px`;
         this.element.style.height = `${this.size}px`;
@@ -798,37 +990,63 @@
         });
       });
     }
-    
-    function modeButtonPress(modes) {
-      return (event) => {
-        modeMaster.reset(...modes);
-        layerManager.unselectAll();
-        document.querySelectorAll("#menu button").forEach((button) => {
-          button.style.backgroundColor = "green";
-        })
-        event.target.style.backgroundColor = "blue";
-      }
-    }
-    function renderMenuModeButton(name, modes) {
-      let button = document.createElement("button");
-      button.innerHTML = name;
-      button.addEventListener('mouseup', modeButtonPress(modes));
-      menu.appendChild(button);
-    }
 
-    function renderMasterMenu() {
-      renderMenuModeButton("Draw Square", ["draw", "square"]);
-      renderMenuModeButton("Text", ["draw", "text"]);
-      renderMenuModeButton("Draw Line", ["draw", "line"]);
-      renderMenuModeButton("Draw Free", ["draw", "free"]);
-      renderMenuModeButton("Erase Free", ["erase"]);
-      renderMenuModeButton("Select", ["select"]);
+    class Menu {
+      
+      constructor() {
+        this.id = "menu";
+        this.element = document.getElementById(this.id);
+        this.defaultButtonColor = "green";
+        this.defaultSelectedButtonColor = "blue";
+      }
+
+      modeButtonPress(event, modes) {
+          modeMaster.reset(...modes);
+          this.selectButton(event);
+      }
+
+      selectButton(event) {
+        layerManager.unselectAll();
+        this.unselectAll();
+        event.target.style.backgroundColor = this.defaultSelectedButtonColor;
+      }
+
+      unselectAll() {
+        document.querySelectorAll(`#${this.id} button`).forEach((button) => {
+          button.style.backgroundColor = this.defaultButtonColor;
+        });
+      }
+
+      renderModeButton(name, modes) {
+        this.renderButton(name, (event) => this.modeButtonPress(event, modes));
+      }
+
+      renderButton(name, callback) {
+        let button = document.createElement("button");
+        button.innerHTML = name;
+        button.addEventListener('mouseup', callback);
+        this.element.appendChild(button);
+      }
+
+
+      render() {
+        this.renderModeButton("Draw Square", ["draw", "square"]);
+        this.renderModeButton("Text", ["draw", "text"]);
+        this.renderModeButton("Draw Line", ["draw", "line"]);
+        this.renderModeButton("Draw Free", ["draw", "free"]);
+        this.renderModeButton("Erase Free", ["erase"]);
+        this.renderModeButton("Select", ["select"]);
+        this.renderButton("Restart", () => layerManager.refresh(() => layerManager.empty()));
+        this.unselectAll();
+      }
     }
 
     let layerManager = new LayerManager();
-    renderMasterMenu();
-    canvas = new Canvas(masterRowCount, masterColCount, pixelSize);
+    let menu = new Menu();
+    let canvas = new Canvas(masterRowCount, masterColCount, pixelSize);
+    menu.render();
     canvas.render();
+
     assignKeyEventInstructions(document, documentEventKeyInstructions);
 
 
