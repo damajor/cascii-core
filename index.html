@@ -26,15 +26,10 @@
     /*
 
     TODO
-    - fix bug shift caps
-    - undo/redo
-    - multi line text, redit text
-    - square shape
-    - shape resizing
-    - z-index concepting
-    - file break up?
+    FE 
+    - multi line text, redit text, double click
     - area selection (all layers in square)
-    - copy / paste selection
+    - file break up?
     - export 
     - choose char for free draw
     - diagnol shapes
@@ -42,10 +37,16 @@
     - proper design / config
     - unicode v ascii
     - themes
+    - z-index concepting
 
     - BE: save, share, manage, user, login google + github,  CRUD
       - guest auto save (refresh keeps)
-
+    
+    DONE
+    - copy / paste selection
+    - undo/redo
+    - square shape
+    - shape resizing
     */
     const KEYS = {
       "up"      : 38,
@@ -64,7 +65,7 @@
     }
 
     const masterRowCount = 50;
-    const masterColCount = 90;
+    const masterColCount = 80;
 
     const pixelSize = 15;
     
@@ -83,17 +84,14 @@
 
       change(beforeMode, afterMode) {
         let index = this._modes.indexOf(beforeMode);
-        if (index == -1) {
-          reportError(`Bad mode change ${this._modes}: ${beforeMode} -> ${afterMode}`);
-          return;
-        }
+        if (index == -1) return;
         this._modes[index] = afterMode;
       }
 
       remove(...modes) {
         modes.forEach((mode) => {
           let index = this._modes.indexOf(mode);
-          if (index == -1) reportError(`Bad mode removal ${this._modes}: ${mode}`);
+          if (index == -1) return; 
           this._modes.splice(index, 1);
         });
       }
@@ -113,6 +111,18 @@
 
       is(...modes) {
         return this._modes.toString() == modes.toString(); 
+      }
+      
+      removeShapes() {
+        this.remove("square");
+        this.remove("line");
+        this.remove("free");
+        this.remove("text");
+      }
+
+      setShape(name) {
+        this.removeShapes();
+        this.add(name);
       }
 
       get(modes, insist=false) {
@@ -176,6 +186,8 @@
 
       unselectAll() {
         this.layers.forEach((layer) => layer.unselect());
+        modeMaster.change("selected", "select");
+        modeMaster.removeShapes();
       }
 
       refresh(updateFunc) {
@@ -238,35 +250,6 @@
         this.getSelectedLayers().forEach((layer) => layer.move(verticalDiff, lateralDiff));
       }
 
-      selectMouseDownEvent(event) {
-        let activePixel = canvas.getPixelById(event.target.id);
-        let layer = this.getLayerByPixelId(activePixel.id());
-        let selectedLayers = this.getSelectedLayers();
-
-        // Unselect all if...
-        // 1. clicked-off (no layer selected)
-        // 2. Single select mode (not multi) and only one selected,
-        //    (otherwise multi was used but not active, so we keep selection).
-        // 3. Single select mode (not multi) and selected other layer
-        if (!layer || (!modeMaster.has("shift") && (selectedLayers.length < 2 || !layer.isSelected()))) {
-          this.unselectAll();
-          modeMaster.change("selected", "select");
-        }
-
-        if (layer) {
-          modeMaster.change("select", "selected");
-          layer.select();
-          let resizePixel = layer.getResizePixel(activePixel);
-          if (resizePixel) {
-            layer.setFirstPixel(resizePixel);
-            modeMaster.add("resizing", layer.name);
-          } else {
-            this.setSelectPixel(activePixel);
-            modeMaster.add("moving");
-          }
-        }
-      }
-
       movingMouseOverEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         let lastPixelSelected = this.getSelectPixel();
@@ -308,12 +291,46 @@
         layerManager.setSelectPixel(this.firstPixel);
       }
 
+      static selectMouseDown(event) {
+        let activePixel = canvas.getPixelById(event.target.id);
+        let layer = layerManager.getLayerByPixelId(activePixel.id());
+        let selectedLayers = layerManager.getSelectedLayers();
+
+        // Unselect all if...
+        // 1. clicked-off (no layer selected)
+        // 2. Single select mode (not multi) and only one selected,
+        //    (otherwise multi was used but not active, so we keep selection).
+        // 3. Single select mode (not multi) and selected other layer
+        if (!layer || (!modeMaster.has("shift") && (selectedLayers.length < 2 && !layer.isSelected()))) {
+          layerManager.unselectAll();
+        }
+        if (layer) {
+          modeMaster.change("select", "selected");
+          modeMaster.setShape(layer.name);
+          let resizePixel = layer.getResizePixel(activePixel);
+          if (resizePixel) {
+            layer.setFirstPixel(resizePixel);
+            modeMaster.add("resizing");
+          } else {
+            layerManager.setSelectPixel(activePixel);
+            modeMaster.add("moving");
+          }
+          layer.select();
+        }
+      }
+
+      select() {
+        this._isSelected = true;
+        this.pixels.forEach((pixel) => pixel.renderSelected());
+      }
+
       setFirstPixel(id) {
         this.firstPixel = canvas.getPixelById(id);
       }
 
       draw(pixel, value) {
         let existingPixelIndex = this.getPixelIndex(pixel.id());
+
         if (existingPixelIndex == -1) {
           this.pixels.push(pixel);
           this.values.push(value);
@@ -357,14 +374,10 @@
       render() {
         for (var i = 0; i < this.pixels.length; i++) {
           this.pixels[i].setValue(this.values[i]);
+          if(this.isSelected()) this.pixels[i].renderSelected();
         }
-        if (this.isSelected()) this.select();
       }
 
-      focusFirstPixel() {
-        this.firstPixel.renderFocus();
-      }
-      
       move(verticalDiff, lateralDiff) {
         let newPixels = [];
         for (var oldPixel of this.pixels) {
@@ -392,9 +405,7 @@
 
       erasePixel(id) {
         for (var i = 0; i < this.pixels.length; i++) {
-          if (this.pixels[i].id() == id) {
-            this.deletePixelByPosition(i);
-          }   
+          if (this.pixels[i].id() == id) this.deletePixelByPosition(i);
         }
       }
 
@@ -407,18 +418,9 @@
         return this._isSelected;
       }
 
-      select(pixel) {
-        this._isSelected = true;
-        this.pixels.forEach((pixel) => {
-          pixel.renderSelected();
-        });
-      }
-
       unselect() {
         this._isSelected = false;
-        this.pixels.forEach((pixel) => {
-          pixel.renderNormal();
-        });
+        this.pixels.forEach((pixel) => pixel.renderNormal());
       }
 
       empty() {
@@ -454,24 +456,49 @@
         this.contents = [];
         this.layer = null;
       }
-
+      
+      static selectedDoubleClick(event) {
+        let activePixel = canvas.getPixelById(event.target.id);
+        let layer = layerManager.getLayerByPixelId(activePixel.id());
+        layer.moveCursorToPixel(activePixel);
+      }
       static drawMouseDown(event) {
         let layer = new TextLayer(event.target.id);
         menu.unselectAll();
-        layer.focusFirstPixel();
         layerManager.add(layer);
+        layer.firstPixel.renderFocus();
+      }
+
+      static writingMouseDown(event) {
+        let activePixel = canvas.getPixelById(event.target.id);
+        let layer = layerManager.getLayerByPixelId(activePixel.id());
+        if (layer) {
+          layer.moveCursorToPixel(activePixel);
+        } else {
+          modeMaster.change("writing", "select")
+          layerManager.unselectAll();
+        }
       }
 
       static keyDown(event) {
-        let layer = layerManager.getLatestLayer();
+        let selectedLayers = layerManager.getSelectedLayers();
+        let layer = (selectedLayers.length) ? selectedLayers[0]: layerManager.getLatestLayer();
         layer.writeChar(event.keyCode);
       }
 
       getLength() {
         return this.contents.length;
       }
-      
+
+      moveCursorToPixel(pixel) {
+        this.cursor = this.getPixelIndex(pixel.id()) + 1;
+        pixel.renderFocus();
+      }
+
       renderChars() {
+        // Get latest first pixel given the layer may have moved and this could be
+        // an edit. 
+        this.firstPixel = (this.pixels.length) ? this.pixels[0]: this.firstPixel;
         this.empty();
         let pixels = [];
         for (var i = 0; i < this.getLength(); i++) {
@@ -750,7 +777,7 @@
     let documentEventKeyInstructions = {
       "keypress": {
         "*": [
-          new EventInstruction([modeMaster.is, "writing", "text"], [], TextLayer.keyDown),
+          new EventInstruction([modeMaster.has, "writing", "text"], [], TextLayer.keyDown),
         ],
       },
       "keydown": {
@@ -796,10 +823,10 @@
         new EventInstruction([modeMaster.has, "draw", "line"],    [modeMaster.change, "draw", "drawing"], LineLayer.drawMouseDown),
         new EventInstruction([modeMaster.has, "draw", "free"],    [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDown),
         new EventInstruction([modeMaster.has, "draw", "square"],    [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDown),
-        new EventInstruction([modeMaster.is, "writing", "text"],  [modeMaster.reset, "select"], (event) => layerManager.tidyLayers()),
+        new EventInstruction([modeMaster.has, "writing", "text"],    [], TextLayer.writingMouseDown),
         new EventInstruction([modeMaster.is, "erase"],            [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
-        new EventInstruction([modeMaster.has, "select"],          [], (event) => layerManager.selectMouseDownEvent(event)),
-        new EventInstruction([modeMaster.has, "selected"],        [], (event) => layerManager.selectMouseDownEvent(event)),
+        new EventInstruction([modeMaster.has, "select"],          [], Layer.selectMouseDown),
+        new EventInstruction([modeMaster.has, "selected"],        [], Layer.selectMouseDown),
       ],
       "mouseup": [
         new EventInstruction([modeMaster.has, "drawing"],         [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
@@ -816,6 +843,9 @@
         new EventInstruction([modeMaster.has, "resizing", "line"],          [], LineLayer.resizingMouseOver),
         new EventInstruction([modeMaster.has, "resizing", "square"],          [], SquareLayer.resizingMouseOver),
       ],
+      "dblclick": [
+        new EventInstruction([modeMaster.has, "selected", "text"],          [modeMaster.change, "selected", "writing"], TextLayer.selectedDoubleClick),
+      ]
     }
 
 
@@ -1001,8 +1031,8 @@
       }
 
       modeButtonPress(event, modes) {
-          modeMaster.reset(...modes);
           this.selectButton(event);
+          modeMaster.reset(...modes);
       }
 
       selectButton(event) {
