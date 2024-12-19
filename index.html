@@ -28,11 +28,12 @@
     TODO
     FE 
     - multi line text, redit text, double click
+    - grouping
     - area selection (all layers in square)
     - file break up?
     - export 
     - choose char for free draw
-    - diagnol shapes
+    - more shapes: diagnol lines, tables, diamonds, triangles
     - arrow headed lines
     - proper design / config
     - unicode v ascii
@@ -41,6 +42,10 @@
 
     - BE: save, share, manage, user, login google + github,  CRUD
       - guest auto save (refresh keeps)
+
+    SMALLS:
+    - writing cursor move focus one only
+    - multi select resize fix
     
     DONE
     - copy / paste selection
@@ -59,6 +64,7 @@
       "delete"  : 46,
       "esc"     : 27,
       "ctrl"    : 17,
+      "enter"   : 13,
 
       "z"       : 90,
       "c"       : 67,
@@ -145,11 +151,11 @@
       }
 
       add(layer) {
-        this.layers.unshift(layer);
+        this.layers.push(layer);
       } 
 
       getLatestLayer() {
-        return this.layers[0];
+        return this.layers[this.layers.length - 1];
       }
 
       getLayerByPixelId(id) {
@@ -494,36 +500,117 @@
         this.cursor = this.getPixelIndex(pixel.id()) + 1;
         pixel.renderFocus();
       }
+      
+
+      getCursorLineOffset() {
+        for (var i = this.cursor; i >= 0; i --) {
+          if (i == 0) {
+            return this.cursor - i;
+          } else if (this.contents[i] == "\n") {
+            if ((this.cursor - i) == 0) {
+              continue;
+            }
+            return this.cursor - i - 1;
+          }
+        }
+      }
+
+      getCurrentLine() {
+        var line = 0;
+        for (var i = 0; i < this.getLength(); i++) {
+          if (i == this.cursor || i + 1 == this.getLength()) return line;
+          if (this.contents[i] == "\n") line ++;
+        }
+        return 0;
+      }
+
+      getLineStart(lineNum) {
+        var line = 0;
+        for (var i = 0; i < this.getLength(); i++) {
+          console.log(`${line} == ${lineNum}, ${i}`);
+          if (line == lineNum) return i;
+          if (this.contents[i] == "\n") line ++;
+        }
+        return i;
+      }
+
+      getLineLengths() {
+        var lengths = [0];
+        for (var i = 0; i < this.getLength(); i++) {
+          if (this.contents[i] == "\n") {
+            lengths.push(0);
+          } else {
+            lengths[lengths.length - 1] ++;
+          }
+        }
+        return lengths;
+      }
 
       renderChars() {
         // Get latest first pixel given the layer may have moved and this could be
         // an edit. 
         this.firstPixel = (this.pixels.length) ? this.pixels[0]: this.firstPixel;
+        if(this.lastCursorPixel) this.lastCursorPixel.renderNormal();
         this.empty();
         let pixels = [];
+        var line = 0;
+        var col = 0;
         for (var i = 0; i < this.getLength(); i++) {
-          let pixel = canvas.getPixelByRowCol(this.firstPixel.row, this.firstPixel.col + i);
-          if (this.cursor == i + 1) pixel.renderCursor();
-          if (!pixel) continue;
+          if (this.contents[i] == "\n") {
+            line ++;
+            col = 0;
+          }
+          let pixel = canvas.getPixelByRowCol(
+            this.firstPixel.row + line,
+            this.firstPixel.col + col)
+          ;
+          if (this.cursor == i + 1) {
+            this.lastCursorPixel = pixel;
+            pixel.renderCursor();
+          }
+          if (!pixel || this.contents[i] == "\n") continue;
           this.draw(pixel, this.contents[i]);
+          col ++;
         }
+      }
+
+
+      getVerticalCursor(direction) {
+        let currentLine = this.getCurrentLine();
+        let lineLengths = this.getLineLengths(); 
+        let cursorLineOffset = this.getCursorLineOffset();
+        var nextLine;
+        if (direction == "up") {
+            nextLine = (currentLine > 0)? currentLine - 1: currentLine;
+        } else {
+            nextLine = (lineLengths.length - 1 > currentLine)? currentLine + 1: currentLine;
+        }
+        let col = (lineLengths[nextLine] > cursorLineOffset)? cursorLineOffset: lineLengths[nextLine];
+        return this.getLineStart(nextLine) + col;
       }
 
       writeChar(key) {
         let char = String.fromCharCode(key);
         let length = this.getLength();
+        let currentLine = this.getCurrentLine();
+        let lineLengths = this.getLineLengths(); 
+        let cursorLineOffset = this.getCursorLineOffset();
         switch (key) {
-          case KEYS["up"]: 
+          case KEYS["down"]: 
+            this.cursor = this.getVerticalCursor("down");
+          break;
+          case KEYS["up"]:
+            this.cursor = this.getVerticalCursor("up");
           break;
           case KEYS["right"]:
             this.cursor = (this.cursor >= length)? length: this.cursor + 1;
-          break;
-          case KEYS["down"]:
           break;
           case KEYS["left"]:
             this.cursor = (this.cursor <= 0)? 0: this.cursor - 1;
           break;
           case KEYS["enter"]:
+            this.contents.splice(this.cursor, 0, "\n");
+            this.cursor++;
           break;
           case KEYS["back"]:
             this.cursor = (this.cursor <= 0)? 0: this.cursor - 1;
@@ -558,8 +645,10 @@
       }
 
       static resizingMouseOver(event) {
-        let layer = layerManager.getSelectedLayers()[0];
-        layerManager.refresh(() => layer.drawLine(event.target.id));
+        let layers = layerManager.getSelectedLayers();
+        for (var layer of layers) {
+          layerManager.refresh(() => layer.drawLine(event.target.id));
+        }
       }
 
       getResizePixel(pixel) {
@@ -637,8 +726,10 @@
       }
 
       static resizingMouseOver(event) {
-        let layer = layerManager.getSelectedLayers()[0];
-        layerManager.refresh(() => layer.drawSquare(event.target.id));
+        let layers = layerManager.getSelectedLayers();
+        for (var layer of layers) {
+          layerManager.refresh(() => layer.drawSquare(event.target.id));
+        }
       }
 
       getResizePixel(pixel) {
