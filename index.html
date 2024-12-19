@@ -28,7 +28,7 @@
     TODO
     FE 
     - multi line text, redit text, double click
-    - grouping
+    - Ungrouping
     - area selection (all layers in square)
     - file break up?
     - export 
@@ -42,6 +42,7 @@
 
     - BE: save, share, manage, user, login google + github,  CRUD
       - guest auto save (refresh keeps)
+      - plain text request / curl
 
     SMALLS:
     - writing cursor move focus one only
@@ -68,12 +69,14 @@
 
       "z"       : 90,
       "c"       : 67,
+      "g"       : 71,
     }
 
     const masterRowCount = 50;
-    const masterColCount = 80;
+    const masterColCount = 150;
 
     const pixelSize = 15;
+    const pixelWidthDivider = 0.7;
     
     function reportError(message) {
       console.log(message);
@@ -147,6 +150,7 @@
         this.layers = [];
         this.selectedPixel = null;
         this.layerHistory = [[]];
+        this.layerGroups = [];
         this.historyCursor = 0;
       }
 
@@ -183,6 +187,19 @@
         this.capture();
       }
 
+      groupSelectedLayers() {
+        this.layerGroups.push(this.getSelectedLayers());
+      }
+      
+      selectGroupByMemberLayer(memberLayer) {
+        this.layerGroups.forEach((group) => {
+          if (group.map(layer => layer.id).includes(memberLayer.id)) {
+            group.forEach(layer => {
+              layer.select();
+            });
+          }
+        });
+      }
 
       isLayerOverlapped(subjectLayer) {
         for (var layer of this.layers) {
@@ -204,6 +221,7 @@
 
       tidyLayers() {
         this.layers = this.layers.filter((layer) => layer.pixels.length);
+        // TODO: clean up layer groups
         this.capture();
       }
 
@@ -283,12 +301,14 @@
             break;
         }
         this.refresh(() => this.moveSelectedLayers(verticalDiff, lateralDiff));
+        this.capture();
       }
     }
     
 
     class Layer {
       constructor(firstPixelId) {
+        this.id = Date.now();
         this.pixels = [];
         this.values = [];
         this._isSelected = false;
@@ -322,6 +342,8 @@
             modeMaster.add("moving");
           }
           layer.select();
+          console.log(event.type);
+          if (!modeMaster.has("shift")) layerManager.selectGroupByMemberLayer(layer);
         }
       }
 
@@ -658,28 +680,38 @@
 
       drawLine(activePixelId) {
         this.empty();
-        let activePixel = canvas.getPixelById(activePixelId);
-        let verticalDiff = Math.abs(activePixel.row - this.firstPixel.row);
-        let lateralDiff = Math.abs(activePixel.col - this.firstPixel.col);
+        let activePixel   = canvas.getPixelById(activePixelId);
+        let verticalDiff  = activePixel.row - this.firstPixel.row;
+        let lateralDiff   = activePixel.col - this.firstPixel.col;
+        
+        var totalSteps   = Math.max(Math.abs(verticalDiff), Math.abs(lateralDiff));
+        var verticalStep = (activePixel.row - this.firstPixel.row) / totalSteps;
+        var lateralStep  = (activePixel.col - this.firstPixel.col)/ totalSteps;
 
-        if (activePixel.isAbove(this.firstPixel) && verticalDiff > lateralDiff) {
-          for(var row = this.firstPixel.row; row >= activePixel.row; row --) {
-            this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
-          }
-        } else if (activePixel.isBelow(this.firstPixel) && verticalDiff > lateralDiff) {
-          for(var row = this.firstPixel.row; row <= activePixel.row; row ++) {
-            this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
-          }
-        } else if (activePixel.isLeft(this.firstPixel) && verticalDiff < lateralDiff) {
-          for(var col = this.firstPixel.col; col >= activePixel.col; col --) {
-            this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
-          }
-        } else if (activePixel.isRight(this.firstPixel) && verticalDiff < lateralDiff) {
-          for(var col = this.firstPixel.col; col <= activePixel.col; col ++) {
-            this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
-          }
+        var colDraw = this.firstPixel.col;
+        var rowDraw = this.firstPixel.row;
+
+        var value = "x";
+        
+        if (Math.abs(verticalStep) < 0.3){
+          value = "-";
+        } else if (Math.abs(lateralStep) < 0.5) {
+          value = "|";
+        } else if (activePixel.isLeft(this.firstPixel) && activePixel.isBelow(this.firstPixel)) {
+          value = "/";
+        } else if (activePixel.isRight(this.firstPixel) && activePixel.isBelow(this.firstPixel)) {
+          value = "\\";
+        } else if (activePixel.isLeft(this.firstPixel) && activePixel.isAbove(this.firstPixel)) {
+          value = "\\";
+        } else if (activePixel.isRight(this.firstPixel) && activePixel.isAbove(this.firstPixel)) {
+          value = "/";
         }
-      } 
+        for (var i = 0; i < totalSteps + 1; i ++) {
+            this.draw(canvas.getPixelByRowCol(parseInt(rowDraw), parseInt(colDraw)), value);
+            rowDraw += verticalStep;
+            colDraw += lateralStep;
+        }
+      }
     }
 
     /////////////////////////
@@ -897,6 +929,9 @@
         [keyGroup("c")]: [
           new EventInstruction([modeMaster.has, "ctrl", "selected"], [], (event) => layerManager.refresh(() => layerManager.copySelectedLayers())),
         ],
+        [keyGroup("g")]: [
+          new EventInstruction([modeMaster.has, "selected"], [], (event) => layerManager.groupSelectedLayers()),
+        ],
       },
       "keyup": {
         [keyGroup("shift")]: [
@@ -1034,10 +1069,10 @@
         this.element.style.position = "absolute";
         this.renderNormal();
         //this.element.style.border = "1px solid black";
-        this.element.style.marginLeft = `${this.col * this.size}px`;
+        this.element.style.marginLeft = `${this.col * this.size * pixelWidthDivider}px`;
         this.element.style.marginTop = `${this.row * this.size}px`;
         this.element.style.height = `${this.size}px`;
-        this.element.style.width = `${this.size}px`;
+        this.element.style.width = `${this.size * pixelWidthDivider}px`;
         parent.appendChild(this.element);
       }
     }
@@ -1072,7 +1107,7 @@
 
       render() {
         this.element = document.getElementById("canvas");
-        this.element.style.width  = `${this.colCount * this.pixelSize}px`;
+        this.element.style.width  = `${this.colCount * this.pixelSize * pixelWidthDivider}px`;
         this.element.style.height = `${this.rowCount * this.pixelSize}px`;
         this.element.style.fontSize = `${this.pixelSize}px`;
         this.element.style.fontFamily = `monospace`;
