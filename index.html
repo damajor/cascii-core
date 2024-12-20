@@ -28,7 +28,10 @@
     TODO
     FE 
     - multi line text, redit text, double click
-    - Ungrouping
+    - Grouping: panel, ungrouping
+    - delete button, group button, ungroup button
+    - joints
+    - restart -> clear (allow undo)
     - area selection (all layers in square)
     - file break up?
     - export 
@@ -39,14 +42,19 @@
     - unicode v ascii
     - themes
     - z-index concepting
+    - intro / why ascii
+    - manual page. shortcuts, etc.
 
     - BE: save, share, manage, user, login google + github,  CRUD
       - guest auto save (refresh keeps)
       - plain text request / curl
 
-    SMALLS:
+    BUGS / IMPROVEMENTS:
+    - select z-index wrong: select last in manager.layers
     - writing cursor move focus one only
     - multi select resize fix
+    - copying group should maintain grouped copy
+    - all mouse up events should be window wide to avoid cursor leaving canvas
     
     DONE
     - copy / paste selection
@@ -151,19 +159,20 @@
         this.selectedPixel = null;
         this.layerHistory = [[]];
         this.layerGroups = [];
+        this.areaSelectionPixels = [];
         this.historyCursor = 0;
       }
 
       add(layer) {
-        this.layers.push(layer);
+        this.layers.unshift(layer);
       } 
 
       getLatestLayer() {
-        return this.layers[this.layers.length - 1];
+        return this.layers[0];
       }
 
       getLayerByPixelId(id) {
-        for (var layer of this.layers) {
+        for (var layer of this.layers) { 
           if (layer.getPixelIndex(id) > -1) return layer;
         }
       }
@@ -230,7 +239,7 @@
       }
 
       renderAll() {
-        this.layers.forEach((layer) => layer.render());
+        this.layers.slice().reverse().forEach((layer) => layer.render());
       }
 
       empty() {
@@ -282,6 +291,50 @@
         this.refresh(() => this.moveSelectedLayers(verticalDiff, lateralDiff));
         this.setSelectPixel(activePixel);
       }
+      
+      clearAreaSelection() {
+        this.areaSelectionPixels.forEach(pixel => pixel.renderNormal());
+        this.areaSelectionPixels = [];
+      }
+      areaSelectingMouseUpEvent(event) {
+        this.clearAreaSelection();
+        this.getSelectedLayers().forEach(layer => layer.renderSelected());
+      }
+      areaSelectingMouseOverEvent(event) {
+        this.clearAreaSelection();
+        let firstPixel = this.getSelectPixel();
+        let activePixel = canvas.getPixelById(event.target.id);
+
+        let lateralDiff = activePixel.col - firstPixel.col;
+        let verticalDiff = activePixel.row - firstPixel.row;
+        let total = Math.abs(lateralDiff * verticalDiff)
+
+        var drawRow = firstPixel.row;
+        var drawCol = firstPixel.col;
+        for (var i = 0; i < Math.abs(verticalDiff); i ++) {
+          for (var x = 0; x < Math.abs(lateralDiff); x++) {
+            let pixel = canvas.getPixelByRowCol(parseInt(drawRow), parseInt(drawCol));
+            this.areaSelectionPixels.push(pixel);
+            pixel.renderAreaSelected();
+            drawCol += lateralDiff / Math.abs(lateralDiff);
+          }
+          drawRow += verticalDiff / Math.abs(verticalDiff);
+          drawCol = firstPixel.col;
+        }
+
+        for (var layer of this.layers) {
+          let layerPixelIds = layer.pixels.map(pixel => pixel.id());
+          let selectedPixelIds = this.areaSelectionPixels.map(pixel => pixel.id());
+          if (layerPixelIds.filter(pixel => !selectedPixelIds.includes(pixel)).length) {
+            if (layer.isSelected()) {
+              layer.unselect();
+            }
+          } else {
+            layer.select()
+          }
+        }
+      }
+
 
       selectedArrowKeyDownEvent(event) {
         var verticalDiff = 0;
@@ -313,7 +366,7 @@
         this.values = [];
         this._isSelected = false;
 
-        this.setFirstPixel(firstPixelId);
+        this.setFirstPixel(canvas.getPixelById(firstPixelId));
         layerManager.setSelectPixel(this.firstPixel);
       }
 
@@ -327,13 +380,17 @@
         // 2. Single select mode (not multi) and only one selected,
         //    (otherwise multi was used but not active, so we keep selection).
         // 3. Single select mode (not multi) and selected other layer
+        if (!layer) {
+          modeMaster.add("area-selecting");
+          layerManager.setSelectPixel(activePixel);
+        }
         if (!layer || (!modeMaster.has("shift") && (selectedLayers.length < 2 && !layer.isSelected()))) {
           layerManager.unselectAll();
         }
         if (layer) {
           modeMaster.change("select", "selected");
           modeMaster.setShape(layer.name);
-          let resizePixel = layer.getResizePixel(activePixel);
+          let resizePixel = layer.getResizeFirstPixel(activePixel);
           if (resizePixel) {
             layer.setFirstPixel(resizePixel);
             modeMaster.add("resizing");
@@ -342,18 +399,23 @@
             modeMaster.add("moving");
           }
           layer.select();
-          console.log(event.type);
           if (!modeMaster.has("shift")) layerManager.selectGroupByMemberLayer(layer);
         }
       }
 
       select() {
         this._isSelected = true;
-        this.pixels.forEach((pixel) => pixel.renderSelected());
+        this.render();
       }
 
-      setFirstPixel(id) {
-        this.firstPixel = canvas.getPixelById(id);
+      unselect() {
+        this._isSelected = false;
+        this.pixels.forEach((pixel) => pixel.renderNormal());
+      }
+
+
+      setFirstPixel(pixel) {
+        this.firstPixel = pixel;
       }
 
       draw(pixel, value) {
@@ -369,8 +431,12 @@
           console.log(`layer pixel/value mismatch: ${this.pixels} != ${this.values}`)
         }
       }
+      
+      getResizePixels() { // Resizeable layers will override this method
+        return [];
+      } 
 
-      getResizePixel() { // Resizeable layers will override this method
+      getResizeFirstPixel() { // Resizeable layers will override this method
         return false;
       }
       
@@ -386,6 +452,12 @@
       }
 
       isOverlapping(subjectLayer) {
+        let layerPixelIds = this.pixels.map(pixel => pixel.id());
+
+        return !Boolean(subjectLayer.pixels.filter(pixel => !layerPixelIds.includes(pixel.id())).length)
+      }
+
+      isOverlappingi(subjectLayer) {
         for (var subjectPixel of subjectLayer.pixels) {
           var found = false;
           for (var pixel of this.pixels) {
@@ -398,12 +470,15 @@
         }
         return true;
       }
+      
+      renderSelected() {
+        this.getResizePixels().forEach(pixel => pixel.renderResizable());
+        this.pixels.forEach(pixel => pixel.renderSelected());
+      }
 
       render() {
-        for (var i = 0; i < this.pixels.length; i++) {
-          this.pixels[i].setValue(this.values[i]);
-          if(this.isSelected()) this.pixels[i].renderSelected();
-        }
+        if (this.isSelected()) this.renderSelected();
+        for (var i = 0; i < this.pixels.length; i++) this.pixels[i].setValue(this.values[i]);
       }
 
       move(verticalDiff, lateralDiff) {
@@ -446,11 +521,6 @@
         return this._isSelected;
       }
 
-      unselect() {
-        this._isSelected = false;
-        this.pixels.forEach((pixel) => pixel.renderNormal());
-      }
-
       empty() {
         this.pixels = [];
         this.values = [];
@@ -490,6 +560,7 @@
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         layer.moveCursorToPixel(activePixel);
       }
+
       static drawMouseDown(event) {
         let layer = new TextLayer(event.target.id);
         menu.unselectAll();
@@ -549,7 +620,6 @@
       getLineStart(lineNum) {
         var line = 0;
         for (var i = 0; i < this.getLength(); i++) {
-          console.log(`${line} == ${lineNum}, ${i}`);
           if (line == lineNum) return i;
           if (this.contents[i] == "\n") line ++;
         }
@@ -672,10 +742,15 @@
           layerManager.refresh(() => layer.drawLine(event.target.id));
         }
       }
+      
+      getResizePixels() {
+        return [this.pixels[0], this.pixels[this.pixels.length - 1]];
+      }
 
-      getResizePixel(pixel) {
-        if (pixel.id() == this.pixels[0].id()) return this.pixels[this.pixels.length - 1].id();
-        if (pixel.id() == this.pixels[this.pixels.length - 1].id()) return this.pixels[0].id();
+      getResizeFirstPixel(pixel) {
+        let resizePixels = this.getResizePixels();
+        if (pixel.id() == resizePixels[0].id()) return resizePixels[1];
+        if (pixel.id() == resizePixels[1].id()) return resizePixels[0];
       }
 
       drawLine(activePixelId) {
@@ -685,8 +760,8 @@
         let lateralDiff   = activePixel.col - this.firstPixel.col;
         
         var totalSteps   = Math.max(Math.abs(verticalDiff), Math.abs(lateralDiff));
-        var verticalStep = (activePixel.row - this.firstPixel.row) / totalSteps;
-        var lateralStep  = (activePixel.col - this.firstPixel.col)/ totalSteps;
+        var verticalStep = verticalDiff / totalSteps;
+        var lateralStep  = lateralDiff / totalSteps;
 
         var colDraw = this.firstPixel.col;
         var rowDraw = this.firstPixel.row;
@@ -763,10 +838,14 @@
           layerManager.refresh(() => layer.drawSquare(event.target.id));
         }
       }
+      
+      getResizePixels() {
+        return this.getCornerPixels();
+      }
 
-      getResizePixel(pixel) {
-        let corners = this.getCornerPixels();
-        let cornerMatch = corners.indexOf(pixel.id());
+      getResizeFirstPixel(pixel) {
+        let corners = this.getResizePixels();
+        let cornerMatch = corners.map(pixel => pixel.id()).indexOf(pixel.id());
         if (cornerMatch == -1) return;
         let firstPixelIndex = cornerMatch + 2;
         if (firstPixelIndex > 3) {
@@ -795,10 +874,10 @@
           }
         }
         return [
-          Pixel.makeId(minRow, minCol),
-          Pixel.makeId(minRow, maxCol),
-          Pixel.makeId(maxRow, maxCol),
-          Pixel.makeId(maxRow, minCol),
+          canvas.getPixelByRowCol(minRow, minCol),
+          canvas.getPixelByRowCol(minRow, maxCol),
+          canvas.getPixelByRowCol(maxRow, maxCol),
+          canvas.getPixelByRowCol(maxRow, minCol),
         ]
       }
 
@@ -808,30 +887,22 @@
         if (activePixel.isAbove(this.firstPixel)) {
           for(var row = this.firstPixel.row; row >= activePixel.row; row --) {
             this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
-          }
-          for(var row = this.firstPixel.row; row >= activePixel.row; row --) {
             this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
           }
         } else if (activePixel.isBelow(this.firstPixel)) {
           for(var row = this.firstPixel.row; row <= activePixel.row; row ++) {
             this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
-          }
-          for(var row = this.firstPixel.row; row <= activePixel.row; row ++) {
             this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
           }
         }
         if (activePixel.isLeft(this.firstPixel)) {
           for(var col = this.firstPixel.col; col >= activePixel.col; col --) {
             this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
-          }
-          for(var col = this.firstPixel.col; col >= activePixel.col; col --) {
             this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
           }
         } else if (activePixel.isRight(this.firstPixel)) {
           for(var col = this.firstPixel.col; col <= activePixel.col; col ++) {
             this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
-          }
-          for(var col = this.firstPixel.col; col <= activePixel.col; col ++) {
             this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
           }
         }
@@ -942,6 +1013,16 @@
         ],
       }
     }
+    
+    let windowEventInstructions = {
+      "mouseup": [
+        new EventInstruction([modeMaster.has, "drawing"],         [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
+        new EventInstruction([modeMaster.is, "erasing"],          [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
+        new EventInstruction([modeMaster.has, "moving"],          [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
+        new EventInstruction([modeMaster.has, "area-selecting"],          [modeMaster.remove, "area-selecting"], (event) => layerManager.areaSelectingMouseUpEvent(event)),
+        new EventInstruction([modeMaster.has, "resizing"],          [modeMaster.reset, "selected"], (event) => layerManager.tidyLayers()),
+      ],
+    }
 
     let canvasEventInstructions = {
       "mousedown": [
@@ -954,18 +1035,13 @@
         new EventInstruction([modeMaster.has, "select"],          [], Layer.selectMouseDown),
         new EventInstruction([modeMaster.has, "selected"],        [], Layer.selectMouseDown),
       ],
-      "mouseup": [
-        new EventInstruction([modeMaster.has, "drawing"],         [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
-        new EventInstruction([modeMaster.is, "erasing"],          [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
-        new EventInstruction([modeMaster.has, "moving"],          [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
-        new EventInstruction([modeMaster.has, "resizing"],          [modeMaster.reset, "selected"], (event) => layerManager.tidyLayers()),
-      ],
       "mouseover": [
         new EventInstruction([modeMaster.has, "drawing", "free"], [], FreeLayer.drawingMouseOver),
         new EventInstruction([modeMaster.has, "drawing", "line"], [], LineLayer.drawingMouseOver),
         new EventInstruction([modeMaster.has, "drawing", "square"], [], SquareLayer.drawingMouseOver),
         new EventInstruction([modeMaster.is, "erasing"],          [], erasingMouseOverEvent),
         new EventInstruction([modeMaster.has, "moving"],          [], (event) => layerManager.movingMouseOverEvent(event)),
+        new EventInstruction([modeMaster.has, "area-selecting"],          [], (event) => layerManager.areaSelectingMouseOverEvent(event)),
         new EventInstruction([modeMaster.has, "resizing", "line"],          [], LineLayer.resizingMouseOver),
         new EventInstruction([modeMaster.has, "resizing", "square"],          [], SquareLayer.resizingMouseOver),
       ],
@@ -1006,6 +1082,13 @@
         this.setColor("blue");
       }
 
+      renderResizable() {
+        this.setBgColor("red");
+      }
+      
+      renderAreaSelected() {
+        this.setBgColor("#8fe9ee");
+      }
       renderCursor() {
         this.renderNormal();
         this.element.style.borderRight = "1px solid orange";
@@ -1147,6 +1230,11 @@
       });
     }
 
+
+    //////////////
+    //// MENU ////
+    //////////////
+
     class Menu {
       
       constructor() {
@@ -1204,6 +1292,7 @@
     canvas.render();
 
     assignKeyEventInstructions(document, documentEventKeyInstructions);
+    assignMouseEventInstructions(window, windowEventInstructions);
 
 
     </script>
