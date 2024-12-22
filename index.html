@@ -27,12 +27,10 @@
 
     TODO
     FE 
-    - multi line text, redit text, double click
     - Grouping: panel, ungrouping
     - delete button, group button, ungroup button
     - joints
     - restart -> clear (allow undo)
-    - area selection (all layers in square)
     - file break up?
     - export 
     - choose char for free draw
@@ -55,8 +53,11 @@
     - multi select resize fix
     - copying group should maintain grouped copy
     - all mouse up events should be window wide to avoid cursor leaving canvas
+    - select area only needs check joint points for inclusion
     
     DONE
+    - multi line text, redit text, double click
+    - area selection (all layers in square)
     - copy / paste selection
     - undo/redo
     - square shape
@@ -130,23 +131,18 @@
         return this._modes.toString() == modes.toString(); 
       }
       
-      removeShapes() {
+      removeLayers() {
         this.remove("square");
         this.remove("line");
         this.remove("free");
         this.remove("text");
       }
 
-      setShape(name) {
-        this.removeShapes();
+      setLayer(name) {
+        this.removeLayers();
         this.add(name);
       }
 
-      get(modes, insist=false) {
-        let result = modes.filter((mode) => this._modes.includes(mode));
-        if (insist && result.length == 0) reportError(`Bad mode get ${this._modes}: expected ${modes}`);
-        return result
-      }
     }
     
     ////////////////////
@@ -219,7 +215,7 @@
       unselectAll() {
         this.layers.forEach((layer) => layer.unselect());
         modeMaster.change("selected", "select");
-        modeMaster.removeShapes();
+        modeMaster.removeLayers();
       }
 
       refresh(updateFunc) {
@@ -280,7 +276,14 @@
       }
 
       moveSelectedLayers(verticalDiff, lateralDiff) {
-        this.getSelectedLayers().forEach((layer) => layer.move(verticalDiff, lateralDiff));
+        let selectedLayers = this.getSelectedLayers();
+        this.refresh(() => {
+          selectedLayers.forEach((layer) => {
+            layer.move(verticalDiff, lateralDiff);
+            layer.moveJointLayers();
+          });
+        });
+        this.findJoints(selectedLayers);
       }
 
       movingMouseOverEvent(event) {
@@ -288,18 +291,51 @@
         let lastPixelSelected = this.getSelectPixel();
         let verticalDiff = activePixel.row - lastPixelSelected.row;
         let lateralDiff = activePixel.col - lastPixelSelected.col;
-        this.refresh(() => this.moveSelectedLayers(verticalDiff, lateralDiff));
+        this.moveSelectedLayers(verticalDiff, lateralDiff);
         this.setSelectPixel(activePixel);
       }
-      
+    
+      findJoints(jointProbingLayers) {
+        for (var layer of this.layers) {
+          if (layer.isSelected()) continue;
+          // Only joinable layers will return joint pixels here and therefore get probed.
+          let jointPixels = layer.getJointPixels(); 
+          var jointIndex = 0;
+          for (var jointPixel of jointPixels) {
+            var renderState = -1;
+            for (var probingLayer of jointProbingLayers) {
+              // Only prober layers will look for joins (e.g lines).
+              let state = probingLayer.probeJoin(layer, jointIndex, jointPixel); 
+              if (state > renderState) renderState = state;
+            }
+            switch (renderState) {
+              case -1:
+              break;
+              case 0:
+                jointPixel.renderNormal();
+              break;
+              case 1:
+                jointPixel.renderJointNear();
+              break;
+              case 2:
+                jointPixel.renderJoint();
+              break;
+            }
+            jointIndex ++;
+          } 
+        }
+      }
+
       clearAreaSelection() {
         this.areaSelectionPixels.forEach(pixel => pixel.renderNormal());
         this.areaSelectionPixels = [];
       }
+
       areaSelectingMouseUpEvent(event) {
         this.clearAreaSelection();
         this.getSelectedLayers().forEach(layer => layer.renderSelected());
       }
+      
       areaSelectingMouseOverEvent(event) {
         this.clearAreaSelection();
         let firstPixel = this.getSelectPixel();
@@ -312,7 +348,7 @@
         var drawRow = firstPixel.row;
         var drawCol = firstPixel.col;
         for (var i = 0; i < Math.abs(verticalDiff); i ++) {
-          for (var x = 0; x < Math.abs(lateralDiff); x++) {
+          for (var x = 0; x < Math.abs(lateralDiff); x ++) {
             let pixel = canvas.getPixelByRowCol(parseInt(drawRow), parseInt(drawCol));
             this.areaSelectionPixels.push(pixel);
             pixel.renderAreaSelected();
@@ -322,6 +358,10 @@
           drawCol = firstPixel.col;
         }
 
+        this.selectLayersInAreaSelection();
+      }
+
+      selectLayersInAreaSelection() {
         for (var layer of this.layers) {
           let layerPixelIds = layer.pixels.map(pixel => pixel.id());
           let selectedPixelIds = this.areaSelectionPixels.map(pixel => pixel.id());
@@ -353,7 +393,7 @@
             lateralDiff = -1;
             break;
         }
-        this.refresh(() => this.moveSelectedLayers(verticalDiff, lateralDiff));
+        this.moveSelectedLayers(verticalDiff, lateralDiff);
         this.capture();
       }
     }
@@ -364,6 +404,7 @@
         this.id = Date.now();
         this.pixels = [];
         this.values = [];
+        this.joints = [];
         this._isSelected = false;
 
         this.setFirstPixel(canvas.getPixelById(firstPixelId));
@@ -389,7 +430,7 @@
         }
         if (layer) {
           modeMaster.change("select", "selected");
-          modeMaster.setShape(layer.name);
+          modeMaster.setLayer(layer.name);
           let resizePixel = layer.getResizeFirstPixel(activePixel);
           if (resizePixel) {
             layer.setFirstPixel(resizePixel);
@@ -432,14 +473,37 @@
         }
       }
       
-      getResizePixels() { // Resizeable layers will override this method
+      // Implement if the layer get be joined to (e.g a square)
+      getJointPixels() {
+        return [];
+      }
+      
+      // Implement if the layer can join to another (e.g a line)
+      probeJoin(layer, index, pixel) {
+        return -1;
+      }
+
+      // Implement if the layer can be resized.
+      // This will determine which pixels can be used to
+      // resize a layer.
+      getResizePixels() { 
         return [];
       } 
 
-      getResizeFirstPixel() { // Resizeable layers will override this method
+      // Implement if the layer can be resized.
+      // This will determine which pixel to resize from, 
+      // given a resize point. 
+      getResizeFirstPixel() {
         return false;
       }
       
+      // Implement if the layer can join to another (e.g a line).
+      // This will determine how a layer gets redrawn when it's joint
+      // layer has moved. The first pixel needs setting.
+      setFirstPixelForMovingJoint() {
+
+      }
+
       clear() {
         this.pixels.forEach((pixel) => pixel.clear());
       }
@@ -448,28 +512,15 @@
         let layerCopy = new this.constructor(this.firstPixel.id());
         layerCopy.pixels = this.pixels.map(pixel => pixel);
         layerCopy.values = this.values.map(value => value);
+        layerCopy.joints = this.joints.map(joint => joint); // TODO this doesnt work 
         return layerCopy;
       }
 
       isOverlapping(subjectLayer) {
         let layerPixelIds = this.pixels.map(pixel => pixel.id());
-
         return !Boolean(subjectLayer.pixels.filter(pixel => !layerPixelIds.includes(pixel.id())).length)
       }
 
-      isOverlappingi(subjectLayer) {
-        for (var subjectPixel of subjectLayer.pixels) {
-          var found = false;
-          for (var pixel of this.pixels) {
-            if (pixel.id() == subjectPixel.id()) {
-              found = true;
-              break;
-            }
-          }
-          if (!found) return false;
-        }
-        return true;
-      }
       
       renderSelected() {
         this.getResizePixels().forEach(pixel => pixel.renderResizable());
@@ -493,6 +544,36 @@
         }
         this.pixels = newPixels;
       }
+
+      moveJointLayers() {
+        // Only joint layers will have joints.
+        for (var joint of this.joints) {
+          let jointPixel = this.getJointPixels()[joint.jointIndex];
+          joint.layer.setFirstPixelForMovingJoint(jointPixel);
+          joint.layer.drawLayer(jointPixel.id()); 
+        }
+      }
+
+      join(layer, jointIndex) {
+        for (var joint of this.joints) {
+          if (layer.id == joint.layer.id && jointIndex == joint.jointIndex) {
+            return;
+          }
+        }
+        this.joints.push({layer: layer, jointIndex: jointIndex});
+      }
+
+      unjoin(layer, jointIndex) {
+        var index = 0;
+        for (var joint of this.joints) {
+          if (layer.id == joint.layer.id && jointIndex == joint.jointIndex) {
+            this.joints.splice(index, 1);
+            return;
+          }
+          index ++;
+        }
+      }
+
 
       getPreviousPixel() {
         return this.pixels[this.pixels.length - 1];
@@ -593,7 +674,6 @@
         this.cursor = this.getPixelIndex(pixel.id()) + 1;
         pixel.renderFocus();
       }
-      
 
       getCursorLineOffset() {
         for (var i = this.cursor; i >= 0; i --) {
@@ -733,18 +813,27 @@
 
       static drawingMouseOver(event) {
         let layer = layerManager.getLatestLayer();
-        layerManager.refresh(() => layer.drawLine(event.target.id));
+        layerManager.refresh(() => layer.drawLayer(event.target.id));
+        layerManager.findJoints([layer]);
       }
 
       static resizingMouseOver(event) {
         let layers = layerManager.getSelectedLayers();
         for (var layer of layers) {
-          layerManager.refresh(() => layer.drawLine(event.target.id));
+          layerManager.refresh(() => layer.drawLayer(event.target.id));
         }
+        layerManager.findJoints(layers);
       }
       
+      getEndPixels() {
+        if (this.pixels.length > 0) {
+          return [this.pixels[0], this.pixels[this.pixels.length - 1]]; // TODO getLastPixel
+        }
+        return [];
+      }
+
       getResizePixels() {
-        return [this.pixels[0], this.pixels[this.pixels.length - 1]];
+        return this.getEndPixels(); 
       }
 
       getResizeFirstPixel(pixel) {
@@ -753,7 +842,38 @@
         if (pixel.id() == resizePixels[1].id()) return resizePixels[0];
       }
 
-      drawLine(activePixelId) {
+      rnd(v) {
+        return parseInt(Math.round(v / 0.5) * 0.5);
+      }
+
+      setFirstPixelForMovingJoint(jointPixel) {
+        for (var pixel of this.getEndPixels()) {
+          if (!pixel.isNear(jointPixel, 3)) {
+            this.setFirstPixel(pixel);
+            break;
+          }
+        }
+      }
+
+      probeJoin(layer, jointIndex, jointPixel) {
+          var state = 0;
+          for (var lineEndPixel of this.getEndPixels()) {
+            if (lineEndPixel.isNear(jointPixel)) {
+              state = 1;
+              if (jointPixel.id() == lineEndPixel.id()) { // TODO pixel.is(pixel)
+                state = 2;
+                layer.join(this, jointIndex);
+              }
+              break;
+            }
+          layer.unjoin(this, jointIndex);
+        }
+        return state
+      }
+
+
+      drawLayer(activePixelId) {
+        console.log(activePixelId);
         this.empty();
         let activePixel   = canvas.getPixelById(activePixelId);
         let verticalDiff  = activePixel.row - this.firstPixel.row;
@@ -782,11 +902,17 @@
           value = "/";
         }
         for (var i = 0; i < totalSteps + 1; i ++) {
-            this.draw(canvas.getPixelByRowCol(parseInt(rowDraw), parseInt(colDraw)), value);
-            rowDraw += verticalStep;
-            colDraw += lateralStep;
+          // TODO CLEAN RDN
+          this.draw(canvas.getPixelByRowCol(this.rnd(rowDraw), this.rnd(colDraw)), value);
+          rowDraw += verticalStep;
+          colDraw += lateralStep;
         }
+        this.draw(activePixel, value);
+
+        console.log(this.pixels[this.pixels.length - 1].id())
+        console.log("\n\n\n")
       }
+
     }
 
     /////////////////////////
@@ -829,18 +955,24 @@
 
       static drawingMouseOver(event) {
         let layer = layerManager.getLatestLayer();
-        layerManager.refresh(() => layer.drawSquare(event.target.id));
+        layerManager.refresh(() => layer.drawLayer(event.target.id));
       }
 
       static resizingMouseOver(event) {
         let layers = layerManager.getSelectedLayers();
         for (var layer of layers) {
-          layerManager.refresh(() => layer.drawSquare(event.target.id));
+          layerManager.refresh(() => layer.drawLayer(event.target.id));
         }
       }
       
       getResizePixels() {
         return this.getCornerPixels();
+      }
+
+      getJointPixels() {
+        let corners = this.getCornerPixels();
+        let halfways = this.getHalfwayPixels(corners);
+        return corners.concat(halfways);
       }
 
       getResizeFirstPixel(pixel) {
@@ -855,6 +987,9 @@
       }
 
       getCornerPixels() {
+        if (this.pixels.length == 0) {
+          return [];
+        }
         var maxCol = -1;
         var minCol = -1;
         var maxRow = -1;
@@ -874,14 +1009,34 @@
           }
         }
         return [
-          canvas.getPixelByRowCol(minRow, minCol),
-          canvas.getPixelByRowCol(minRow, maxCol),
-          canvas.getPixelByRowCol(maxRow, maxCol),
-          canvas.getPixelByRowCol(maxRow, minCol),
+          canvas.getPixelByRowCol(minRow, minCol), // Top left
+          canvas.getPixelByRowCol(minRow, maxCol), // Top right
+          canvas.getPixelByRowCol(maxRow, maxCol), // Bottom right
+          canvas.getPixelByRowCol(maxRow, minCol), // Bottom left
         ]
       }
 
-      drawSquare(activePixelId) {
+      getHalfwayPixels(corners) {
+        if (this.pixels.length == 0) {
+          return [];
+        }
+        let minRow = corners[0].row;
+        let maxRow = corners[2].row;
+        let minCol = corners[0].col;
+        let maxCol = corners[2].col;
+
+        let halfwayRow = parseInt((maxRow - minRow) / 2);
+        let halfwayCol = parseInt((maxCol - minCol) / 2);
+
+        return [
+          canvas.getPixelByRowCol(minRow + halfwayRow, minCol),
+          canvas.getPixelByRowCol(minRow + halfwayRow, maxCol),
+          canvas.getPixelByRowCol(maxRow, minCol + halfwayCol),
+          canvas.getPixelByRowCol(minRow, minCol + halfwayCol),
+        ]
+      }
+
+      drawLayer(activePixelId) {
         this.empty();
         let activePixel = canvas.getPixelById(activePixelId);
         if (activePixel.isAbove(this.firstPixel)) {
@@ -906,6 +1061,7 @@
             this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
           }
         }
+        this.moveJointLayers();
       } 
     }
 
@@ -1089,6 +1245,15 @@
       renderAreaSelected() {
         this.setBgColor("#8fe9ee");
       }
+      
+      renderJoint() {
+        this.setBgColor("pink");
+      }
+
+      renderJointNear() {
+        this.setBgColor("green");
+      }
+
       renderCursor() {
         this.renderNormal();
         this.element.style.borderRight = "1px solid orange";
@@ -1143,6 +1308,13 @@
 
       isRight(pixel) {
         return this.col > pixel.col;
+      }
+
+      isNear(pixel, distance=6) {
+        return (
+          Math.abs(pixel.row - this.row) <= distance &&
+          Math.abs(pixel.col - this.col) <= distance
+        )
       }
 
       render(parent) {
