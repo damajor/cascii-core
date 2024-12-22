@@ -28,10 +28,11 @@
     TODO
     FE 
     - Grouping: panel, ungrouping
-    - delete button, group button, ungroup button
+    - delete button, group button, ungroup button, undo, redo
     - joints
     - restart -> clear (allow undo)
     - file break up?
+    - clever resize
     - export 
     - choose char for free draw
     - more shapes: diagnol lines, tables, diamonds, triangles
@@ -48,12 +49,8 @@
       - plain text request / curl
 
     BUGS / IMPROVEMENTS:
-    - select z-index wrong: select last in manager.layers
     - writing cursor move focus one only
-    - multi select resize fix
     - copying group should maintain grouped copy
-    - all mouse up events should be window wide to avoid cursor leaving canvas
-    - select area only needs check joint points for inclusion
     
     DONE
     - multi line text, redit text, double click
@@ -90,7 +87,10 @@
     function reportError(message) {
       console.log(message);
     }
-
+    
+    function roundHalf(value) {
+      return parseInt(Math.round(value / 0.5) * 0.5);
+    } 
     //////////////////
     ////// MODES /////
     //////////////////
@@ -167,6 +167,12 @@
         return this.layers[0];
       }
 
+      getLayerById(layerId) {
+        for (var layer of this.layers) {
+          if (layer.id == layerId) return layer;
+        }
+      }
+
       getLayerByPixelId(id) {
         for (var layer of this.layers) { 
           if (layer.getPixelIndex(id) > -1) return layer;
@@ -178,22 +184,60 @@
       }
 
       deleteSelectedLayers() {
-        this.getSelectedLayers().forEach((layer) => layer.empty());
+        this.getSelectedLayers().forEach((layer) => layer.empty()); 
+        this.tidyLayers();
       }
 
-      copySelectedLayers() {
-        this.getSelectedLayers().forEach((layer) => {
-          let layerCopy = layer.copy();
-          while (this.isLayerOverlapped(layerCopy)) layerCopy.move(1, 1);
-          this.add(layerCopy); 
-          layer.unselect();
-          layerCopy.select();
-        });
+      findGroupsFromLayers(layers) {
+        var foundGroups = [];
+        let layerIds = layers.map(layer => layer.id);
+        for (var group of this.layerGroups) {
+          let groupLayerIds = group.map(layer => layer.id);
+          if (!Boolean(groupLayerIds.filter(layerId => !layerIds.includes(layerId)).length)) {
+            foundGroups.push(group);
+          }
+        }
+        return foundGroups;
+      }
+
+      copyAndRenderSelectedLayers() {
+        let layersToCopy = this.getSelectedLayers();
+        let groupsToCopy = this.findGroupsFromLayers(layersToCopy);
+        var copiedLayerIds = [];
+
+        // Render layers in groups
+        for (var group of groupsToCopy) {
+          var newGroup = [];
+          for (var layer of group) {
+            copiedLayerIds.push(layer.id);
+            newGroup.push(this.copyAndRender(layer));
+          }
+          this.groupLayers(newGroup);
+        }
+
+        // Render remaining layers
+        for (var layer of layersToCopy) {
+          if (copiedLayerIds.includes(layer.id)) continue;
+          this.copyAndRender(layer);
+        }
         this.capture();
       }
 
+      copyAndRender(layer) {
+        let layerCopy = layer.copy();
+        while (this.isLayerOverlapped(layerCopy)) layerCopy.move(1, 1);
+        this.add(layerCopy); 
+        layer.unselect();
+        layerCopy.select();
+        return layerCopy;
+      }
+
       groupSelectedLayers() {
-        this.layerGroups.push(this.getSelectedLayers());
+        this.groupLayers(this.getSelectedLayers());
+      }
+
+      groupLayers(layers) {
+        this.layerGroups.push(layers);
       }
       
       selectGroupByMemberLayer(memberLayer) {
@@ -225,8 +269,14 @@
       }
 
       tidyLayers() {
-        this.layers = this.layers.filter((layer) => layer.pixels.length);
-        // TODO: clean up layer groups
+        // Delete references to empty layers
+        this.layers = this.layers.filter(layer => layer.pixels.length);
+        var index = 0;
+        for (var layerGroup of this.layerGroups) {
+          this.layerGroups[index] = layerGroup.filter(layer => layer.pixels.length);
+          index ++;
+        }
+        this.layerGroups = this.layerGroups.filter(group => group.length);
         this.capture();
       }
 
@@ -249,7 +299,7 @@
       }
 
       copyLayers(layers) {
-        return layers.map(layer => layer.copy());
+        return layers.map(layer => layer.copy(true));
       }
 
       undo() {
@@ -309,8 +359,6 @@
               if (state > renderState) renderState = state;
             }
             switch (renderState) {
-              case -1:
-              break;
               case 0:
                 jointPixel.renderNormal();
               break;
@@ -370,11 +418,11 @@
               layer.unselect();
             }
           } else {
-            layer.select()
+            layer.select();
+            modeMaster.change("select", "selected");
           }
         }
       }
-
 
       selectedArrowKeyDownEvent(event) {
         var verticalDiff = 0;
@@ -418,7 +466,7 @@
 
         // Unselect all if...
         // 1. clicked-off (no layer selected)
-        // 2. Single select mode (not multi) and only one selected,
+        // 2. Single select mode (not multi) and only one selected, TODO: one GROUP selected too
         //    (otherwise multi was used but not active, so we keep selection).
         // 3. Single select mode (not multi) and selected other layer
         if (!layer) {
@@ -457,6 +505,10 @@
 
       setFirstPixel(pixel) {
         this.firstPixel = pixel;
+      }
+
+      getLastPixel() {
+        return this.pixels[this.pixels.length - 1];
       }
 
       draw(pixel, value) {
@@ -508,11 +560,12 @@
         this.pixels.forEach((pixel) => pixel.clear());
       }
 
-      copy() {
+      copy(id=false) {
         let layerCopy = new this.constructor(this.firstPixel.id());
+        if (id) layerCopy.id = this.id;
         layerCopy.pixels = this.pixels.map(pixel => pixel);
         layerCopy.values = this.values.map(value => value);
-        layerCopy.joints = this.joints.map(joint => joint); // TODO this doesnt work 
+        layerCopy.joints = this.joints.map(joint => joint); 
         return layerCopy;
       }
 
@@ -548,35 +601,31 @@
       moveJointLayers() {
         // Only joint layers will have joints.
         for (var joint of this.joints) {
+          let layer = layerManager.getLayerById(joint.layerId);
           let jointPixel = this.getJointPixels()[joint.jointIndex];
-          joint.layer.setFirstPixelForMovingJoint(jointPixel);
-          joint.layer.drawLayer(jointPixel.id()); 
+          layer.setFirstPixelForMovingJoint(jointPixel);
+          layer.drawLayer(jointPixel.id()); 
         }
       }
 
-      join(layer, jointIndex) {
+      join(layerId, jointIndex) {
         for (var joint of this.joints) {
-          if (layer.id == joint.layer.id && jointIndex == joint.jointIndex) {
+          if (layerId == joint.layerId && jointIndex == joint.jointIndex) {
             return;
           }
         }
-        this.joints.push({layer: layer, jointIndex: jointIndex});
+        this.joints.push({layerId: layerId, jointIndex: jointIndex});
       }
 
-      unjoin(layer, jointIndex) {
+      unjoin(layerId, jointIndex) {
         var index = 0;
         for (var joint of this.joints) {
-          if (layer.id == joint.layer.id && jointIndex == joint.jointIndex) {
+          if (layerId == joint.layerId && jointIndex == joint.jointIndex) {
             this.joints.splice(index, 1);
             return;
           }
           index ++;
         }
-      }
-
-
-      getPreviousPixel() {
-        return this.pixels[this.pixels.length - 1];
       }
 
       getPixelIndex(id) {
@@ -718,7 +767,7 @@
         return lengths;
       }
 
-      renderChars() {
+      drawLayer() {
         // Get latest first pixel given the layer may have moved and this could be
         // an edit. 
         this.firstPixel = (this.pixels.length) ? this.pixels[0]: this.firstPixel;
@@ -793,7 +842,7 @@
             this.cursor++;
           break;
         }
-        layerManager.refresh(() => this.renderChars());
+        layerManager.refresh(() => this.drawLayer());
 
       }
     }
@@ -827,7 +876,7 @@
       
       getEndPixels() {
         if (this.pixels.length > 0) {
-          return [this.pixels[0], this.pixels[this.pixels.length - 1]]; // TODO getLastPixel
+          return [this.pixels[0], this.getLastPixel()]; 
         }
         return [];
       }
@@ -838,12 +887,8 @@
 
       getResizeFirstPixel(pixel) {
         let resizePixels = this.getResizePixels();
-        if (pixel.id() == resizePixels[0].id()) return resizePixels[1];
-        if (pixel.id() == resizePixels[1].id()) return resizePixels[0];
-      }
-
-      rnd(v) {
-        return parseInt(Math.round(v / 0.5) * 0.5);
+        if (pixel.is(resizePixels[0])) return resizePixels[1];
+        if (pixel.is(resizePixels[1])) return resizePixels[0];
       }
 
       setFirstPixelForMovingJoint(jointPixel) {
@@ -860,20 +905,19 @@
           for (var lineEndPixel of this.getEndPixels()) {
             if (lineEndPixel.isNear(jointPixel)) {
               state = 1;
-              if (jointPixel.id() == lineEndPixel.id()) { // TODO pixel.is(pixel)
+              if (jointPixel.is(lineEndPixel)) {
                 state = 2;
-                layer.join(this, jointIndex);
+                layer.join(this.id, jointIndex);
               }
               break;
             }
-          layer.unjoin(this, jointIndex);
+          layer.unjoin(this.id, jointIndex);
         }
         return state
       }
 
 
       drawLayer(activePixelId) {
-        console.log(activePixelId);
         this.empty();
         let activePixel   = canvas.getPixelById(activePixelId);
         let verticalDiff  = activePixel.row - this.firstPixel.row;
@@ -902,17 +946,12 @@
           value = "/";
         }
         for (var i = 0; i < totalSteps + 1; i ++) {
-          // TODO CLEAN RDN
-          this.draw(canvas.getPixelByRowCol(this.rnd(rowDraw), this.rnd(colDraw)), value);
+          this.draw(canvas.getPixelByRowCol(roundHalf(rowDraw), roundHalf(colDraw)), value);
           rowDraw += verticalStep;
           colDraw += lateralStep;
         }
         this.draw(activePixel, value);
-
-        console.log(this.pixels[this.pixels.length - 1].id())
-        console.log("\n\n\n")
       }
-
     }
 
     /////////////////////////
@@ -1154,7 +1193,7 @@
           new EventInstruction([modeMaster.has, "ctrl"], [], undoEvent),
         ],
         [keyGroup("c")]: [
-          new EventInstruction([modeMaster.has, "ctrl", "selected"], [], (event) => layerManager.refresh(() => layerManager.copySelectedLayers())),
+          new EventInstruction([modeMaster.has, "ctrl", "selected"], [], (event) => layerManager.refresh(() => layerManager.copyAndRenderSelectedLayers())),
         ],
         [keyGroup("g")]: [
           new EventInstruction([modeMaster.has, "selected"], [], (event) => layerManager.groupSelectedLayers()),
@@ -1224,6 +1263,10 @@
       
       id() {
         return Pixel.makeId(this.row, this.col);
+      }
+
+      is(pixel) {
+        return this.id() == pixel.id();
       }
 
       static makeId(row, col) {
