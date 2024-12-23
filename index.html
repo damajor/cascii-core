@@ -27,9 +27,6 @@
 
     TODO
     FE 
-    - Grouping: panel, ungrouping
-    - delete button, group button, ungroup button, undo, redo
-    - joints
     - restart -> clear (allow undo)
     - file break up?
     - clever resize
@@ -50,17 +47,6 @@
 
     BUGS / IMPROVEMENTS:
     - writing cursor move focus one only
-    
-    - text with box leaves screen
-    - probe joints mouse over draw mode
-
-    DONE
-    - multi line text, redit text, double click
-    - area selection (all layers in square)
-    - copy / paste selection
-    - undo/redo
-    - square shape
-    - shape resizing
     */
     const KEYS = {
       "up"      : 38,
@@ -93,19 +79,48 @@
     function roundHalf(value) {
       return parseInt(Math.round(value / 0.5) * 0.5);
     } 
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
     //////////////////
     ////// MODES /////
     //////////////////
 
     class ModeMaster {
       constructor() {
-        this._modes = []
+        this._modes = [];
+        this.callbacks = [];
+      }
+
+      registerCallback(func) {
+        this.callbacks.push(func);
+      }
+      
+      modeChangedCallback() {
+        for (var func of this.callbacks) func();
+      }
+
+      makeFunc(instruction) {
+        // This just gives dispatchers a prettier notation... 
+        // e.g () => modeMaster.has("x", "y") becomes [modeMaster.has, "x", "y"]
+        return (instruction.length)? instruction[0].bind(this, ...instruction.slice(1)): () => true;
       }
 
       change(beforeMode, afterMode) {
         let index = this._modes.indexOf(beforeMode);
         if (index == -1) return;
         this._modes[index] = afterMode;
+        this.modeChangedCallback();
+      }
+
+      toggle(mode) {
+        if (this.has(mode)) {
+          this.remove(mode);
+        } else {
+          this.add(mode);
+        }
       }
 
       remove(...modes) {
@@ -114,19 +129,25 @@
           if (index == -1) return; 
           this._modes.splice(index, 1);
         });
+        this.modeChangedCallback();
       }
 
       reset(...modes) {
         this._modes = modes;
+        this.modeChangedCallback();
       }
 
       add(...modes) {
         this._modes = this._modes.concat(modes);
+        this.modeChangedCallback();
       }
 
       has(...modes) {
-        let r= modes.map((mode) => this._modes.includes(mode)).every(Boolean);
-        return r;
+        return modes.map((mode) => this._modes.includes(mode)).every(Boolean);
+      }
+
+      has_or(...modes) {
+        return modes.map((mode) => this._modes.includes(mode)).some(Boolean);
       }
 
       is(...modes) {
@@ -145,7 +166,6 @@
         this.removeLayers();
         this.add(name);
       }
-
     }
     
     ////////////////////
@@ -194,10 +214,9 @@
       findGroupsFromLayers(layers) {
         var foundGroups = [];
         let layerIds = layers.map(layer => layer.id);
-        for (var group of this.layerGroups) {
-          let groupLayerIds = group.map(layer => layer.id);
+        for (var groupLayerIds of this.layerGroups) {
           if (!Boolean(groupLayerIds.filter(layerId => !layerIds.includes(layerId)).length)) {
-            foundGroups.push(group);
+            foundGroups.push(groupLayerIds);
           }
         }
         return foundGroups;
@@ -206,21 +225,17 @@
       copyAndRenderSelectedLayers() {
         let layersToCopy = this.getSelectedLayers();
         let groupsToCopy = this.findGroupsFromLayers(layersToCopy);
-        var copiedLayerIds = [];
 
         // Render layers in groups
         for (var group of groupsToCopy) {
-          var newGroup = [];
-          for (var layer of group) {
-            copiedLayerIds.push(layer.id);
-            newGroup.push(this.copyAndRender(layer));
-          }
+          var newGroup = group.map(layerId => this.copyAndRender(this.getLayerById(layerId)));
+          console.log(newGroup);
           this.groupLayers(newGroup);
         }
 
         // Render remaining layers
         for (var layer of layersToCopy) {
-          if (copiedLayerIds.includes(layer.id)) continue;
+          if (groupsToCopy.flat().includes(layer.id)) continue;
           this.copyAndRender(layer);
         }
         this.capture();
@@ -239,16 +254,21 @@
         this.groupLayers(this.getSelectedLayers());
       }
 
+      ungroupSelectedLayers() {
+        // TODO: JSON -> toString
+        let groups = this.findGroupsFromLayers(this.getSelectedLayers()).map(group => JSON.stringify(group));
+        this.layerGroups = this.layerGroups.filter(group => !groups.includes(JSON.stringify(group)));
+        this.unselectAll();
+      }
+
       groupLayers(layers) {
-        this.layerGroups.push(layers);
+        this.layerGroups.push(layers.map(layer => layer.id));
       }
       
       selectGroupByMemberLayer(memberLayer) {
-        this.layerGroups.forEach((group) => {
-          if (group.map(layer => layer.id).includes(memberLayer.id)) {
-            group.forEach(layer => {
-              layer.select();
-            });
+        this.layerGroups.forEach(group => {
+          if (group.includes(memberLayer.id)) {
+            group.forEach(layerId => layerManager.getLayerById(layerId).select());
           }
         });
       }
@@ -260,8 +280,7 @@
       }
 
       unselectAll() {
-        this.layers.forEach((layer) => layer.unselect());
-        modeMaster.change("selected", "select");
+        this.layers.forEach(layer => layer.unselect());
         modeMaster.removeLayers();
       }
 
@@ -272,14 +291,27 @@
       }
 
       tidyLayers() {
-        // Delete references to empty layers
-        this.layers = this.layers.filter(layer => layer.pixels.length);
+        // Find layer IDs for dereferencing 
+        let layersToDelete = this.layers.filter(layer => !layer.pixels.length).map(layer => layer.id);
+        
+        // Delete empty layers
+        this.layers = this.layers.filter(layer => !layersToDelete.includes(layer.id));
+
+        // Delete references to empty layers in groups
         var index = 0;
         for (var layerGroup of this.layerGroups) {
-          this.layerGroups[index] = layerGroup.filter(layer => layer.pixels.length);
+          this.layerGroups[index] = layerGroup.filter(layerId => !layersToDelete.includes(layerId));
           index ++;
         }
+
+        // Delete references to empty layers in layer joints
+        for (var layer of this.layers) {
+          layer.joints = layer.joints.filter(joint => !layersToDelete.includes(joint.layerId));
+        }
+
+        // Tidy empty groups 
         this.layerGroups = this.layerGroups.filter(group => group.length);
+
         this.capture();
       }
 
@@ -452,7 +484,7 @@
 
     class Layer {
       constructor(firstPixelId) {
-        this.id = Date.now();
+        this.id = this.makeId();
         this.pixels = [];
         this.values = [];
         this.joints = [];
@@ -460,6 +492,10 @@
 
         this.setFirstPixel(canvas.getPixelById(firstPixelId));
         layerManager.setSelectPixel(this.firstPixel);
+      }
+
+      makeId() {
+        return randomInt(1, 100000).toString() + Date.now().toString();
       }
 
       static selectMouseDown(event) {
@@ -477,6 +513,7 @@
         // 2. Single select mode (not multi) and alternative layer picked. 
         if (!layer || (!modeMaster.has("shift") && !layer.isSelected())) {
           layerManager.unselectAll();
+          modeMaster.change("selected", "select");
         }
 
         if (layer) {
@@ -491,7 +528,7 @@
             modeMaster.add("moving");
           }
           layer.select();
-          if (!modeMaster.has("shift")) layerManager.selectGroupByMemberLayer(layer);
+          if (!modeMaster.has("ctrl")) layerManager.selectGroupByMemberLayer(layer);
         }
       }
 
@@ -608,6 +645,7 @@
         // Only joint layers will have joints.
         for (var joint of this.joints) {
           let layer = layerManager.getLayerById(joint.layerId);
+          if (!layer) continue;
           let jointPixel = this.getJointPixels()[joint.jointIndex];
           layer.setFirstPixelForMovingJoint(jointPixel);
           layer.drawLayer(jointPixel.id()); 
@@ -665,14 +703,19 @@
     
 
     function deleteLayersEvent() {
+      modeMaster.reset("select");
       layerManager.refresh(() => layerManager.deleteSelectedLayers());
     }
 
-    function undoEvent(event) {
+    function copySelectedLayersEvent() {
+      layerManager.refresh(() => layerManager.copyAndRenderSelectedLayers());
+    }
+
+    function undoEvent() {
       layerManager.refresh(() => layerManager.undo());
     }
 
-    function redoEvent(event) {
+    function redoEvent() {
       layerManager.refresh(() => layerManager.redo());
     }
 
@@ -699,7 +742,6 @@
 
       static drawMouseDown(event) {
         let layer = new TextLayer(event.target.id);
-        menu.unselectAll();
         layerManager.add(layer);
         layer.firstPixel.renderFocus();
       }
@@ -710,7 +752,7 @@
         if (layer) {
           layer.moveCursorToPixel(activePixel);
         } else {
-          modeMaster.change("writing", "select")
+          modeMaster.change("writing", "select");
           layerManager.unselectAll();
         }
       }
@@ -886,7 +928,7 @@
           }
         }
       }
-      
+
       getEndPixels() {
         if (this.pixels.length > 0) {
           return [this.pixels[0], this.getLastPixel()]; 
@@ -967,12 +1009,39 @@
         } else if (activePixel.isRight(this.firstPixel) && activePixel.isAbove(this.firstPixel)) {
           value = "/";
         }
-        for (var i = 0; i < totalSteps + 1; i ++) {
-          this.draw(canvas.getPixelByRowCol(roundHalf(rowDraw), roundHalf(colDraw)), value);
+        
+        var leftArrow;
+        var rightArrow;
+        if (Math.abs(verticalDiff) > Math.abs(lateralDiff)) {
+          if (activePixel.isAbove(this.firstPixel)) {
+            leftArrow = "^";
+            rightArrow = "v";
+          } else {
+            leftArrow = "v";
+            rightArrow = "^";
+          }
+        } else {
+          if (activePixel.isLeft(this.firstPixel)) {
+            leftArrow = "<";
+            rightArrow = ">";
+          } else {
+            leftArrow = ">";
+            rightArrow = "<";
+          }
+        }
+        
+        var endValue = (modeMaster.has("arrow-left")) ? leftArrow : value;
+        var startValue = (modeMaster.has("arrow-right")) ? rightArrow : value;
+
+        for (var i = 0; i <= totalSteps; i ++) {
+          this.draw(
+            canvas.getPixelByRowCol(roundHalf(rowDraw), roundHalf(colDraw)),
+            (i == 0)? startValue: value
+          );
           rowDraw += verticalStep;
           colDraw += lateralStep;
         }
-        this.draw(activePixel, value);
+        this.draw(activePixel, endValue);
       }
     }
 
@@ -993,11 +1062,11 @@
           
         var drawCol = this.firstPixel.col; 
         var drawRow = this.firstPixel.row;
-        for (var i = 0; i < Math.abs(lateralDiff) + 1; i ++) {
+        for (var i = 0; i <= Math.abs(lateralDiff); i ++) {
           this.draw(canvas.getPixelByRowCol(this.firstPixel.row, drawCol), "─");
           drawCol += lateralDiff / Math.abs(lateralDiff);
         }
-        for (var i = 0; i < Math.abs(verticalDiff) + 1; i ++) {
+        for (var i = 0; i <= Math.abs(verticalDiff); i ++) {
           this.draw(canvas.getPixelByRowCol(drawRow, activePixel.col), "|");
           drawRow += verticalDiff / Math.abs(verticalDiff);
         }
@@ -1179,128 +1248,6 @@
       }
       
 
-      ////////////////
-      //// EVENTS ////
-      ////////////////
-
-      const modeMaster = new ModeMaster();
-
-      class EventInstruction {
-        constructor(modeCondition, modeUpdate, callback=()=>{}) {
-          this.callback = callback;
-          this.condition = (modeCondition.length)? this.makeFunc(modeCondition): () => true;
-          this.update = this.makeFunc(modeUpdate);
-        }
-        
-        makeFunc(instruction) {
-          return (instruction.length)? instruction[0].bind(modeMaster, ...instruction.slice(1)): () => {};
-        }
-
-        run(event) {
-          if (this.condition()) {
-            this.update();
-            this.callback(event);
-            console.log(modeMaster._modes);
-            return true;
-          }
-        }
-      }
-      const ArrowKeyGroup = ["up", "down", "left", "right"];
-
-      function keyGroup(...names) {
-        let keys = names.map(name => KEYS[name].toString());
-        return keys.join(",");
-      }
-
-
-      let documentEventKeyInstructions = {
-        "keypress": {
-          "*": [
-            new EventInstruction([modeMaster.has, "writing", "text"], [], TextLayer.keyDown),
-          ],
-        },
-        "keydown": {
-          [keyGroup(...ArrowKeyGroup)]: [
-            new EventInstruction([modeMaster.has, "selected"], [], (event) => layerManager.selectedArrowKeyDownEvent(event)),
-          ],                                                                        
-          [keyGroup("shift")]: [
-            new EventInstruction([], [modeMaster.add, "shift"])
-          ],
-          [keyGroup("back", "delete")]: [
-            new EventInstruction([modeMaster.has, "selected"], [modeMaster.reset, "select"], deleteLayersEvent),
-          ],
-          [keyGroup("esc")]: [
-            new EventInstruction([modeMaster.has, "selected"], [modeMaster.reset, "select"], (event) => layerManager.unselectAll()),
-          ],
-          [keyGroup("back", "delete", ...ArrowKeyGroup)]: [
-            new EventInstruction([modeMaster.is, "writing", "text"], [], TextLayer.keyDown),
-          ],
-          [keyGroup("ctrl")]: [
-            new EventInstruction([], [modeMaster.add, "ctrl"]),
-          ],
-          [keyGroup("z")]: [
-            new EventInstruction([modeMaster.has, "shift", "ctrl"], [], redoEvent),
-            new EventInstruction([modeMaster.has, "ctrl"], [], undoEvent),
-          ],
-          [keyGroup("c")]: [
-            new EventInstruction([modeMaster.has, "ctrl", "selected"], [], (event) => layerManager.refresh(() => layerManager.copyAndRenderSelectedLayers())),
-          ],
-          [keyGroup("g")]: [
-            new EventInstruction([modeMaster.has, "selected"], [], (event) => layerManager.groupSelectedLayers()),
-          ],
-        },
-        "keyup": {
-          [keyGroup("shift")]: [
-            new EventInstruction([modeMaster.has, "shift"], [modeMaster.remove, "shift"]),
-          ],
-          [keyGroup("ctrl")]: [
-            new EventInstruction([modeMaster.has, "ctrl"], [modeMaster.remove, "ctrl"]),
-          ],
-        }
-      }
-      
-      let windowEventInstructions = {
-        "mouseup": [
-          new EventInstruction([modeMaster.has, "drawing"],         [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
-          new EventInstruction([modeMaster.is, "erasing"],          [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
-          new EventInstruction([modeMaster.has, "moving"],          [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
-          new EventInstruction([modeMaster.has, "area-selecting"],          [modeMaster.remove, "area-selecting"], (event) => layerManager.areaSelectingMouseUpEvent(event)),
-          new EventInstruction([modeMaster.has, "resizing"],          [modeMaster.reset, "selected"], (event) => layerManager.tidyLayers()),
-        ],
-      }
-
-      let canvasEventInstructions = {
-        "mousedown": [
-          new EventInstruction([modeMaster.has, "draw", "text"],    [modeMaster.change, "draw", "writing"], TextLayer.drawMouseDown),
-          new EventInstruction([modeMaster.has, "draw", "free-line"],    [modeMaster.change, "draw", "drawing"], FreeLineLayer.drawMouseDown),
-          new EventInstruction([modeMaster.has, "draw", "step-line"],    [modeMaster.change, "draw", "drawing"], StepLineLayer.drawMouseDown),
-          new EventInstruction([modeMaster.has, "draw", "free"],    [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDown),
-          new EventInstruction([modeMaster.has, "draw", "square"],    [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDown),
-          new EventInstruction([modeMaster.has, "writing", "text"],    [], TextLayer.writingMouseDown),
-          new EventInstruction([modeMaster.is, "erase"],            [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
-          new EventInstruction([modeMaster.has, "select"],          [], Layer.selectMouseDown),
-          new EventInstruction([modeMaster.has, "selected"],        [], Layer.selectMouseDown),
-        ],
-        "mouseover": [
-          new EventInstruction([modeMaster.has, "draw", "free-line"], [], FreeLineLayer.drawMouseOver),
-          new EventInstruction([modeMaster.has, "draw", "step-line"], [], StepLineLayer.drawMouseOver),
-          new EventInstruction([modeMaster.has, "drawing", "free"], [], FreeLayer.drawingMouseOver),
-          new EventInstruction([modeMaster.has, "drawing", "free-line"], [], FreeLineLayer.drawingMouseOver),
-          new EventInstruction([modeMaster.has, "drawing", "step-line"], [], StepLineLayer.drawingMouseOver),
-          new EventInstruction([modeMaster.has, "drawing", "square"], [], SquareLayer.drawingMouseOver),
-          new EventInstruction([modeMaster.is, "erasing"],          [], erasingMouseOverEvent),
-          new EventInstruction([modeMaster.has, "moving"],          [], (event) => layerManager.movingMouseOverEvent(event)),
-          new EventInstruction([modeMaster.has, "area-selecting"],          [], (event) => layerManager.areaSelectingMouseOverEvent(event)),
-          new EventInstruction([modeMaster.has, "resizing", "free-line"],          [], FreeLineLayer.resizingMouseOver),
-          new EventInstruction([modeMaster.has, "resizing", "step-line"],          [], StepLineLayer.resizingMouseOver),
-          new EventInstruction([modeMaster.has, "resizing", "square"],          [], SquareLayer.resizingMouseOver),
-      ],
-      "dblclick": [
-        new EventInstruction([modeMaster.has, "selected", "text"],          [modeMaster.change, "selected", "writing"], TextLayer.selectedDoubleClick),
-      ]
-    }
-
-
     ////////////////
     //// PIXEL /////
     ////////////////
@@ -1471,27 +1418,27 @@
             this.pixels[pixel.id()] = pixel;
           }
         }
-        assignMouseEventInstructions(this.element, canvasEventInstructions);
+        assignMouseEventDispatch(this.element, canvasEventDispatch);
       }
     }
 
-    function assignMouseEventInstructions(element, instructions) {
-      for (const [eventType, story] of Object.entries(instructions)) {
+    function assignMouseEventDispatch(element, dispatchers) {
+      for (const [eventType, story] of Object.entries(dispatchers)) {
         element.addEventListener(eventType, (event) => {
-          for (var eventInstruction of story) {
-            if (eventInstruction.run(event)) return;
+          for (var eventDispatch of story) {
+            if (eventDispatch.run(event)) return;
           }
         })
       }
     }
-    function assignKeyEventInstructions(element, instructions) {
-      Object.keys(instructions).forEach((eventType) => {
+    function assignKeyEventDispatch(element, dispatchers) {
+      Object.keys(dispatchers).forEach((eventType) => {
         element.addEventListener(eventType, (event) => {
-          for (keys in instructions[eventType]) {
+          for (keys in dispatchers[eventType]) {
             keys.split(",").forEach(key => {
               if (key == event.keyCode.toString() || key == "*") {
-                for (var eventInstruction of instructions[eventType][keys]) {
-                  if (eventInstruction.run(event)) return;
+                for (var eventDispatch of dispatchers[eventType][keys]) {
+                  if (eventDispatch.run(event)) return;
                 }
               }
             });
@@ -1504,66 +1451,280 @@
     //////////////
     //// MENU ////
     //////////////
+    
+    class MenuButton {
+      
+      constructor (name, showCondition, setModes, activeModes, callback=()=>{}) {
+        this.name = name;
+        this.showCondition = modeMaster.makeFunc(showCondition);
+        this.callback = callback;
+        this.setModes = modeMaster.makeFunc(setModes);
+        this.activeModes = activeModes;
+
+        this.defaultButtonColor = "green";
+        this.defaultSelectedButtonColor = "blue";
+      }
+      
+      onPress() {
+        this.callback();
+        this.setModes();
+      }
+
+      render(parent) {
+        this.element = document.createElement("button");
+        this.element.innerHTML = this.name;
+        this.element.addEventListener("mousedown", () => this.onPress());
+        parent.appendChild(this.element);
+      }
+
+      hide() {
+        this.element.style.display = "none";
+      }
+
+      show() {
+        this.element.style.display = "block";
+      }
+
+      unselect() {
+        this.element.style.backgroundColor = this.defaultButtonColor; 
+      }
+
+      select() {
+        this.element.style.backgroundColor = this.defaultSelectedButtonColor; 
+      }
+
+      isActive() {
+        return this.activeModes.length && modeMaster.has_or(...this.activeModes);
+      }
+    }
 
     class Menu {
+      buttons = [
+        new MenuButton("Draw Square",
+          [], [modeMaster.reset, "draw", "square", "dsbutton"], ["dsbutton"], () => layerManager.unselectAll()),
+        new MenuButton("Text",
+          [], [modeMaster.reset, "draw", "text", "dtbutton"], ["dtbutton"], () => layerManager.unselectAll()),
+        new MenuButton("Draw Line",
+          [], [modeMaster.reset, "draw", "free-line", "dflbutton"], ["dflbutton"], () => layerManager.unselectAll()),
+        new MenuButton("Draw Step Line", 
+          [], [modeMaster.reset, "draw", "step-line", "dslbutton"], ["dslbutton"], () => layerManager.unselectAll()),
+        new MenuButton("Draw Free",
+          [], [modeMaster.reset, "draw", "free", "dfbutton"], ["dfbutton"], () => layerManager.unselectAll()),
+        new MenuButton("Erase Free",
+          [], [modeMaster.reset, "erase", "ebutton"], ["ebutton"], () => layerManager.unselectAll()),
+        new MenuButton("Select",
+          [], [modeMaster.reset, "select"], ["selected", "select"]),
+        new MenuButton("Undo",
+          [], [], [], undoEvent),
+        new MenuButton("Redo",
+          [], [], [], redoEvent),
+        new MenuButton("Restart",
+          [], [], [], () => layerManager.refresh(() => layerManager.empty())),
+        new MenuButton("Copy",
+          [modeMaster.has, "selected"], [], [], copySelectedLayersEvent),
+        new MenuButton("Group",
+          [modeMaster.has, "selected"], [], [], () => layerManager.groupSelectedLayers()),
+        new MenuButton("Ungroup",
+          [modeMaster.has, "selected"], [], [], () => layerManager.ungroupSelectedLayers()),
+        new MenuButton("Delete",
+          [modeMaster.has, "selected"], [], [], deleteLayersEvent),
+        new MenuButton("<",
+          [modeMaster.has_or, "step-line", "free-line"], [modeMaster.toggle, "arrow-left"], ["arrow-left"]),
+        new MenuButton(">",
+          [modeMaster.has_or, "step-line", "free-line"], [modeMaster.toggle, "arrow-right"], ["arrow-right"]),
+      ] 
       
       constructor() {
         this.id = "menu";
         this.element = document.getElementById(this.id);
-        this.defaultButtonColor = "green";
-        this.defaultSelectedButtonColor = "blue";
       }
-
-      modeButtonPress(event, modes) {
-          this.selectButton(event);
-          modeMaster.reset(...modes);
-      }
-
-      selectButton(event) {
-        layerManager.unselectAll();
-        this.unselectAll();
-        event.target.style.backgroundColor = this.defaultSelectedButtonColor;
-      }
-
+      
       unselectAll() {
-        document.querySelectorAll(`#${this.id} button`).forEach((button) => {
-          button.style.backgroundColor = this.defaultButtonColor;
-        });
+        this.buttons.forEach(button => button.unselect());
       }
 
-      renderModeButton(name, modes) {
-        this.renderButton(name, (event) => this.modeButtonPress(event, modes));
+      refresh() {
+        for (var button of this.buttons) {
+          button.hide();
+          button.unselect();
+        }
+        for (var button of this.buttons) {
+          if (button.showCondition()) button.show();
+          if (button.isActive()) button.select();
+        }
       }
-
-      renderButton(name, callback) {
-        let button = document.createElement("button");
-        button.innerHTML = name;
-        button.addEventListener('mouseup', callback);
-        this.element.appendChild(button);
-      }
-
 
       render() {
-        this.renderModeButton("Draw Square", ["draw", "square"]);
-        this.renderModeButton("Text", ["draw", "text"]);
-        this.renderModeButton("Draw Line", ["draw", "free-line"]);
-        this.renderModeButton("Draw Step Line", ["draw", "step-line"]);
-        this.renderModeButton("Draw Free", ["draw", "free"]);
-        this.renderModeButton("Erase Free", ["erase"]);
-        this.renderModeButton("Select", ["select"]);
-        this.renderButton("Restart", () => layerManager.refresh(() => layerManager.empty()));
-        this.unselectAll();
+        for (var button of this.buttons) button.render(this.element);
+        this.refresh();
       }
     }
+
+    ////////////////
+    //// EVENTS ////
+    ////////////////
+
+    const modeMaster = new ModeMaster();
+
+
+    class EventDispatch {
+      constructor(modeCondition, modeUpdate, callback=()=>{}) {
+        this.callback = callback;
+        this.condition = modeMaster.makeFunc(modeCondition);
+        this.update = modeMaster.makeFunc(modeUpdate);
+      }
+      
+      run(event) {
+        if (this.condition()) {
+          this.update();
+          this.callback(event);
+          console.log(modeMaster._modes);
+          return true;
+        }
+      }
+    }
+    const ArrowKeyGroup = ["up", "down", "left", "right"];
+
+    function keyGroup(...names) {
+      let keys = names.map(name => KEYS[name].toString());
+      return keys.join(",");
+    }
+
+    let documentEventKeyDispatch = {
+      "keypress": {
+        "*": [
+          new EventDispatch([modeMaster.has, "writing", "text"], [], TextLayer.keyDown),
+        ],
+      },
+      "keydown": {
+        [keyGroup(...ArrowKeyGroup)]: [
+          new EventDispatch([modeMaster.has, "selected"],
+              [], (event) => layerManager.selectedArrowKeyDownEvent(event)),
+        ],                                                                        
+        [keyGroup("shift")]: [
+          new EventDispatch([], 
+              [modeMaster.add, "shift"])
+        ],
+        [keyGroup("back", "delete")]: [
+          new EventDispatch([modeMaster.has, "selected"],
+              [], deleteLayersEvent),
+        ],
+        [keyGroup("esc")]: [
+          new EventDispatch([modeMaster.has, "selected"],
+              [modeMaster.reset, "select"], () => layerManager.unselectAll()),
+        ],
+        [keyGroup("back", "delete", ...ArrowKeyGroup)]: [
+          new EventDispatch([modeMaster.is, "writing", "text"],
+              [], TextLayer.keyDown),
+        ],
+        [keyGroup("ctrl")]: [
+          new EventDispatch([],
+              [modeMaster.add, "ctrl"]),
+        ],
+        [keyGroup("z")]: [
+          new EventDispatch([modeMaster.has, "shift", "ctrl"],
+              [], redoEvent),
+          new EventDispatch([modeMaster.has, "ctrl"], 
+              [], undoEvent),
+        ],
+        [keyGroup("c")]: [
+          new EventDispatch([modeMaster.has, "ctrl", "selected"],
+              [], copySelectedLayersEvent),
+        ],
+        [keyGroup("g")]: [
+          new EventDispatch([modeMaster.has, "selected"],
+              [], () => layerManager.groupSelectedLayers()),
+        ],
+      },
+      "keyup": {
+        [keyGroup("shift")]: [
+          new EventDispatch([modeMaster.has, "shift"],
+              [modeMaster.remove, "shift"]),
+        ],
+        [keyGroup("ctrl")]: [
+          new EventDispatch([modeMaster.has, "ctrl"],
+              [modeMaster.remove, "ctrl"]),
+        ],
+      }
+    }
+    
+    let windowEventDispatch = {
+      "mouseup": [
+        new EventDispatch([modeMaster.has, "drawing"],
+            [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
+        new EventDispatch([modeMaster.has, "erasing"],
+            [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
+        new EventDispatch([modeMaster.has, "moving"],
+            [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
+        new EventDispatch([modeMaster.has, "area-selecting"],
+            [modeMaster.remove, "area-selecting"], (event) => layerManager.areaSelectingMouseUpEvent(event)),
+        new EventDispatch([modeMaster.has, "resizing"],
+            [modeMaster.reset, "selected"], (event) => layerManager.tidyLayers()),
+      ],
+    }
+
+    let canvasEventDispatch = {
+      "mousedown": [
+        new EventDispatch([modeMaster.has, "draw", "text"],
+            [modeMaster.change, "draw", "writing"], TextLayer.drawMouseDown),
+        new EventDispatch([modeMaster.has, "draw", "free-line"],
+            [modeMaster.change, "draw", "drawing"], FreeLineLayer.drawMouseDown),
+        new EventDispatch([modeMaster.has, "draw", "step-line"],
+            [modeMaster.change, "draw", "drawing"], StepLineLayer.drawMouseDown),
+        new EventDispatch([modeMaster.has, "draw", "free"],
+            [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDown),
+        new EventDispatch([modeMaster.has, "draw", "square"],
+            [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDown),
+        new EventDispatch([modeMaster.has, "writing", "text"],
+            [], TextLayer.writingMouseDown),
+        new EventDispatch([modeMaster.has, "erase"],
+            [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
+        new EventDispatch([modeMaster.has_or, "selected", "select"], 
+            [], Layer.selectMouseDown),
+      ],
+      "mouseover": [
+        new EventDispatch([modeMaster.has, "draw", "free-line"],
+            [], FreeLineLayer.drawMouseOver),
+        new EventDispatch([modeMaster.has, "draw", "step-line"],
+            [], StepLineLayer.drawMouseOver),
+        new EventDispatch([modeMaster.has, "drawing", "free"],
+            [], FreeLayer.drawingMouseOver),
+        new EventDispatch([modeMaster.has, "drawing", "free-line"],
+            [], FreeLineLayer.drawingMouseOver),
+        new EventDispatch([modeMaster.has, "drawing", "step-line"],
+            [], StepLineLayer.drawingMouseOver),
+        new EventDispatch([modeMaster.has, "drawing", "square"],
+            [], SquareLayer.drawingMouseOver),
+        new EventDispatch([modeMaster.has, "erasing"],
+            [], erasingMouseOverEvent),
+        new EventDispatch([modeMaster.has, "moving"],
+            [], (event) => layerManager.movingMouseOverEvent(event)),
+        new EventDispatch([modeMaster.has, "area-selecting"],
+            [], (event) => layerManager.areaSelectingMouseOverEvent(event)),
+        new EventDispatch([modeMaster.has, "resizing", "free-line"],
+            [], FreeLineLayer.resizingMouseOver),
+        new EventDispatch([modeMaster.has, "resizing", "step-line"],
+            [], StepLineLayer.resizingMouseOver),
+        new EventDispatch([modeMaster.has, "resizing", "square"],
+            [], SquareLayer.resizingMouseOver),
+      ],
+      "dblclick": [
+        new EventDispatch([modeMaster.has, "selected", "text"],
+            [modeMaster.change, "selected", "writing"], TextLayer.selectedDoubleClick),
+      ]
+    }
+
 
     let layerManager = new LayerManager();
     let menu = new Menu();
     let canvas = new Canvas(masterRowCount, masterColCount, pixelSize);
+
+    modeMaster.registerCallback(() => menu.refresh());
     menu.render();
     canvas.render();
 
-    assignKeyEventInstructions(document, documentEventKeyInstructions);
-    assignMouseEventInstructions(window, windowEventInstructions);
+    assignKeyEventDispatch(document, documentEventKeyDispatch);
+    assignMouseEventDispatch(window, windowEventDispatch);
 
 
     </script>
