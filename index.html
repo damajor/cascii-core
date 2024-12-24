@@ -366,8 +366,9 @@
         let selectedLayers = this.getSelectedLayers();
         this.refresh(() => {
           selectedLayers.forEach((layer) => {
+            let originalJoints = layer.getJointPixels();
             layer.move(verticalDiff, lateralDiff);
-            layer.moveJointLayers();
+            layer.moveJointLayers(originalJoints);
           });
         });
         this.findJoints(selectedLayers);
@@ -493,7 +494,7 @@
         this._isSelected = false;
         
         this.setFirstPixel(canvas.getPixelById(firstPixelId));
-        layerManager.setSelectPixel(this.firstPixel);
+        layerManager.setSelectPixel(this.firstTouchedPixel);
       }
 
       makeId() {
@@ -546,15 +547,15 @@
 
 
       setFirstPixel(pixel) {
-        this.firstPixel = pixel;
+        this.firstTouchedPixel = pixel;
       }
 
       getLastPixel() {
-        return (this.pixels.length)? this.pixels[this.pixels.length - 1]: this.firstPixel;
+        return (this.pixels.length)? this.pixels[this.pixels.length - 1]: this.firstTouchedPixel;
       }
 
       getFirstPixel() {
-        return (this.pixels.length)? this.pixels[0]: this.firstPixel;
+        return (this.pixels.length)? this.pixels[0]: this.firstTouchedPixel;
       }
 
       draw(pixel, value) {
@@ -600,7 +601,7 @@
       }
 
       copy(id=false) {
-        let layerCopy = new this.constructor(this.firstPixel.id());
+        let layerCopy = new this.constructor(this.firstTouchedPixel.id());
         if (id) layerCopy.id = this.id;
         layerCopy.pixels = this.pixels.map(pixel => pixel);
         layerCopy.values = this.values.map(value => value);
@@ -640,12 +641,14 @@
         this.pixels = newPixels;
       }
 
-      moveJointLayers() {
+      moveJointLayers(originalJointPixels) {
         // Only joint layers will have joints.
         for (var joint of this.joints) {
           let layer = layerManager.getLayerById(joint.layerId);
           if (!layer) continue;
           let jointPixel = this.getJointPixels()[joint.jointIndex];
+          let resizePixel = layer.getResizeFirstPixel(originalJointPixels[joint.jointIndex]);
+          layer.setFirstPixel(resizePixel);
           layer.drawLayer(jointPixel.id()); 
         }
       }
@@ -816,7 +819,7 @@
       drawLayer() {
         // Get latest first pixel given the layer may have moved and this could be
         // an edit. 
-        this.firstPixel = (this.pixels.length) ? this.pixels[0]: this.firstPixel;
+        this.firstTouchedPixel = (this.pixels.length) ? this.pixels[0]: this.firstTouchedPixel;
         if(this.lastCursorPixel) this.lastCursorPixel.renderNormal();
         this.empty();
         let pixels = [];
@@ -828,8 +831,8 @@
             col = 0;
           }
           let pixel = canvas.getPixelByRowCol(
-            this.firstPixel.row + line,
-            this.firstPixel.col + col)
+            this.firstTouchedPixel.row + line,
+            this.firstTouchedPixel.col + col)
           ;
           if (this.cursor == i + 1) {
             this.lastCursorPixel = pixel;
@@ -974,11 +977,10 @@
         var fromPixel = firstPixel;
         var toPixel = activePixel;
         if (this.pixels.length) {
-          let closestPixel = activePixel.isClosestTo([lastPixel, firstPixel]);
-          if (closestPixel.is(lastPixel)) {
-            fromPixel = this.firstPixel;
+          if (this.firstTouchedPixel.is(firstPixel)) {
+            fromPixel = firstPixel;
             toPixel = activePixel;
-          } else if (closestPixel.is(firstPixel)) {
+          } else  {
             fromPixel = activePixel;
             toPixel = lastPixel;
           }
@@ -1050,7 +1052,6 @@
           } else{
             if (fromPixel.isLeft(toPixel)) {
               endValue = (this.hasArrowRight || this.keepArrowEnd) ? ">" : value;
-              console.log(this.hasArrowRight);
               startValue = (this.hasArrowLeft || this.keepArrowStart) ? "<" : value;
               if (this.keepArrowEnd == null) {
                 this.keepArrowEnd = this.hasArrowRight;
@@ -1249,31 +1250,32 @@
         }
 
         drawLayer(activePixelId) {
+          let originalJoints = this.getJointPixels();
           this.empty();
           let activePixel = canvas.getPixelById(activePixelId);
-          if (activePixel.isAbove(this.firstPixel)) {
-            for(var row = this.firstPixel.row; row >= activePixel.row; row --) {
-              this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
+          if (activePixel.isAbove(this.firstTouchedPixel)) {
+            for(var row = this.firstTouchedPixel.row; row >= activePixel.row; row --) {
+              this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), "|");
               this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
             }
-          } else if (activePixel.isBelow(this.firstPixel)) {
-            for(var row = this.firstPixel.row; row <= activePixel.row; row ++) {
-              this.draw(canvas.getPixelByRowCol(row, this.firstPixel.col), "|");
+          } else if (activePixel.isBelow(this.firstTouchedPixel)) {
+            for(var row = this.firstTouchedPixel.row; row <= activePixel.row; row ++) {
+              this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), "|");
               this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
             }
           }
-          if (activePixel.isLeft(this.firstPixel)) {
-            for(var col = this.firstPixel.col; col >= activePixel.col; col --) {
-              this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
+          if (activePixel.isLeft(this.firstTouchedPixel)) {
+            for(var col = this.firstTouchedPixel.col; col >= activePixel.col; col --) {
+              this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), "─");
               this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
             }
-          } else if (activePixel.isRight(this.firstPixel)) {
-            for(var col = this.firstPixel.col; col <= activePixel.col; col ++) {
-              this.draw(canvas.getPixelByRowCol(this.firstPixel.row, col), "─");
+          } else if (activePixel.isRight(this.firstTouchedPixel)) {
+            for(var col = this.firstTouchedPixel.col; col <= activePixel.col; col ++) {
+              this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), "─");
               this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
             }
           }
-          this.moveJointLayers();
+          this.moveJointLayers(originalJoints);
         } 
       }
 
@@ -1420,7 +1422,7 @@
         var closestPixel;
         var minDistance = -1;
         for (var pixel of pixels) {
-          let distance = Math.abs(pixel.row - this.row) + Math.abs(pixel.col - this.col)
+          let distance = Math.abs(pixel.row - this.row) + Math.abs(pixel.col - this.col);
           if (distance < minDistance || minDistance == -1) {
             closestPixel = pixel;
             minDistance = distance;
