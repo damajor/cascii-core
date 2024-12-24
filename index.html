@@ -232,7 +232,6 @@
         // Render layers in groups
         for (var group of groupsToCopy) {
           var newGroup = group.map(layerId => this.copyAndRender(this.getLayerById(layerId)));
-          console.log(newGroup);
           this.groupLayers(newGroup);
         }
 
@@ -492,7 +491,7 @@
         this.values = [];
         this.joints = [];
         this._isSelected = false;
-
+        
         this.setFirstPixel(canvas.getPixelById(firstPixelId));
         layerManager.setSelectPixel(this.firstPixel);
       }
@@ -551,7 +550,11 @@
       }
 
       getLastPixel() {
-        return this.pixels[this.pixels.length - 1];
+        return (this.pixels.length)? this.pixels[this.pixels.length - 1]: this.firstPixel;
+      }
+
+      getFirstPixel() {
+        return (this.pixels.length)? this.pixels[0]: this.firstPixel;
       }
 
       draw(pixel, value) {
@@ -592,13 +595,6 @@
         return false;
       }
       
-      // Implement if the layer can join to another (e.g a line).
-      // This will determine how a layer gets redrawn when it's joint
-      // layer has moved. The first pixel needs setting.
-      setFirstPixelForMovingJoint() {
-
-      }
-
       clear() {
         this.pixels.forEach((pixel) => pixel.clear());
       }
@@ -650,7 +646,6 @@
           let layer = layerManager.getLayerById(joint.layerId);
           if (!layer) continue;
           let jointPixel = this.getJointPixels()[joint.jointIndex];
-          layer.setFirstPixelForMovingJoint(jointPixel);
           layer.drawLayer(jointPixel.id()); 
         }
       }
@@ -903,6 +898,14 @@
     /////////////////////////
 
     class BaseLineLayer extends Layer {
+      constructor(firstPixelId) {
+        super(firstPixelId);
+        this.hasArrowLeft = modeMaster.has("arrow-left");
+        this.hasArrowRight = modeMaster.has("arrow-right");
+        this.keepArrowEnd = null;
+        this.keepArrowStart = null;
+      }
+
       static drawingMouseOver(event) {
         let layer = layerManager.getLatestLayer();
         layerManager.refresh(() => layer.drawLayer(event.target.id));
@@ -949,15 +952,6 @@
         if (pixel.is(resizePixels[1])) return resizePixels[0];
       }
 
-      setFirstPixelForMovingJoint(jointPixel) {
-        for (var pixel of this.getEndPixels()) {
-          if (!pixel.isNear(jointPixel, 3)) {
-            this.setFirstPixel(pixel);
-            break;
-          }
-        }
-      }
-
       probeJoin(layer, jointIndex, jointPixel) {
           var state = 0;
           for (var lineEndPixel of this.getEndPixels()) {
@@ -973,6 +967,24 @@
         }
         return state
       }
+
+      getFromToPixels(activePixel) {
+        let lastPixel = this.getLastPixel();
+        let firstPixel = this.getFirstPixel();
+        var fromPixel = firstPixel;
+        var toPixel = activePixel;
+        if (this.pixels.length) {
+          let closestPixel = activePixel.isClosestTo([lastPixel, firstPixel]);
+          if (closestPixel.is(lastPixel)) {
+            fromPixel = this.firstPixel;
+            toPixel = activePixel;
+          } else if (closestPixel.is(firstPixel)) {
+            fromPixel = activePixel;
+            toPixel = lastPixel;
+          }
+        }
+        return [fromPixel, toPixel];
+      }
     }
 
     class FreeLineLayer extends BaseLineLayer {
@@ -985,17 +997,19 @@
       }
 
       drawLayer(activePixelId) {
-        this.empty();
-        let activePixel   = canvas.getPixelById(activePixelId);
-        let verticalDiff  = activePixel.row - this.firstPixel.row;
-        let lateralDiff   = activePixel.col - this.firstPixel.col;
+        
+        let activePixel = canvas.getPixelById(activePixelId);
+        let [fromPixel, toPixel] = this.getFromToPixels(activePixel);
+
+        let verticalDiff  = toPixel.row - fromPixel.row;
+        let lateralDiff   = toPixel.col - fromPixel.col;
         
         var totalSteps   = Math.max(Math.abs(verticalDiff), Math.abs(lateralDiff));
         var verticalStep = verticalDiff / totalSteps;
         var lateralStep  = lateralDiff / totalSteps;
 
-        var colDraw = this.firstPixel.col;
-        var rowDraw = this.firstPixel.row;
+        var colDraw = fromPixel.col;
+        var rowDraw = fromPixel.row;
 
         var value = "x";
         
@@ -1003,39 +1017,58 @@
           value = "-";
         } else if (Math.abs(lateralStep) < 0.5) {
           value = "|";
-        } else if (activePixel.isLeft(this.firstPixel) && activePixel.isBelow(this.firstPixel)) {
+        } else if (toPixel.isLeft(fromPixel) && toPixel.isBelow(fromPixel)) {
           value = "/";
-        } else if (activePixel.isRight(this.firstPixel) && activePixel.isBelow(this.firstPixel)) {
+        } else if (toPixel.isRight(fromPixel) && toPixel.isBelow(fromPixel)) {
           value = "\\";
-        } else if (activePixel.isLeft(this.firstPixel) && activePixel.isAbove(this.firstPixel)) {
+        } else if (toPixel.isLeft(fromPixel) && toPixel.isAbove(fromPixel)) {
           value = "\\";
-        } else if (activePixel.isRight(this.firstPixel) && activePixel.isAbove(this.firstPixel)) {
+        } else if (toPixel.isRight(fromPixel) && toPixel.isAbove(fromPixel)) {
           value = "/";
         }
-        
-        var leftArrow;
-        var rightArrow;
-        if (Math.abs(verticalDiff) > Math.abs(lateralDiff)) {
-          if (activePixel.isAbove(this.firstPixel)) {
-            leftArrow = "^";
-            rightArrow = "v";
-          } else {
-            leftArrow = "v";
-            rightArrow = "^";
+         
+        var startValue = value;
+        var endValue = value;
+        // Once a direction can be determined, work out arrows needed.
+        if (this.pixels.length > 3) {
+          if (Math.abs(verticalDiff) > Math.abs(lateralDiff)) {
+            if (toPixel.isAbove(fromPixel)) {
+              endValue = (this.hasArrowLeft || this.keepArrowEnd) ? "^" : value;
+              startValue = (this.hasArrowRight || this.keepArrowStart) ? "v" : value;
+              if (this.keepArrowEnd == null) {
+                this.keepArrowEnd = this.hasArrowLeft;
+                this.keepArrowStart = this.hasArrowRight;
+              }
+            } else {
+              endValue = (this.hasArrowLeft || this.keepArrowEnd) ? "v" : value;
+              startValue = (this.hasArrowRight || this.keepArrowStart) ? "^" : value;
+              if (this.keepArrowEnd == null) {
+                this.keepArrowEnd = this.hasArrowLeft;
+                this.keepArrowStart = this.hasArrowRight;
+              }
+            }
+          } else{
+            if (fromPixel.isLeft(toPixel)) {
+              endValue = (this.hasArrowRight || this.keepArrowEnd) ? ">" : value;
+              console.log(this.hasArrowRight);
+              startValue = (this.hasArrowLeft || this.keepArrowStart) ? "<" : value;
+              if (this.keepArrowEnd == null) {
+                this.keepArrowEnd = this.hasArrowRight;
+                this.keepArrowStart = this.hasArrowLeft;
+              }
+            } else {
+              endValue = (this.hasArrowLeft || this.keepArrowEnd) ? "<" : value;
+              startValue = (this.hasArrowRight || this.keepArrowStart) ? ">" : value;
+              if (this.keepArrowEnd == null) {
+                this.keepArrowEnd = this.hasArrowLeft;
+                this.keepArrowStart = this.hasArrowRight;
+              }
+           } 
           }
-        } else {
-          if (activePixel.isLeft(this.firstPixel)) {
-            leftArrow = "<";
-            rightArrow = ">";
-          } else {
-            leftArrow = ">";
-            rightArrow = "<";
-          }
+          this.hasArrowRight = false;
+          this.hasArrowLeft = false;
         }
-        
-        var endValue = (modeMaster.has("arrow-left")) ? leftArrow : value;
-        var startValue = (modeMaster.has("arrow-right")) ? rightArrow : value;
-
+        this.empty();
         for (var i = 0; i <= totalSteps; i ++) {
           this.draw(
             canvas.getPixelByRowCol(roundHalf(rowDraw), roundHalf(colDraw)),
@@ -1044,7 +1077,7 @@
           rowDraw += verticalStep;
           colDraw += lateralStep;
         }
-        this.draw(activePixel, endValue);
+        this.draw(this.getLastPixel(), endValue);
       }
     }
 
@@ -1058,19 +1091,37 @@
       }
 
       drawLayer(activePixelId) {
-        this.empty();
-        let activePixel   = canvas.getPixelById(activePixelId);
-        let verticalDiff  = activePixel.row - this.firstPixel.row;
-        let lateralDiff   = activePixel.col - this.firstPixel.col;
+        let activePixel = canvas.getPixelById(activePixelId);
+        let [fromPixel, toPixel] = this.getFromToPixels(activePixel);
+        var lateralArrowValue = "─";
+        var verticalArrowValue = "|";
+        
+        if (toPixel.isAbove(fromPixel)) {
+          verticalArrowValue = (this.hasArrowRight) ? "^" : verticalArrowValue;
+        } else {
+          verticalArrowValue = (this.hasArrowRight) ? "v" : verticalArrowValue;
+        }
+        if (toPixel.isRight(fromPixel)) {
+          lateralArrowValue = (this.hasArrowLeft) ? "<" : lateralArrowValue;
+        } else {
+          lateralArrowValue = (this.hasArrowLeft) ? ">" : lateralArrowValue;
+        }
+
+        let verticalDiff  = toPixel.row - fromPixel.row;
+        let lateralDiff   = toPixel.col - fromPixel.col;
           
-        var drawCol = this.firstPixel.col; 
-        var drawRow = this.firstPixel.row;
+        var drawCol = fromPixel.col; 
+        var drawRow = fromPixel.row;
+
+        this.empty();
         for (var i = 0; i <= Math.abs(lateralDiff); i ++) {
-          this.draw(canvas.getPixelByRowCol(this.firstPixel.row, drawCol), "─");
+          this.draw(canvas.getPixelByRowCol(fromPixel.row, drawCol), (i == 0)? lateralArrowValue: "─");
           drawCol += lateralDiff / Math.abs(lateralDiff);
         }
         for (var i = 0; i <= Math.abs(verticalDiff); i ++) {
-          this.draw(canvas.getPixelByRowCol(drawRow, activePixel.col), "|");
+          var value = "|";
+          if (i == Math.abs(verticalDiff)) value = "v";
+          this.draw(canvas.getPixelByRowCol(drawRow, toPixel.col), (i == Math.abs(verticalDiff))? verticalArrowValue: "|");
           drawRow += verticalDiff / Math.abs(verticalDiff);
         }
       }
@@ -1365,6 +1416,19 @@
         )
       }
 
+      isClosestTo(pixels) {
+        var closestPixel;
+        var minDistance = -1;
+        for (var pixel of pixels) {
+          let distance = Math.abs(pixel.row - this.row) + Math.abs(pixel.col - this.col)
+          if (distance < minDistance || minDistance == -1) {
+            closestPixel = pixel;
+            minDistance = distance;
+          }
+        }
+        return closestPixel;
+      }
+
       render(parent) {
         this.element = document.createElement("div");
         this.element.className = "pixel";
@@ -1508,9 +1572,9 @@
         new MenuButton("Text",
           [], [modeMaster.reset, "draw", "text", "dtbutton"], ["dtbutton"], () => layerManager.unselectAll()),
         new MenuButton("Draw Line",
-          [], [modeMaster.reset, "draw", "free-line", "dflbutton"], ["dflbutton"], () => layerManager.unselectAll()),
+          [], [modeMaster.reset, "draw", "line", "free-line", "dflbutton"], ["dflbutton"], () => layerManager.unselectAll()),
         new MenuButton("Draw Step Line", 
-          [], [modeMaster.reset, "draw", "step-line", "dslbutton"], ["dslbutton"], () => layerManager.unselectAll()),
+          [], [modeMaster.reset, "draw", "line", "step-line", "dslbutton"], ["dslbutton"], () => layerManager.unselectAll()),
         new MenuButton("Draw Free",
           [], [modeMaster.reset, "draw", "free", "dfbutton"], ["dfbutton"], () => layerManager.unselectAll()),
         new MenuButton("Erase Free",
@@ -1532,9 +1596,9 @@
         new MenuButton("Delete",
           [modeMaster.has, "selected"], [], [], deleteLayersEvent),
         new MenuButton("<",
-          [modeMaster.has_or, "step-line", "free-line"], [modeMaster.toggle, "arrow-left"], ["arrow-left"]),
+          [modeMaster.has, "draw", "line"], [modeMaster.toggle, "arrow-left"], ["arrow-left"]),
         new MenuButton(">",
-          [modeMaster.has_or, "step-line", "free-line"], [modeMaster.toggle, "arrow-right"], ["arrow-right"]),
+          [modeMaster.has, "draw", "line"], [modeMaster.toggle, "arrow-right"], ["arrow-right"]),
       ] 
       
       constructor() {
