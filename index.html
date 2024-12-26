@@ -34,9 +34,11 @@
     - restart -> clear (allow undo)
     - select all (ctrl-a)
     - cmd v ctrl for Mac
-    - make all text pixels joinable?
+    - make all text pixels joinable
+    - make all line pixels joinable
+    - clever resize: text in boxes main issue
+    - arrows editable
     - file break up?
-    - clever resize
     - export 
     - clever free draw straight chars
     - more shapes: diagnol lines, tables, diamonds, triangles
@@ -55,6 +57,17 @@
     BUGS / IMPROVEMENTS:
     - select mutli-types with joint breaks.
     - writing cursor move focus one only
+
+    var out = "";
+    for(var row = 0; row < canvas.rowCount; row ++ ) {
+        for (var col = 0; col < canvas.colCount; col ++) {
+           let content = canvas.getPixelByRowCol(row, col).element.innerHTML;
+           out += (content == "")? " ": content;
+        }
+        out += "\n";
+    }
+    console.log(out);
+
     */
     const KEYS = {
       "up"      : 38,
@@ -74,11 +87,7 @@
       "g"       : 71,
     }
 
-    const masterRowCount = 60;
-    const masterColCount = 160;
-
-    const pixelSize = 14;
-    const pixelWidthDivider = 0.7;
+    const ArrowKeyGroup = ["up", "down", "left", "right"];
     
     function reportError(message) {
       console.log(message);
@@ -91,6 +100,17 @@
     function randomInt(min, max) {
       return Math.floor(Math.random() * (max - min + 1)) + min;
     }
+
+    function keyGroup(...names) {
+      let keys = names.map(name => KEYS[name].toString());
+      return keys.join(",");
+    }
+
+    var layerManager;
+    var eventManager;
+    var modeMaster;
+    var menu;
+    var canvas;
 
     //////////////////
     ////// MODES /////
@@ -154,7 +174,7 @@
         return modes.map((mode) => this._modes.includes(mode)).every(Boolean);
       }
 
-      has_or(...modes) {
+      hasOr(...modes) {
         return modes.map((mode) => this._modes.includes(mode)).some(Boolean);
       }
 
@@ -175,7 +195,200 @@
         this.add(name);
       }
     }
+
+    ////////////////
+    //// EVENTS ////
+    ////////////////
+
+
+
+    class EventDef {
+      constructor(modeCondition, modeUpdate, callback=()=>{}) {
+        this.callback = callback;
+        this.condition = modeMaster.makeFunc(modeCondition);
+        this.update = modeMaster.makeFunc(modeUpdate);
+      }
+      
+      run(event) {
+        if (this.condition()) {
+          this.update();
+          this.callback(event);
+          console.log(modeMaster._modes);
+          return true;
+        }
+      }
+    }
     
+    class EventManager {
+      MAP = {
+        document: {
+          keyEvents: {
+            keypress: {
+              "*": [
+                new EventDef([modeMaster.has, "writing", "text"], [], TextLayer.keyDown),
+              ],
+            },
+            keydown: {
+              [keyGroup(...ArrowKeyGroup)]: [
+                new EventDef([modeMaster.has, "selected"],
+                    [], (event) => layerManager.selectedArrowKeyDownEvent(event)),
+              ],                                                                        
+              [keyGroup("shift")]: [
+                new EventDef([], 
+                    [modeMaster.add, "shift"])
+              ],
+              [keyGroup("back", "delete")]: [
+                new EventDef([modeMaster.has, "selected"],
+                    [], deleteLayersEvent),
+              ],
+              [keyGroup("esc")]: [
+                new EventDef([modeMaster.has, "selected"],
+                    [modeMaster.reset, "select"], () => layerManager.unselectAll()),
+              ],
+              [keyGroup("back", "delete", ...ArrowKeyGroup)]: [
+                new EventDef([modeMaster.has, "writing", "text"],
+                    [], TextLayer.keyDown),
+              ],
+              [keyGroup("ctrl")]: [
+                new EventDef([],
+                    [modeMaster.add, "ctrl"]),
+              ],
+              [keyGroup("z")]: [
+                new EventDef([modeMaster.has, "shift", "ctrl"],
+                    [], redoEvent),
+                new EventDef([modeMaster.has, "ctrl"], 
+                    [], undoEvent),
+              ],
+              [keyGroup("c")]: [
+                new EventDef([modeMaster.has, "ctrl", "selected"],
+                    [], copySelectedLayersEvent),
+              ],
+              [keyGroup("g")]: [
+                new EventDef([modeMaster.has, "selected"],
+                    [], () => layerManager.groupSelectedLayers()),
+              ],
+            },
+            keyup: {
+              [keyGroup("shift")]: [
+                new EventDef([modeMaster.has, "shift"],
+                    [modeMaster.remove, "shift"]),
+              ],
+              [keyGroup("ctrl")]: [
+                new EventDef([modeMaster.has, "ctrl"],
+                    [modeMaster.remove, "ctrl"]),
+              ],
+            }
+          }
+        },
+        window: {
+          mouseEvents: {
+            mouseup: [
+              new EventDef([modeMaster.has, "drawing"],
+                  [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
+              new EventDef([modeMaster.has, "erasing"],
+                  [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
+              new EventDef([modeMaster.has, "moving"],
+                  [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
+              new EventDef([modeMaster.has, "area-selecting"],
+                  [modeMaster.remove, "area-selecting"], (event) => layerManager.areaSelectingMouseUpEvent(event)),
+              new EventDef([modeMaster.has, "resizing"],
+                  [modeMaster.reset, "selected"], (event) => layerManager.tidyLayers()),
+            ],
+          }
+        }, 
+        canvas: {
+          mouseEvents: {
+            mousedown: [
+              new EventDef([modeMaster.has, "draw", "text"],
+                  [modeMaster.change, "draw", "writing"], TextLayer.drawMouseDown),
+              new EventDef([modeMaster.has, "draw", "free-line"],
+                  [modeMaster.change, "draw", "drawing"], FreeLineLayer.drawMouseDown),
+              new EventDef([modeMaster.has, "draw", "step-line"],
+                  [modeMaster.change, "draw", "drawing"], StepLineLayer.drawMouseDown),
+              new EventDef([modeMaster.has, "draw", "free"],
+                  [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDown),
+              new EventDef([modeMaster.has, "draw", "square"],
+                  [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDown),
+              new EventDef([modeMaster.has, "writing", "text"],
+                  [], TextLayer.writingMouseDown),
+              new EventDef([modeMaster.has, "erase"],
+                  [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
+              new EventDef([modeMaster.hasOr, "selected", "select"], 
+                  [], Layer.selectMouseDown),
+            ],
+            mouseover: [
+              new EventDef([modeMaster.has, "draw", "free-line"],
+                  [], FreeLineLayer.drawMouseOver),
+              new EventDef([modeMaster.has, "draw", "step-line"],
+                  [], StepLineLayer.drawMouseOver),
+              new EventDef([modeMaster.has, "drawing", "free"],
+                  [], FreeLayer.drawingMouseOver),
+              new EventDef([modeMaster.has, "drawing", "free-line"],
+                  [], FreeLineLayer.drawingMouseOver),
+              new EventDef([modeMaster.has, "drawing", "step-line"],
+                  [], StepLineLayer.drawingMouseOver),
+              new EventDef([modeMaster.has, "drawing", "square"],
+                  [], SquareLayer.drawingMouseOver),
+              new EventDef([modeMaster.has, "erasing"],
+                  [], erasingMouseOverEvent),
+              new EventDef([modeMaster.has, "moving"],
+                  [], (event) => layerManager.movingMouseOverEvent(event)),
+              new EventDef([modeMaster.has, "area-selecting"],
+                  [], (event) => layerManager.areaSelectingMouseOverEvent(event)),
+              new EventDef([modeMaster.has, "resizing", "free-line"],
+                  [], FreeLineLayer.resizingMouseOver),
+              new EventDef([modeMaster.has, "resizing", "step-line"],
+                  [], StepLineLayer.resizingMouseOver),
+              new EventDef([modeMaster.has, "resizing", "square"],
+                  [], SquareLayer.resizingMouseOver),
+            ],
+            dblclick: [
+              new EventDef([modeMaster.has, "selected", "text"],
+                  [modeMaster.change, "selected", "writing"], TextLayer.selectedDoubleClick),
+            ]
+          }
+        }
+      }
+
+      assignMouseEventDefs(element, allDefs) {
+        for (const [eventType, defs] of Object.entries(allDefs)) {
+          element.addEventListener(eventType, (event) => {
+            for (var def of defs) if (def.run(event)) return;
+          })
+        }
+      }
+
+      assignKeyEventDefs(element, defs) {
+        Object.keys(defs).forEach((eventType) => {
+          element.addEventListener(eventType, (event) => {
+            for (var keys in defs[eventType]) {
+              keys.split(",").forEach(key => {
+                if (key == event.keyCode.toString() || key == "*") {
+                  for (var def of defs[eventType][keys]) {
+                    if (def.run(event)) return;
+                  }
+                }
+              });
+            }
+          });
+        });
+      } 
+
+      assignAll(namedElements) {
+        for (const [elementName, eventGroups] of Object.entries(this.MAP)) {
+          for (const [eventGroup, eventDefs] of Object.entries(eventGroups)) {
+            switch (eventGroup) {
+              case "mouseEvents":
+                this.assignMouseEventDefs(namedElements[elementName], eventDefs);
+              break;
+              case "keyEvents":
+                this.assignKeyEventDefs(namedElements[elementName], eventDefs);
+              break;
+            }
+          }
+        }
+      }
+    }
     ////////////////////
     ////// LAYERS //////
     ////////////////////
@@ -220,10 +433,18 @@
       }
 
       findGroupsFromLayers(layers) {
+        /*
+          Find groups which are fully included in the provided layers.
+          E.g
+          Groups = [[1, 2, 3], [5, 6], [4, 5], [1, 2]]
+          layers = [1, 2, 3, 4]
+            => [[1, 2, 3], [1, 2]]
+        */
+
         var foundGroups = [];
         let layerIds = layers.map(layer => layer.id);
         for (var groupLayerIds of this.layerGroups) {
-          if (!Boolean(groupLayerIds.filter(layerId => !layerIds.includes(layerId)).length)) {
+          if (groupLayerIds.map(layerId => layerIds.includes(layerId)).every(Boolean)) {
             foundGroups.push(groupLayerIds);
           }
         }
@@ -262,9 +483,8 @@
       }
 
       ungroupSelectedLayers() {
-        // TODO: JSON -> toString
-        let groups = this.findGroupsFromLayers(this.getSelectedLayers()).map(group => JSON.stringify(group));
-        this.layerGroups = this.layerGroups.filter(group => !groups.includes(JSON.stringify(group)));
+        let groups = this.findGroupsFromLayers(this.getSelectedLayers()).map(group => group.toString());
+        this.layerGroups = this.layerGroups.filter(group => !groups.includes(group.toString()));
         this.unselectAll();
       }
 
@@ -498,7 +718,7 @@
         this.joints = [];
         this._isSelected = false;
         
-        this.setFirstPixel(canvas.getPixelById(firstPixelId));
+        this.setFirstTouchedPixel(canvas.getPixelById(firstPixelId));
         layerManager.setSelectPixel(this.firstTouchedPixel);
       }
 
@@ -529,7 +749,7 @@
           modeMaster.setLayer(layer.name);
           let resizePixel = layer.getResizeFirstPixel(activePixel);
           if (resizePixel) {
-            layer.setFirstPixel(resizePixel);
+            layer.setFirstTouchedPixel(resizePixel);
             modeMaster.add("resizing");
           } else {
             layerManager.setSelectPixel(activePixel);
@@ -551,7 +771,7 @@
       }
 
 
-      setFirstPixel(pixel) {
+      setFirstTouchedPixel(pixel) {
         this.firstTouchedPixel = pixel;
       }
 
@@ -614,9 +834,21 @@
         return layerCopy;
       }
 
-      isOverlapping(subjectLayer) {
+      isOverlapping(targetLayer) {
+        /*
+          Check if target layer is fully visually covered by this layer.
+
+          E.g 
+          target pixels = [1, 2, 3, 4]
+          this pixels   = [1, 2, 3, 4, 5]
+            => true
+
+          target pixels = [1, 2, 3]
+          this pixels   = [1, 2, 5, 6]
+            => false
+        */
         let layerPixelIds = this.pixels.map(pixel => pixel.id());
-        return !Boolean(subjectLayer.pixels.filter(pixel => !layerPixelIds.includes(pixel.id())).length)
+        return targetLayer.pixels.map(pixel => layerPixelIds.includes(pixel.id())).every(Boolean)
       }
       
       renderUnselected() {
@@ -654,7 +886,7 @@
           let jointPixel = this.getJointPixels()[joint.jointIndex];
           let resizePixel = layer.getResizeFirstPixel(originalJointPixels[joint.jointIndex]);
           if (!resizePixel) return;
-          layer.setFirstPixel(resizePixel);
+          layer.setFirstTouchedPixel(resizePixel);
           layer.drawLayer(jointPixel.id()); 
         }
       }
@@ -750,7 +982,7 @@
       static drawMouseDown(event) {
         let layer = new TextLayer(event.target.id);
         layerManager.add(layer);
-        layer.firstPixel.renderFocus();
+        layer.firstTouchedPixel.renderFocus();
       }
 
       static writingMouseDown(event) {
@@ -922,11 +1154,9 @@
       }
 
       static resizingMouseOver(event) {
-        let layers = layerManager.getSelectedLayers();
-        for (var layer of layers) {
-          layerManager.refresh(() => layer.drawLayer(event.target.id));
-        }
-        layerManager.findJoints(layers);
+        let layer = layerManager.getSelectedLayers()[0];
+        layerManager.refresh(() => layer.drawLayer(event.target.id));
+        layerManager.findJoints([layer]);
       }
 
       static drawMouseOver(event) {
@@ -1022,7 +1252,7 @@
         var value = "x";
         
         if (Math.abs(verticalStep) < 0.3){
-          value = "-";
+          value = "─";
         } else if (Math.abs(lateralStep) < 0.5) {
           value = "|";
         } else if (toPixel.isLeft(fromPixel) && toPixel.isBelow(fromPixel)) {
@@ -1163,151 +1393,149 @@
     //// SQUARE LAYER ////
     //////////////////////
 
-      class SquareLayer extends Layer {
-        
-        name = "square" 
-
-        static drawMouseDown(event) {
-          let layer = new SquareLayer(event.target.id);
-          layerManager.add(layer);
-        }
-
-        static drawingMouseOver(event) {
-          let layer = layerManager.getLatestLayer();
-          layerManager.refresh(() => layer.drawLayer(event.target.id));
-        }
-
-        static resizingMouseOver(event) {
-          let layers = layerManager.getSelectedLayers();
-          for (var layer of layers) {
-            layerManager.refresh(() => layer.drawLayer(event.target.id));
-          }
-        }
-        
-        getResizePixels() {
-          return this.getCornerPixels();
-        }
-
-        getJointPixels() {
-          let corners = this.getCornerPixels();
-          let halfways = this.getHalfwayPixels(corners);
-          return corners.concat(halfways);
-        }
-
-        getResizeFirstPixel(pixel) {
-          let corners = this.getResizePixels();
-          let cornerMatch = corners.map(pixel => pixel.id()).indexOf(pixel.id());
-          if (cornerMatch == -1) return;
-          let firstPixelIndex = cornerMatch + 2;
-          if (firstPixelIndex > 3) {
-            firstPixelIndex = firstPixelIndex - 4;
-          }
-          return corners[firstPixelIndex];
-        }
-
-        getCornerPixels() {
-          if (this.pixels.length == 0) {
-            return [];
-          }
-          var maxCol = -1;
-          var minCol = -1;
-          var maxRow = -1;
-          var minRow = -1;
-          for (var pixel of this.pixels) {
-            if (pixel.col > maxCol) {
-              maxCol = pixel.col;
-            }
-            if (pixel.col < minCol || minCol == -1) {
-              minCol = pixel.col; 
-            }
-            if (pixel.row > maxRow) {
-              maxRow = pixel.row;
-            }
-            if (pixel.row < minRow || minRow == -1) {
-              minRow = pixel.row; 
-            }
-          }
-          return [
-            canvas.getPixelByRowCol(minRow, minCol), // Top left
-            canvas.getPixelByRowCol(minRow, maxCol), // Top right
-            canvas.getPixelByRowCol(maxRow, maxCol), // Bottom right
-            canvas.getPixelByRowCol(maxRow, minCol), // Bottom left
-          ]
-        }
-
-        getHalfwayPixels(corners) {
-          if (this.pixels.length == 0) {
-            return [];
-          }
-          let minRow = corners[0].row;
-          let maxRow = corners[2].row;
-          let minCol = corners[0].col;
-          let maxCol = corners[2].col;
-
-          let halfwayRow = parseInt((maxRow - minRow) / 2);
-          let halfwayCol = parseInt((maxCol - minCol) / 2);
-
-          return [
-            canvas.getPixelByRowCol(minRow + halfwayRow, minCol),
-            canvas.getPixelByRowCol(minRow + halfwayRow, maxCol),
-            canvas.getPixelByRowCol(maxRow, minCol + halfwayCol),
-            canvas.getPixelByRowCol(minRow, minCol + halfwayCol),
-          ]
-        }
-
-        drawLayer(activePixelId) {
-          let originalJoints = this.getJointPixels();
-          this.empty();
-          let activePixel = canvas.getPixelById(activePixelId);
-          if (activePixel.isAbove(this.firstTouchedPixel)) {
-            for(var row = this.firstTouchedPixel.row; row >= activePixel.row; row --) {
-              this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), "|");
-              this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
-            }
-          } else if (activePixel.isBelow(this.firstTouchedPixel)) {
-            for(var row = this.firstTouchedPixel.row; row <= activePixel.row; row ++) {
-              this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), "|");
-              this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
-            }
-          }
-          if (activePixel.isLeft(this.firstTouchedPixel)) {
-            for(var col = this.firstTouchedPixel.col; col >= activePixel.col; col --) {
-              this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), "─");
-              this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
-            }
-          } else if (activePixel.isRight(this.firstTouchedPixel)) {
-            for(var col = this.firstTouchedPixel.col; col <= activePixel.col; col ++) {
-              this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), "─");
-              this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
-            }
-          }
-          this.moveJointLayers(originalJoints);
-        } 
-      }
-
+    class SquareLayer extends Layer {
       
-      ///////////////////
-      ////// ERASE //////
-      ///////////////////
+      name = "square" 
 
-      function erasingMouseUpEvent(event) {
+      static drawMouseDown(event) {
+        let layer = new SquareLayer(event.target.id);
+        layerManager.add(layer);
       }
 
-      function erasePixelEvent(event) {
-        let activePixel = canvas.getPixelById(event.target.id);
-        let layer = layerManager.getLayerByPixelId(activePixel.id());
-        if (layer) layer.erasePixel(activePixel.id());
-        activePixel.clear();
+      static drawingMouseOver(event) {
+        let layer = layerManager.getLatestLayer();
+        layerManager.refresh(() => layer.drawLayer(event.target.id));
       }
 
-      function eraseMouseDownEvent(event) {
-        erasePixelEvent(event);
+      static resizingMouseOver(event) {
+        let layer = layerManager.getSelectedLayers()[0];
+        layerManager.refresh(() => layer.drawLayer(event.target.id));
+      }
+      
+      getResizePixels() {
+        return this.getCornerPixels();
       }
 
-
-      function erasingMouseOverEvent(event) {
-        erasePixelEvent(event);
+      getJointPixels() {
+        let corners = this.getCornerPixels();
+        let halfways = this.getHalfwayPixels(corners);
+        return corners.concat(halfways);
       }
+
+      getResizeFirstPixel(pixel) {
+        let corners = this.getResizePixels();
+        let cornerMatch = corners.map(pixel => pixel.id()).indexOf(pixel.id());
+        if (cornerMatch == -1) return;
+        let firstPixelIndex = cornerMatch + 2;
+        if (firstPixelIndex > 3) {
+          firstPixelIndex = firstPixelIndex - 4;
+        }
+        return corners[firstPixelIndex];
+      }
+
+      getCornerPixels() {
+        if (this.pixels.length == 0) {
+          return [];
+        }
+        var maxCol = -1;
+        var minCol = -1;
+        var maxRow = -1;
+        var minRow = -1;
+        for (var pixel of this.pixels) {
+          if (pixel.col > maxCol) {
+            maxCol = pixel.col;
+          }
+          if (pixel.col < minCol || minCol == -1) {
+            minCol = pixel.col; 
+          }
+          if (pixel.row > maxRow) {
+            maxRow = pixel.row;
+          }
+          if (pixel.row < minRow || minRow == -1) {
+            minRow = pixel.row; 
+          }
+        }
+        return [
+          canvas.getPixelByRowCol(minRow, minCol), // Top left
+          canvas.getPixelByRowCol(minRow, maxCol), // Top right
+          canvas.getPixelByRowCol(maxRow, maxCol), // Bottom right
+          canvas.getPixelByRowCol(maxRow, minCol), // Bottom left
+        ]
+      }
+
+      getHalfwayPixels(corners) {
+        if (this.pixels.length == 0) {
+          return [];
+        }
+        let minRow = corners[0].row;
+        let maxRow = corners[2].row;
+        let minCol = corners[0].col;
+        let maxCol = corners[2].col;
+
+        let halfwayRow = parseInt((maxRow - minRow) / 2);
+        let halfwayCol = parseInt((maxCol - minCol) / 2);
+
+        return [
+          canvas.getPixelByRowCol(minRow + halfwayRow, minCol),
+          canvas.getPixelByRowCol(minRow + halfwayRow, maxCol),
+          canvas.getPixelByRowCol(maxRow, minCol + halfwayCol),
+          canvas.getPixelByRowCol(minRow, minCol + halfwayCol),
+        ]
+      }
+
+      drawLayer(activePixelId) {
+        let originalJoints = this.getJointPixels();
+        this.empty();
+        let activePixel = canvas.getPixelById(activePixelId);
+        if (activePixel.isAbove(this.firstTouchedPixel)) {
+          for(var row = this.firstTouchedPixel.row; row >= activePixel.row; row --) {
+            this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), "|");
+            this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
+          }
+        } else if (activePixel.isBelow(this.firstTouchedPixel)) {
+          for(var row = this.firstTouchedPixel.row; row <= activePixel.row; row ++) {
+            this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), "|");
+            this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
+          }
+        }
+        if (activePixel.isLeft(this.firstTouchedPixel)) {
+          for(var col = this.firstTouchedPixel.col; col >= activePixel.col; col --) {
+            this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), "─");
+            this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
+          }
+        } else if (activePixel.isRight(this.firstTouchedPixel)) {
+          for(var col = this.firstTouchedPixel.col; col <= activePixel.col; col ++) {
+            this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), "─");
+            this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
+          }
+        }
+        this.moveJointLayers(originalJoints);
+      } 
+    }
+
+    
+    ///////////////////
+    ////// ERASE //////
+    ///////////////////
+
+    function erasingMouseUpEvent(event) {
+    }
+
+    function erasePixelEvent(event) {
+      let activePixel = canvas.getPixelById(event.target.id);
+      let layer = layerManager.getLayerByPixelId(activePixel.id());
+      if (layer) layer.erasePixel(activePixel.id());
+      activePixel.clear();
+    }
+
+    function eraseMouseDownEvent(event) {
+      erasePixelEvent(event);
+    }
+
+
+    function erasingMouseOverEvent(event) {
+      erasePixelEvent(event);
+    }
       
 
     ////////////////
@@ -1315,10 +1543,11 @@
     ////////////////
 
     class Pixel {
-      constructor(size, row, col) {
+      constructor(size, widthDivider, row, col) {
         this.row = row;
         this.col = col;
         this.size = size;
+        this.widthDivider = widthDivider;
         this.defaultColor = "#ffffff";
         this.defaultBgColor = "transparent";
         this.defaultBorder = "none";
@@ -1444,10 +1673,11 @@
         this.element.style.position = "absolute";
         this.renderNormal();
         //this.element.style.border = "1px solid black";
-        this.element.style.marginLeft = `${this.col * this.size * pixelWidthDivider}px`;
+        this.element.style.marginLeft = `${this.col * this.size * this.widthDivider}px`;
         this.element.style.marginTop = `${this.row * this.size}px`;
         this.element.style.height = `${this.size}px`;
-        this.element.style.width = `${this.size * pixelWidthDivider}px`;
+        this.element.style.width = `${this.size * this.widthDivider}px`;
+        this.setValue(" ");
         parent.appendChild(this.element);
       }
     }
@@ -1457,10 +1687,14 @@
     ////////////////
 
     class Canvas {
-      constructor(rowCount, colCount, pixelSize) {
-        this.rowCount = rowCount;
-        this.colCount = colCount;
-        this.pixelSize = pixelSize;
+      
+      rowCount = 60;
+      colCount = 160;
+
+      pixelSize = 14;
+      pixelWidthDivider = 0.6;
+
+      constructor() {
         this.pixels = {};
       }
 
@@ -1482,46 +1716,19 @@
 
       render() {
         this.element = document.getElementById("canvas");
-        this.element.style.width  = `${this.colCount * this.pixelSize * pixelWidthDivider}px`;
+        this.element.style.width  = `${this.colCount * this.pixelSize * this.pixelWidthDivider}px`;
         this.element.style.height = `${this.rowCount * this.pixelSize}px`;
         this.element.style.fontSize = `${this.pixelSize}px`;
         this.element.style.fontFamily = `monospace`;
         for (var row = 0; row < this.rowCount; row++) {
           for (var col = 0; col < this.colCount; col++) {
-            let pixel = new Pixel(this.pixelSize, row, col);
+            let pixel = new Pixel(this.pixelSize, this.pixelWidthDivider, row, col);
             pixel.render(this.element);
             this.pixels[pixel.id()] = pixel;
           }
         }
-        assignMouseEventDispatch(this.element, canvasEventDispatch);
       }
     }
-
-    function assignMouseEventDispatch(element, dispatchers) {
-      for (const [eventType, story] of Object.entries(dispatchers)) {
-        element.addEventListener(eventType, (event) => {
-          for (var eventDispatch of story) {
-            if (eventDispatch.run(event)) return;
-          }
-        })
-      }
-    }
-    function assignKeyEventDispatch(element, dispatchers) {
-      Object.keys(dispatchers).forEach((eventType) => {
-        element.addEventListener(eventType, (event) => {
-          for (keys in dispatchers[eventType]) {
-            keys.split(",").forEach(key => {
-              if (key == event.keyCode.toString() || key == "*") {
-                for (var eventDispatch of dispatchers[eventType][keys]) {
-                  if (eventDispatch.run(event)) return;
-                }
-              }
-            });
-          }
-        });
-      });
-    }
-
 
     //////////////
     //// MENU ////
@@ -1530,6 +1737,14 @@
     class MenuButton {
       
       constructor (name, showCondition, setModes, activeModes, callback=()=>{}) {
+        /*
+        name: display name of the button
+        showCondition: A ModeMaster condition that gets checked every Menu.refresh
+          call to show/hide the button.
+        setModes: A ModeMaster update command when the button is pressed.
+        activeModes: A ModeMaster condition to choose if the button is selected.
+        callback: A function callback on press.
+        */
         this.name = name;
         this.showCondition = modeMaster.makeFunc(showCondition);
         this.callback = callback;
@@ -1569,7 +1784,7 @@
       }
 
       isActive() {
-        return this.activeModes.length && modeMaster.has_or(...this.activeModes);
+        return this.activeModes.length && modeMaster.hasOr(...this.activeModes);
       }
     }
 
@@ -1612,6 +1827,7 @@
       constructor() {
         this.id = "menu";
         this.element = document.getElementById(this.id);
+        modeMaster.registerCallback(() => menu.refresh());
       }
       
       unselectAll() {
@@ -1634,173 +1850,24 @@
         this.refresh();
       }
     }
-
-    ////////////////
-    //// EVENTS ////
-    ////////////////
-
-    const modeMaster = new ModeMaster();
-
-
-    class EventDispatch {
-      constructor(modeCondition, modeUpdate, callback=()=>{}) {
-        this.callback = callback;
-        this.condition = modeMaster.makeFunc(modeCondition);
-        this.update = modeMaster.makeFunc(modeUpdate);
-      }
-      
-      run(event) {
-        if (this.condition()) {
-          this.update();
-          this.callback(event);
-          console.log(modeMaster._modes);
-          return true;
-        }
-      }
-    }
-    const ArrowKeyGroup = ["up", "down", "left", "right"];
-
-    function keyGroup(...names) {
-      let keys = names.map(name => KEYS[name].toString());
-      return keys.join(",");
-    }
-
-    let documentEventKeyDispatch = {
-      "keypress": {
-        "*": [
-          new EventDispatch([modeMaster.has, "writing", "text"], [], TextLayer.keyDown),
-        ],
-      },
-      "keydown": {
-        [keyGroup(...ArrowKeyGroup)]: [
-          new EventDispatch([modeMaster.has, "selected"],
-              [], (event) => layerManager.selectedArrowKeyDownEvent(event)),
-        ],                                                                        
-        [keyGroup("shift")]: [
-          new EventDispatch([], 
-              [modeMaster.add, "shift"])
-        ],
-        [keyGroup("back", "delete")]: [
-          new EventDispatch([modeMaster.has, "selected"],
-              [], deleteLayersEvent),
-        ],
-        [keyGroup("esc")]: [
-          new EventDispatch([modeMaster.has, "selected"],
-              [modeMaster.reset, "select"], () => layerManager.unselectAll()),
-        ],
-        [keyGroup("back", "delete", ...ArrowKeyGroup)]: [
-          new EventDispatch([modeMaster.is, "writing", "text"],
-              [], TextLayer.keyDown),
-        ],
-        [keyGroup("ctrl")]: [
-          new EventDispatch([],
-              [modeMaster.add, "ctrl"]),
-        ],
-        [keyGroup("z")]: [
-          new EventDispatch([modeMaster.has, "shift", "ctrl"],
-              [], redoEvent),
-          new EventDispatch([modeMaster.has, "ctrl"], 
-              [], undoEvent),
-        ],
-        [keyGroup("c")]: [
-          new EventDispatch([modeMaster.has, "ctrl", "selected"],
-              [], copySelectedLayersEvent),
-        ],
-        [keyGroup("g")]: [
-          new EventDispatch([modeMaster.has, "selected"],
-              [], () => layerManager.groupSelectedLayers()),
-        ],
-      },
-      "keyup": {
-        [keyGroup("shift")]: [
-          new EventDispatch([modeMaster.has, "shift"],
-              [modeMaster.remove, "shift"]),
-        ],
-        [keyGroup("ctrl")]: [
-          new EventDispatch([modeMaster.has, "ctrl"],
-              [modeMaster.remove, "ctrl"]),
-        ],
-      }
-    }
     
-    let windowEventDispatch = {
-      "mouseup": [
-        new EventDispatch([modeMaster.has, "drawing"],
-            [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
-        new EventDispatch([modeMaster.has, "erasing"],
-            [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
-        new EventDispatch([modeMaster.has, "moving"],
-            [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
-        new EventDispatch([modeMaster.has, "area-selecting"],
-            [modeMaster.remove, "area-selecting"], (event) => layerManager.areaSelectingMouseUpEvent(event)),
-        new EventDispatch([modeMaster.has, "resizing"],
-            [modeMaster.reset, "selected"], (event) => layerManager.tidyLayers()),
-      ],
-    }
+    
+    // MANAGERS
+    modeMaster = new ModeMaster();
+    layerManager = new LayerManager();
+    eventManager = new EventManager();
+    
+    // COMPONENTS
+    menu = new Menu();
+    canvas = new Canvas();
 
-    let canvasEventDispatch = {
-      "mousedown": [
-        new EventDispatch([modeMaster.has, "draw", "text"],
-            [modeMaster.change, "draw", "writing"], TextLayer.drawMouseDown),
-        new EventDispatch([modeMaster.has, "draw", "free-line"],
-            [modeMaster.change, "draw", "drawing"], FreeLineLayer.drawMouseDown),
-        new EventDispatch([modeMaster.has, "draw", "step-line"],
-            [modeMaster.change, "draw", "drawing"], StepLineLayer.drawMouseDown),
-        new EventDispatch([modeMaster.has, "draw", "free"],
-            [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDown),
-        new EventDispatch([modeMaster.has, "draw", "square"],
-            [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDown),
-        new EventDispatch([modeMaster.has, "writing", "text"],
-            [], TextLayer.writingMouseDown),
-        new EventDispatch([modeMaster.has, "erase"],
-            [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
-        new EventDispatch([modeMaster.has_or, "selected", "select"], 
-            [], Layer.selectMouseDown),
-      ],
-      "mouseover": [
-        new EventDispatch([modeMaster.has, "draw", "free-line"],
-            [], FreeLineLayer.drawMouseOver),
-        new EventDispatch([modeMaster.has, "draw", "step-line"],
-            [], StepLineLayer.drawMouseOver),
-        new EventDispatch([modeMaster.has, "drawing", "free"],
-            [], FreeLayer.drawingMouseOver),
-        new EventDispatch([modeMaster.has, "drawing", "free-line"],
-            [], FreeLineLayer.drawingMouseOver),
-        new EventDispatch([modeMaster.has, "drawing", "step-line"],
-            [], StepLineLayer.drawingMouseOver),
-        new EventDispatch([modeMaster.has, "drawing", "square"],
-            [], SquareLayer.drawingMouseOver),
-        new EventDispatch([modeMaster.has, "erasing"],
-            [], erasingMouseOverEvent),
-        new EventDispatch([modeMaster.has, "moving"],
-            [], (event) => layerManager.movingMouseOverEvent(event)),
-        new EventDispatch([modeMaster.has, "area-selecting"],
-            [], (event) => layerManager.areaSelectingMouseOverEvent(event)),
-        new EventDispatch([modeMaster.has, "resizing", "free-line"],
-            [], FreeLineLayer.resizingMouseOver),
-        new EventDispatch([modeMaster.has, "resizing", "step-line"],
-            [], StepLineLayer.resizingMouseOver),
-        new EventDispatch([modeMaster.has, "resizing", "square"],
-            [], SquareLayer.resizingMouseOver),
-      ],
-      "dblclick": [
-        new EventDispatch([modeMaster.has, "selected", "text"],
-            [modeMaster.change, "selected", "writing"], TextLayer.selectedDoubleClick),
-      ]
-    }
-
-
-    let layerManager = new LayerManager();
-    let menu = new Menu();
-    let canvas = new Canvas(masterRowCount, masterColCount, pixelSize);
-
-    modeMaster.registerCallback(() => menu.refresh());
     menu.render();
     canvas.render();
-
-    assignKeyEventDispatch(document, documentEventKeyDispatch);
-    assignMouseEventDispatch(window, windowEventDispatch);
-
+    
+    // EVENT ASSIGNMENT
+    eventManager.assignAll(
+      {window: window, document: document, canvas: canvas.element}
+    );
 
     </script>
   </body>
