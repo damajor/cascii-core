@@ -1,19 +1,23 @@
 <html>
   <head>
     <style>
+      body {
+        background: black;
+      }
       #canvas {
-        background: grey;
+        background: black;
         user-select: none;
       }
 
       #menu {
-        background: blue;
         height: 50px;
       }
 
       #menu button {
         padding: 10px;
         margin-left: 10px;
+        color: white;
+        border: 1px solid white;
         float: left;
       }
     </style>
@@ -49,6 +53,7 @@
       - plain text request / curl
 
     BUGS / IMPROVEMENTS:
+    - select mutli-types with joint breaks.
     - writing cursor move focus one only
     */
     const KEYS = {
@@ -69,10 +74,10 @@
       "g"       : 71,
     }
 
-    const masterRowCount = 50;
-    const masterColCount = 150;
+    const masterRowCount = 60;
+    const masterColCount = 160;
 
-    const pixelSize = 15;
+    const pixelSize = 14;
     const pixelWidthDivider = 0.7;
     
     function reportError(message) {
@@ -648,6 +653,7 @@
           if (!layer) continue;
           let jointPixel = this.getJointPixels()[joint.jointIndex];
           let resizePixel = layer.getResizeFirstPixel(originalJointPixels[joint.jointIndex]);
+          if (!resizePixel) return;
           layer.setFirstPixel(resizePixel);
           layer.drawLayer(jointPixel.id()); 
         }
@@ -1313,7 +1319,7 @@
         this.row = row;
         this.col = col;
         this.size = size;
-        this.defaultColor = "#000000";
+        this.defaultColor = "#ffffff";
         this.defaultBgColor = "transparent";
         this.defaultBorder = "none";
         this.cursorFlashInterval = null;
@@ -1344,7 +1350,7 @@
       }
       
       renderAreaSelected() {
-        this.setBgColor("#8fe9ee");
+        this.setBgColor("#14005e");
       }
       
       renderJoint() {
@@ -1530,7 +1536,7 @@
         this.setModes = modeMaster.makeFunc(setModes);
         this.activeModes = activeModes;
 
-        this.defaultButtonColor = "green";
+        this.defaultButtonColor = "black";
         this.defaultSelectedButtonColor = "blue";
       }
       
