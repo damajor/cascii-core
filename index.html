@@ -338,16 +338,18 @@
                   [], SquareLayer.drawingMouseOverEvent),
               new EventDef([modeMaster.has, "erasing"],
                   [], (event) => layerManager.erasePixelEvent(event)),
+              new EventDef([modeMaster.has, "select"],
+                  [], (event) => layerManager.selectMouseOverEvent(event)),
               new EventDef([modeMaster.has, "moving"],
                   [], (event) => layerManager.movingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "area-selecting"],
                   [], (event) => areaSelectManager.areaSelectingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "resizing", "free-line"],
-                  [], FreeLineLayer.resizingMouseOverEvent),
+                  [], (event) => layerManager.resizingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "resizing", "step-line"],
-                  [], StepLineLayer.resizingMouseOverEvent),
+                  [], (event) => layerManager.resizingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "resizing", "square"],
-                  [], SquareLayer.resizingMouseOverEvent),
+                  [], (event) => layerManager.resizingMouseOverEvent(event)),
             ],
             dblclick: [
               new EventDef([modeMaster.has, "selected", "text"],
@@ -519,6 +521,7 @@
         this.layerHistory = [[]];
         this.historyCursor = 0;
         this.groupManager = new GroupManager();
+        this.leadSelectedLayer = null;
       }
 
       add(layer) {
@@ -708,7 +711,79 @@
         }
       }
 
+      prepareLayerResizing(activePixel, leadLayer) {
+        let resizePixelIndex = leadLayer.getResizePixelIndex(activePixel);
+        if (resizePixelIndex == -1) return false;
+        for (var resizeLayer of this.getSelectedLayers()) {
+          if (!resizeLayer.isResizable()) {
+            continue;
+          }
+          var resizePixel;
+          if (resizeLayer.id == leadLayer.id) {
+            // If the selected layer is the lead / currently selected layer 
+            // Then we already know the activePixel is the resize pixel.
+            resizePixel = activePixel;
+          } else if (resizeLayer.name == leadLayer.name) {
+            // If the lead layer is the same type as a selected layer,
+            // we can use the same resize pixel position and resize the layer
+            // in the same way for the best experience.
+            resizePixel = resizeLayer.getResizePixels()[resizePixelIndex];
+          } else {
+            // Otherwise, we find the layer's nearest resize pixel and
+            // resize from there.
+            resizePixel = resizeLayer.getNearestResizePixel(activePixel);
+          }
+          let firstResizePixel = resizeLayer.getResizeOppositePixel(resizePixel);
+          resizeLayer.setFirstTouchedPixel(firstResizePixel);
+        }
+        return true;
+      }
+
+      getLayersWithProbedJoints(layers) {
+        var layerIds = [];
+        for (var layer of layers) {
+          for (var joint of layer.joints) {
+            layerIds.push(joint.layerId);
+          }
+        }
+        return layerIds;
+      }
+
       // Generic multi-layer based events...
+
+      resizingMouseOverEvent(event) {
+        let activePixel = canvas.getPixelById(event.target.id);
+        let lastPixelSelected = this.getSelectPixel();
+        let verticalDiff = activePixel.row - lastPixelSelected.row;
+        let lateralDiff = activePixel.col - lastPixelSelected.col;
+        let layers = this.getSelectedLayers();
+
+        // Selected layers that are joint to another selected layer should not
+        // get resized, as their joint will handle moving it correctly.
+        // Otherwise, the resize is at risk of unexpectly unjoining the layers
+        // in question.
+        let layersWithProbedJoints = this.getLayersWithProbedJoints(layers);
+        
+        for (var layer of layers) {
+          if (layersWithProbedJoints.includes(layer.id)) continue;
+          if (!layer.isResizable()) {
+            // If the layer is not resizable, the best thing we can do is move it.
+            this.refresh(() => layer.move(verticalDiff, lateralDiff));
+            continue;
+          }
+
+          // Infer resize pixel from firstTouchedPixel which was
+          // already the opposite of the resizePixel.
+          let resizePixel = layer.getResizeOppositePixel(layer.firstTouchedPixel);
+          let toPixel = canvas.getPixelByRowCol(
+            resizePixel.row + verticalDiff, resizePixel.col + lateralDiff
+          );
+          if (!toPixel) continue; // For this layer, the resize pixel is out of bounds.
+          this.refresh(() => layer.drawLayer(toPixel.id()));
+        }
+        this.findJoints(layers);
+        this.setSelectPixel(activePixel);
+      }
 
       movingMouseOverEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
@@ -746,6 +821,19 @@
 
       copySelectedLayersEvent(event) {
         this.refresh(() => this.copyAndRenderSelectedLayers());
+      }
+
+      selectMouseOverEvent(event) {
+        let activePixel = canvas.getPixelById(event.target.id);
+        for (var layer of this.layers) {
+          for (var resizePixel of layer.getResizePixels()) {
+            if (activePixel.isNear(resizePixel)) {
+              resizePixel.renderResizable();
+            } else {
+              resizePixel.renderNormal();
+            }
+          }
+        }
       }
 
       undoEvent(event) {
@@ -795,16 +883,20 @@
         return randomInt(1, 100000).toString() + Date.now().toString();
       }
 
+      static drawingMouseOverEvent(event) {
+        let layer = layerManager.getLatestLayer();
+        layerManager.refresh(() => layer.drawLayer(event.target.id));
+        layerManager.findJoints([layer]);
+      }
+      
       static selectMouseDownEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         let selectedLayers = layerManager.getSelectedLayers();
-
         if (!layer) {
           modeMaster.add("area-selecting");
           layerManager.setSelectPixel(activePixel);
         }
-
         // Unselect all if...
         // 1. clicked-off (no layer selected)
         // 2. Single select mode (not multi) and alternative layer picked. 
@@ -812,19 +904,16 @@
           layerManager.unselectAll();
           modeMaster.change("selected", "select");
         }
-
         if (layer) {
+          layer.select();
           modeMaster.change("select", "selected");
           modeMaster.setLayer(layer.name);
-          let resizePixel = layer.getResizeFirstPixel(activePixel);
-          if (resizePixel) {
-            layer.setFirstTouchedPixel(resizePixel);
+          if(layerManager.prepareLayerResizing(activePixel, layer)) {
             modeMaster.add("resizing");
           } else {
-            layerManager.setSelectPixel(activePixel);
             modeMaster.add("moving");
           }
-          layer.select();
+          layerManager.setSelectPixel(activePixel);
           if (!modeMaster.has("ctrl")) layerManager.selectGroupsByMemberLayer(layer);
         }
       }
@@ -832,6 +921,7 @@
       select() {
         this._isSelected = true;
         this.renderSelected();
+        layerManager.leadSelectedLayer = this; // TODO: needed?
       }
 
       unselect() {
@@ -886,10 +976,22 @@
       // Implement if the layer can be resized.
       // This will determine which pixel to resize from, 
       // given a resize point. 
-      getResizeFirstPixel() {
+      getResizeOppositePixel() {
         return false;
       }
+
+      isResizable() {
+        return Boolean(this.getResizePixels().length);
+      }
       
+      getNearestResizePixel(pixel) {
+        return pixel.isNearestTo(this.getResizePixels());
+      }
+
+      getResizePixelIndex(targetPixel) {
+        return this.getResizePixels().map(pixel => pixel.id()).indexOf(targetPixel.id());
+      }
+
       clear() {
         this.pixels.forEach((pixel) => pixel.clear());
       }
@@ -999,15 +1101,15 @@
 
           // If the layer is selected, it must be moving, meaning
           // it doesn't need moving here aswell.
-          if (!layer || layer.isSelected()) continue;
+          if (!layer) continue;
 
           let jointPixel = this.getJointPixels()[joint.jointIndex];
-          let resizePixel = layer.getResizeFirstPixel(originalJointPixels[joint.jointIndex]);
+          let resizePixel = layer.getResizeOppositePixel(originalJointPixels[joint.jointIndex]);
 
           // The resize pixel may not get found if the main layer has
           // somehow moved without the jointed layer. This should not happen.
           if (!resizePixel) {
-            debugError("resize pixel not found");
+            //debugError("resize pixel not found");
             return;
           }
           layer.setFirstTouchedPixel(resizePixel);
@@ -1255,18 +1357,6 @@
         this.keepArrowStart = null;
       }
 
-      static drawingMouseOverEvent(event) {
-        let layer = layerManager.getLatestLayer();
-        layerManager.refresh(() => layer.drawLayer(event.target.id));
-        layerManager.findJoints([layer]);
-      }
-
-      static resizingMouseOverEvent(event) {
-        let layer = layerManager.getSelectedLayers()[0];
-        layerManager.refresh(() => layer.drawLayer(event.target.id));
-        layerManager.findJoints([layer]);
-      }
-
       static drawMouseOver(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         for (var layer of layerManager.layers) {
@@ -1293,7 +1383,7 @@
         return this.getEndPixels(); 
       }
 
-      getResizeFirstPixel(pixel) {
+      getResizeOppositePixel(pixel) {
         let resizePixels = this.getResizePixels();
         if (pixel.is(resizePixels[0])) return resizePixels[1];
         if (pixel.is(resizePixels[1])) return resizePixels[0];
@@ -1461,13 +1551,19 @@
 
         this.empty();
         for (var i = 0; i <= Math.abs(lateralDiff); i ++) {
-          this.draw(canvas.getPixelByRowCol(fromPixel.row, drawCol), (i == 0)? lateralArrowValue: this.lateralChar);
+          this.draw(
+            canvas.getPixelByRowCol(fromPixel.row, drawCol),
+            (i == 0)? lateralArrowValue: this.lateralChar
+          );
           drawCol += lateralDiff / Math.abs(lateralDiff);
         }
         for (var i = 0; i <= Math.abs(verticalDiff); i ++) {
           var value = this.verticalChar;
           if (i == Math.abs(verticalDiff)) value = "v";
-          this.draw(canvas.getPixelByRowCol(drawRow, toPixel.col), (i == Math.abs(verticalDiff))? verticalArrowValue: this.verticalChar);
+          this.draw(
+            canvas.getPixelByRowCol(drawRow, toPixel.col),
+            (i == Math.abs(verticalDiff))? verticalArrowValue: this.verticalChar
+          );
           drawRow += verticalDiff / Math.abs(verticalDiff);
         }
       }
@@ -1484,15 +1580,10 @@
       static drawMouseDownEvent(event) {
         let layer = new FreeLayer(event.target.id);
         layerManager.add(layer);
-        layerManager.refresh(() => layer.drawFree(event.target.id));
+        layerManager.refresh(() => layer.drawLayer(event.target.id));
       }
 
-      static drawingMouseOverEvent(event) {
-        let layer = layerManager.getLatestLayer();
-        layerManager.refresh(() => layer.drawFree(event.target.id));
-      }
-
-      drawFree(activePixelId) {
+      drawLayer(activePixelId) {
         let activePixel = canvas.getPixelById(activePixelId);
         this.draw(activePixel, "x");
       }
@@ -1511,16 +1602,6 @@
         layerManager.add(layer);
       }
 
-      static drawingMouseOverEvent(event) {
-        let layer = layerManager.getLatestLayer();
-        layerManager.refresh(() => layer.drawLayer(event.target.id));
-      }
-
-      static resizingMouseOverEvent(event) {
-        let layer = layerManager.getSelectedLayers()[0];
-        layerManager.refresh(() => layer.drawLayer(event.target.id));
-      }
-      
       getResizePixels() {
         return this.getCornerPixels();
       }
@@ -1530,12 +1611,12 @@
         let halfways = this.getHalfwayPixels(corners);
         return corners.concat(halfways);
       }
-
-      getResizeFirstPixel(pixel) {
+      
+      getResizeOppositePixel(targetPixel) {
         let corners = this.getResizePixels();
-        let cornerMatch = corners.map(pixel => pixel.id()).indexOf(pixel.id());
-        if (cornerMatch == -1) return;
-        let firstPixelIndex = cornerMatch + 2;
+        let cornerMatchPixel = this.getResizePixelIndex(targetPixel);
+        if (cornerMatchPixel == -1) return;
+        let firstPixelIndex = cornerMatchPixel + 2;
         if (firstPixelIndex > 3) {
           firstPixelIndex = firstPixelIndex - 4;
         }
@@ -1737,7 +1818,7 @@
         )
       }
 
-      isClosestTo(pixels) {
+      isNearestTo(pixels) {
         var closestPixel;
         var minDistance = -1;
         for (var pixel of pixels) {
