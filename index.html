@@ -36,6 +36,8 @@
     - cmd v ctrl for Mac
     - make all text pixels joinable
     - make all line pixels joinable
+    - make joint pixels x
+    - mini success messages
     - clever resize: text in boxes main issue
     - arrows editable
     - file break up?
@@ -55,8 +57,8 @@
       - plain text request / curl
 
     BUGS / IMPROVEMENTS:
-    - select mutli-types with joint breaks.
     - writing cursor move focus one only
+    - cannot area select right most column
 
     var out = "";
     for(var row = 0; row < canvas.rowCount; row ++ ) {
@@ -92,6 +94,10 @@
     function reportError(message) {
       console.log(message);
     }
+
+    function debugError(message) {
+      alert(`[DEBUG]: ${message}`);
+    }
     
     function roundHalf(value) {
       return parseInt(Math.round(value / 0.5) * 0.5);
@@ -108,6 +114,7 @@
 
     var layerManager;
     var eventManager;
+    var areaSelectManager;
     var modeMaster;
     var menu;
     var canvas;
@@ -239,7 +246,7 @@
               ],
               [keyGroup("back", "delete")]: [
                 new EventDef([modeMaster.has, "selected"],
-                    [], deleteLayersEvent),
+                    [modeMaster.reset, "select"], () => layerManager.deleteLayersEvent()),
               ],
               [keyGroup("esc")]: [
                 new EventDef([modeMaster.has, "selected"],
@@ -255,17 +262,17 @@
               ],
               [keyGroup("z")]: [
                 new EventDef([modeMaster.has, "shift", "ctrl"],
-                    [], redoEvent),
+                    [], () => layerManager.redoEvent()),
                 new EventDef([modeMaster.has, "ctrl"], 
-                    [], undoEvent),
+                    [], () => layerManager.undoEvent()),
               ],
               [keyGroup("c")]: [
                 new EventDef([modeMaster.has, "ctrl", "selected"],
-                    [], copySelectedLayersEvent),
+                    [], () => layerManager.copySelectedLayersEvent()),
               ],
               [keyGroup("g")]: [
                 new EventDef([modeMaster.has, "selected"],
-                    [], () => layerManager.groupSelectedLayers()),
+                    [], () => layerManager.groupSelectedLayersEvent()),
               ],
             },
             keyup: {
@@ -284,15 +291,15 @@
           mouseEvents: {
             mouseup: [
               new EventDef([modeMaster.has, "drawing"],
-                  [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayers()), 
+                  [modeMaster.change, "drawing", "draw"], () => layerManager.tidyLayers()), 
               new EventDef([modeMaster.has, "erasing"],
-                  [modeMaster.change, "erasing", "erase"], erasingMouseUpEvent),
+                  [modeMaster.change, "erasing", "erase"]),
               new EventDef([modeMaster.has, "moving"],
-                  [modeMaster.remove, "moving"], (event) => layerManager.tidyLayers()),
+                  [modeMaster.remove, "moving"], () => layerManager.tidyLayers()),
               new EventDef([modeMaster.has, "area-selecting"],
-                  [modeMaster.remove, "area-selecting"], (event) => layerManager.areaSelectingMouseUpEvent(event)),
+                  [modeMaster.remove, "area-selecting"], (event) => areaSelectManager.areaSelectingMouseUpEvent(event)),
               new EventDef([modeMaster.has, "resizing"],
-                  [modeMaster.reset, "selected"], (event) => layerManager.tidyLayers()),
+                  [modeMaster.reset, "selected"], () => layerManager.tidyLayers()),
             ],
           }
         }, 
@@ -312,7 +319,7 @@
               new EventDef([modeMaster.has, "writing", "text"],
                   [], TextLayer.writingMouseDown),
               new EventDef([modeMaster.has, "erase"],
-                  [modeMaster.change, "erase", "erasing"], eraseMouseDownEvent),
+                  [modeMaster.change, "erase", "erasing"], (event) => layerManager.erasePixelEvent(event)),
               new EventDef([modeMaster.hasOr, "selected", "select"], 
                   [], Layer.selectMouseDown),
             ],
@@ -330,11 +337,11 @@
               new EventDef([modeMaster.has, "drawing", "square"],
                   [], SquareLayer.drawingMouseOver),
               new EventDef([modeMaster.has, "erasing"],
-                  [], erasingMouseOverEvent),
+                  [], (event) => layerManager.erasePixelEvent(event)),
               new EventDef([modeMaster.has, "moving"],
                   [], (event) => layerManager.movingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "area-selecting"],
-                  [], (event) => layerManager.areaSelectingMouseOverEvent(event)),
+                  [], (event) => areaSelectManager.areaSelectingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "resizing", "free-line"],
                   [], FreeLineLayer.resizingMouseOver),
               new EventDef([modeMaster.has, "resizing", "step-line"],
@@ -393,14 +400,125 @@
     ////// LAYERS //////
     ////////////////////
 
+
+    class GroupManager {
+      constructor() {
+        this.layerGroups = [];
+      }
+
+      findGroupsFromLayers(layers) {
+        /*
+          Find groups which are fully included in the provided layers.
+          E.g
+          Groups = [[1, 2, 3], [5, 6], [4, 5], [1, 2]]
+          layers = [1, 2, 3, 4]
+            => [[1, 2, 3], [1, 2]]
+        */
+
+        var foundGroups = [];
+        let layerIds = layers.map(layer => layer.id);
+        for (var groupLayerIds of this.layerGroups) {
+          if (groupLayerIds.map(layerId => layerIds.includes(layerId)).every(Boolean)) {
+            foundGroups.push(groupLayerIds);
+          }
+        }
+        return foundGroups;
+      }
+
+      ungroupLayers(layers) {
+        let groups = this.findGroupsFromLayers(layers).map(group => group.toString());
+        this.layerGroups = this.layerGroups.filter(group => !groups.includes(group.toString()));
+      }
+
+      groupLayers(layers) {
+        this.layerGroups.push(layers.map(layer => layer.id));
+      }
+      
+      getSiblingLayerIds(memberLayer) {
+        var layerIds = [];
+        for (var group of this.layerGroups) {
+          if (group.includes(memberLayer.id)) layerIds = layerIds.concat(group); 
+        }
+        return layerIds;
+      }
+
+      tidy(layers) {
+        var index = 0;
+        for (var layerGroup of this.layerGroups) {
+          this.layerGroups[index] = layerGroup.filter(layerId => !layers.includes(layerId));
+          index ++;
+        }
+
+        // Tidy empty / one layer groups 
+        this.layerGroups = this.layerGroups.filter(group => group.length > 1);
+      }
+    }
+      
+
+    class AreaSelectManager {
+      constructor() {
+        this.areaSelectionPixels = [];
+      }
+
+      clearAreaSelection() {
+        this.areaSelectionPixels.forEach(pixel => pixel.renderNormal());
+        this.areaSelectionPixels = [];
+      }
+
+      areaSelectingMouseUpEvent(event) {
+        this.clearAreaSelection();
+        // Re-render selected layers having just cleared pixels.
+        layerManager.getSelectedLayers().forEach(layer => layer.renderSelected());
+      }
+      
+      areaSelectingMouseOverEvent(event) {
+        this.clearAreaSelection();
+        let firstPixel = layerManager.selectedPixel;
+        let activePixel = canvas.getPixelById(event.target.id);
+
+        let lateralDiff = activePixel.col - firstPixel.col;
+        let verticalDiff = activePixel.row - firstPixel.row;
+        let total = Math.abs(lateralDiff * verticalDiff)
+
+        var drawRow = firstPixel.row;
+        var drawCol = firstPixel.col;
+        for (var i = 0; i < Math.abs(verticalDiff); i ++) {
+          for (var x = 0; x < Math.abs(lateralDiff); x ++) {
+            let pixel = canvas.getPixelByRowCol(parseInt(drawRow), parseInt(drawCol));
+            this.areaSelectionPixels.push(pixel);
+            pixel.renderAreaSelected();
+            drawCol += lateralDiff / Math.abs(lateralDiff);
+          }
+          drawRow += verticalDiff / Math.abs(verticalDiff);
+          drawCol = firstPixel.col;
+        }
+
+        this.selectLayersInAreaSelection();
+      }
+
+      selectLayersInAreaSelection() {
+        for (var layer of layerManager.layers) {
+          let layerPixelIds = layer.pixels.map(pixel => pixel.id());
+          let selectedPixelIds = this.areaSelectionPixels.map(pixel => pixel.id());
+          if (layerPixelIds.filter(pixel => !selectedPixelIds.includes(pixel)).length) {
+            if (layer.isSelected()) {
+              layer.unselect();
+            }
+          } else {
+            layer.select();
+            modeMaster.change("select", "selected");
+          }
+        }
+      }
+    }
+
     class LayerManager {
       constructor() {
         this.layers = [];
         this.selectedPixel = null;
         this.layerHistory = [[]];
-        this.layerGroups = [];
-        this.areaSelectionPixels = [];
         this.historyCursor = 0;
+        this.groupManager = new GroupManager();
       }
 
       add(layer) {
@@ -432,33 +550,19 @@
         this.tidyLayers();
       }
 
-      findGroupsFromLayers(layers) {
-        /*
-          Find groups which are fully included in the provided layers.
-          E.g
-          Groups = [[1, 2, 3], [5, 6], [4, 5], [1, 2]]
-          layers = [1, 2, 3, 4]
-            => [[1, 2, 3], [1, 2]]
-        */
-
-        var foundGroups = [];
-        let layerIds = layers.map(layer => layer.id);
-        for (var groupLayerIds of this.layerGroups) {
-          if (groupLayerIds.map(layerId => layerIds.includes(layerId)).every(Boolean)) {
-            foundGroups.push(groupLayerIds);
-          }
-        }
-        return foundGroups;
+      selectGroupsByMemberLayer(memberLayer) {
+        let siblingLayerIds = this.groupManager.getSiblingLayerIds(memberLayer);
+        siblingLayerIds.forEach(layerId => this.getLayerById(layerId).select());
       }
 
       copyAndRenderSelectedLayers() {
         let layersToCopy = this.getSelectedLayers();
-        let groupsToCopy = this.findGroupsFromLayers(layersToCopy);
+        let groupsToCopy = this.groupManager.findGroupsFromLayers(layersToCopy);
 
         // Render layers in groups
         for (var group of groupsToCopy) {
           var newGroup = group.map(layerId => this.copyAndRender(this.getLayerById(layerId)));
-          this.groupLayers(newGroup);
+          this.groupManager.groupLayers(newGroup);
         }
 
         // Render remaining layers
@@ -478,28 +582,6 @@
         return layerCopy;
       }
 
-      groupSelectedLayers() {
-        this.groupLayers(this.getSelectedLayers());
-      }
-
-      ungroupSelectedLayers() {
-        let groups = this.findGroupsFromLayers(this.getSelectedLayers()).map(group => group.toString());
-        this.layerGroups = this.layerGroups.filter(group => !groups.includes(group.toString()));
-        this.unselectAll();
-      }
-
-      groupLayers(layers) {
-        this.layerGroups.push(layers.map(layer => layer.id));
-      }
-      
-      selectGroupByMemberLayer(memberLayer) {
-        this.layerGroups.forEach(group => {
-          if (group.includes(memberLayer.id)) {
-            group.forEach(layerId => layerManager.getLayerById(layerId).select());
-          }
-        });
-      }
-
       isLayerOverlapped(subjectLayer) {
         for (var layer of this.layers) {
           if (layer.isOverlapping(subjectLayer)) return true;
@@ -516,6 +598,13 @@
         updateFunc();
         this.renderAll();
       }
+      
+      tidyAllJoints(layersToDelete) {
+        for (var layer of this.layers) {
+          layer.joints = layer.joints.filter(joint => !layersToDelete.includes(joint.layerId));
+          layer.tidyJoints();
+        }
+      }
 
       tidyLayers() {
         // Find layer IDs for dereferencing 
@@ -525,19 +614,10 @@
         this.layers = this.layers.filter(layer => !layersToDelete.includes(layer.id));
 
         // Delete references to empty layers in groups
-        var index = 0;
-        for (var layerGroup of this.layerGroups) {
-          this.layerGroups[index] = layerGroup.filter(layerId => !layersToDelete.includes(layerId));
-          index ++;
-        }
+        this.groupManager.tidy(layersToDelete);
 
         // Delete references to empty layers in layer joints
-        for (var layer of this.layers) {
-          layer.joints = layer.joints.filter(joint => !layersToDelete.includes(joint.layerId));
-        }
-
-        // Tidy empty groups 
-        this.layerGroups = this.layerGroups.filter(group => group.length);
+        this.tidyAllJoints(layersToDelete);
 
         this.capture();
       }
@@ -557,10 +637,10 @@
 
       capture() {
         this.historyCursor = 0;
-        this.layerHistory.unshift(this.copyLayers(this.layers));
+        this.layerHistory.unshift(this.copyReplaceLayers(this.layers));
       }
 
-      copyLayers(layers) {
+      copyReplaceLayers(layers) {
         return layers.map(layer => layer.copy(true));
       }
 
@@ -569,14 +649,14 @@
         this.historyCursor = (this.historyCursor < limit)? this.historyCursor + 1: limit;
         // Copy historic layers to avoid mutating them now that they're current.
         // Past will otherwise show as present...
-        this.layers = this.copyLayers(this.layerHistory[this.historyCursor]); 
+        this.layers = this.copyReplaceLayers(this.layerHistory[this.historyCursor]); 
       }
 
       redo() {
         this.historyCursor = (this.historyCursor > 0)? this.historyCursor - 1: 0;
         // Copy historic layers to avoid mutating them now that they're current.
         // Past will otherwise show as present...
-        this.layers = this.copyLayers(this.layerHistory[this.historyCursor]);
+        this.layers = this.copyReplaceLayers(this.layerHistory[this.historyCursor]);
       }
       
       setSelectPixel(selectedPixel) {
@@ -599,15 +679,6 @@
         this.findJoints(selectedLayers);
       }
 
-      movingMouseOverEvent(event) {
-        let activePixel = canvas.getPixelById(event.target.id);
-        let lastPixelSelected = this.getSelectPixel();
-        let verticalDiff = activePixel.row - lastPixelSelected.row;
-        let lateralDiff = activePixel.col - lastPixelSelected.col;
-        this.moveSelectedLayers(verticalDiff, lateralDiff);
-        this.setSelectPixel(activePixel);
-      }
-    
       findJoints(jointProbingLayers) {
         for (var layer of this.layers) {
           if (layer.isSelected()) continue;
@@ -637,56 +708,17 @@
         }
       }
 
-      clearAreaSelection() {
-        this.areaSelectionPixels.forEach(pixel => pixel.renderNormal());
-        this.areaSelectionPixels = [];
-      }
+      // Generic multi-layer based events...
 
-      areaSelectingMouseUpEvent(event) {
-        this.clearAreaSelection();
-        this.getSelectedLayers().forEach(layer => layer.renderSelected());
-      }
-      
-      areaSelectingMouseOverEvent(event) {
-        this.clearAreaSelection();
-        let firstPixel = this.getSelectPixel();
+      movingMouseOverEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
-
-        let lateralDiff = activePixel.col - firstPixel.col;
-        let verticalDiff = activePixel.row - firstPixel.row;
-        let total = Math.abs(lateralDiff * verticalDiff)
-
-        var drawRow = firstPixel.row;
-        var drawCol = firstPixel.col;
-        for (var i = 0; i < Math.abs(verticalDiff); i ++) {
-          for (var x = 0; x < Math.abs(lateralDiff); x ++) {
-            let pixel = canvas.getPixelByRowCol(parseInt(drawRow), parseInt(drawCol));
-            this.areaSelectionPixels.push(pixel);
-            pixel.renderAreaSelected();
-            drawCol += lateralDiff / Math.abs(lateralDiff);
-          }
-          drawRow += verticalDiff / Math.abs(verticalDiff);
-          drawCol = firstPixel.col;
-        }
-
-        this.selectLayersInAreaSelection();
+        let lastPixelSelected = this.getSelectPixel();
+        let verticalDiff = activePixel.row - lastPixelSelected.row;
+        let lateralDiff = activePixel.col - lastPixelSelected.col;
+        this.moveSelectedLayers(verticalDiff, lateralDiff);
+        this.setSelectPixel(activePixel);
       }
-
-      selectLayersInAreaSelection() {
-        for (var layer of this.layers) {
-          let layerPixelIds = layer.pixels.map(pixel => pixel.id());
-          let selectedPixelIds = this.areaSelectionPixels.map(pixel => pixel.id());
-          if (layerPixelIds.filter(pixel => !selectedPixelIds.includes(pixel)).length) {
-            if (layer.isSelected()) {
-              layer.unselect();
-            }
-          } else {
-            layer.select();
-            modeMaster.change("select", "selected");
-          }
-        }
-      }
-
+    
       selectedArrowKeyDownEvent(event) {
         var verticalDiff = 0;
         var lateralDiff = 0;
@@ -707,10 +739,47 @@
         this.moveSelectedLayers(verticalDiff, lateralDiff);
         this.capture();
       }
+
+      deleteLayersEvent(event) {
+        this.refresh(() => this.deleteSelectedLayers());
+      }
+
+      copySelectedLayersEvent(event) {
+        this.refresh(() => this.copyAndRenderSelectedLayers());
+      }
+
+      undoEvent(event) {
+        this.refresh(() => this.undo());
+      }
+
+      redoEvent(event) {
+        this.refresh(() => this.redo());
+      }
+
+      groupSelectedLayersEvent(event) {
+        this.groupManager.groupLayers(this.getSelectedLayers());
+      }
+
+      ungroupSelectedLayersEvent(event) {
+        this.groupManager.ungroupLayers(this.getSelectedLayers());
+        layerManager.unselectAll();
+      }
+
+      erasePixelEvent(event) {
+        // TODO: This only really works for free draw layers. Also bug if erase resize pixels. 
+        let activePixel = canvas.getPixelById(event.target.id);
+        let layer = this.getLayerByPixelId(activePixel.id());
+        if (layer) layer.erasePixel(activePixel.id());
+        activePixel.clear();
+      }
     }
     
 
     class Layer {
+
+      lateralChar = "―";
+      verticalChar = "|";
+
       constructor(firstPixelId) {
         this.id = this.makeId();
         this.pixels = [];
@@ -756,7 +825,7 @@
             modeMaster.add("moving");
           }
           layer.select();
-          if (!modeMaster.has("ctrl")) layerManager.selectGroupByMemberLayer(layer);
+          if (!modeMaster.has("ctrl")) layerManager.selectGroupsByMemberLayer(layer);
         }
       }
 
@@ -825,12 +894,57 @@
         this.pixels.forEach((pixel) => pixel.clear());
       }
 
-      copy(id=false) {
+      copyRenameJointLayerIds() {
+        var index = 0;
+        for (var joint of this.joints) {
+          this.joints[index].layerId = joint.layerId + "c!";
+          index ++;
+        }
+      }
+
+      tidyJoints() {
+        let jointPixels = this.getJointPixels();
+        for (var joint of this.joints) {
+          let layer = layerManager.getLayerById(joint.layerId);
+          if (!layer) {
+            // If the joining layer doesn't exist, then remove the reference.
+            // This can happen if a layer has been copied without it's 
+            // joining layer. The layer will now hold a copied joint reference
+            // without a physical joint or the copied reference actually pointing
+            // to a new joint.
+            this.unjoin(joint.layerId, joint.jointIndex);
+            continue;
+          }
+          let jointPixel = jointPixels[joint.jointIndex];
+
+          // We can use probeJoin here to clean up dangling joints.
+          // By probing, if the joints are no longer together, it will
+          // unjoin.
+          let state = layer.probeJoin(this, joint.jointIndex, jointPixel);
+          if (state != 2) {
+            debugError("had to unjoin dangling join");
+          }
+        }
+      }
+
+      copy(replace=false) {
         let layerCopy = new this.constructor(this.firstTouchedPixel.id());
-        if (id) layerCopy.id = this.id;
+        if (replace) {
+          // This is an exact copy, mainly used for capturing snapshots,
+          // reverting history.
+          layerCopy.id = this.id;
+          layerCopy.joints = this.joints.map(joint => joint); 
+        } else {
+          // Here we use the same ID to maintain identity / relationships in
+          // copied layer references (e.g joints), but add c! to provide a new identity.
+          // If a layer is copied, it assumes joints have been copied with it, and references
+          // are updated with c! too. Otherwise, these joints will be deleted in this.tidyJoints.
+          layerCopy.id = this.id + "c!"; 
+          layerCopy.joints = this.joints.map(joint => structuredClone(joint)); 
+          layerCopy.copyRenameJointLayerIds();
+        }
         layerCopy.pixels = this.pixels.map(pixel => pixel);
         layerCopy.values = this.values.map(value => value);
-        layerCopy.joints = this.joints.map(joint => joint); 
         return layerCopy;
       }
 
@@ -882,10 +996,20 @@
         // Only joint layers will have joints.
         for (var joint of this.joints) {
           let layer = layerManager.getLayerById(joint.layerId);
-          if (!layer) continue;
+
+          // If the layer is selected, it must be moving, meaning
+          // it doesn't need moving here aswell.
+          if (!layer || layer.isSelected()) continue;
+
           let jointPixel = this.getJointPixels()[joint.jointIndex];
           let resizePixel = layer.getResizeFirstPixel(originalJointPixels[joint.jointIndex]);
-          if (!resizePixel) return;
+
+          // The resize pixel may not get found if the main layer has
+          // somehow moved without the jointed layer. This should not happen.
+          if (!resizePixel) {
+            debugError("resize pixel not found");
+            return;
+          }
           layer.setFirstTouchedPixel(resizePixel);
           layer.drawLayer(jointPixel.id()); 
         }
@@ -940,23 +1064,6 @@
       }
     }
     
-
-    function deleteLayersEvent() {
-      modeMaster.reset("select");
-      layerManager.refresh(() => layerManager.deleteSelectedLayers());
-    }
-
-    function copySelectedLayersEvent() {
-      layerManager.refresh(() => layerManager.copyAndRenderSelectedLayers());
-    }
-
-    function undoEvent() {
-      layerManager.refresh(() => layerManager.undo());
-    }
-
-    function redoEvent() {
-      layerManager.refresh(() => layerManager.redo());
-    }
 
     /////////////////////////
     ////// TEXT LAYER ///////
@@ -1139,6 +1246,7 @@
     /////////////////////////
 
     class BaseLineLayer extends Layer {
+      
       constructor(firstPixelId) {
         super(firstPixelId);
         this.hasArrowLeft = modeMaster.has("arrow-left");
@@ -1199,8 +1307,9 @@
               if (jointPixel.is(lineEndPixel)) {
                 state = 2;
                 layer.join(this.id, jointIndex);
+                // Break to avoid unjoining in the following iteration.
+                break;
               }
-              break;
             }
           layer.unjoin(this.id, jointIndex);
         }
@@ -1252,9 +1361,9 @@
         var value = "x";
         
         if (Math.abs(verticalStep) < 0.3){
-          value = "─";
+          value = this.lateralChar;
         } else if (Math.abs(lateralStep) < 0.5) {
-          value = "|";
+          value = this.verticalChar;
         } else if (toPixel.isLeft(fromPixel) && toPixel.isBelow(fromPixel)) {
           value = "/";
         } else if (toPixel.isRight(fromPixel) && toPixel.isBelow(fromPixel)) {
@@ -1330,8 +1439,8 @@
       drawLayer(activePixelId) {
         let activePixel = canvas.getPixelById(activePixelId);
         let [fromPixel, toPixel] = this.getFromToPixels(activePixel);
-        var lateralArrowValue = "─";
-        var verticalArrowValue = "|";
+        var lateralArrowValue = this.lateralChar;
+        var verticalArrowValue = this.verticalChar;
         
         if (toPixel.isAbove(fromPixel)) {
           verticalArrowValue = (this.hasArrowRight) ? "^" : verticalArrowValue;
@@ -1352,13 +1461,13 @@
 
         this.empty();
         for (var i = 0; i <= Math.abs(lateralDiff); i ++) {
-          this.draw(canvas.getPixelByRowCol(fromPixel.row, drawCol), (i == 0)? lateralArrowValue: "─");
+          this.draw(canvas.getPixelByRowCol(fromPixel.row, drawCol), (i == 0)? lateralArrowValue: this.lateralChar);
           drawCol += lateralDiff / Math.abs(lateralDiff);
         }
         for (var i = 0; i <= Math.abs(verticalDiff); i ++) {
-          var value = "|";
+          var value = this.verticalChar;
           if (i == Math.abs(verticalDiff)) value = "v";
-          this.draw(canvas.getPixelByRowCol(drawRow, toPixel.col), (i == Math.abs(verticalDiff))? verticalArrowValue: "|");
+          this.draw(canvas.getPixelByRowCol(drawRow, toPixel.col), (i == Math.abs(verticalDiff))? verticalArrowValue: this.verticalChar);
           drawRow += verticalDiff / Math.abs(verticalDiff);
         }
       }
@@ -1489,54 +1598,29 @@
         let activePixel = canvas.getPixelById(activePixelId);
         if (activePixel.isAbove(this.firstTouchedPixel)) {
           for(var row = this.firstTouchedPixel.row; row >= activePixel.row; row --) {
-            this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), "|");
-            this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
+            this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), this.verticalChar);
+            this.draw(canvas.getPixelByRowCol(row, activePixel.col), this.verticalChar);
           }
         } else if (activePixel.isBelow(this.firstTouchedPixel)) {
           for(var row = this.firstTouchedPixel.row; row <= activePixel.row; row ++) {
-            this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), "|");
-            this.draw(canvas.getPixelByRowCol(row, activePixel.col), "|");
+            this.draw(canvas.getPixelByRowCol(row, this.firstTouchedPixel.col), this.verticalChar);
+            this.draw(canvas.getPixelByRowCol(row, activePixel.col), this.verticalChar);
           }
         }
         if (activePixel.isLeft(this.firstTouchedPixel)) {
           for(var col = this.firstTouchedPixel.col; col >= activePixel.col; col --) {
-            this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), "─");
-            this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
+            this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), this.lateralChar);
+            this.draw(canvas.getPixelByRowCol(activePixel.row, col), this.lateralChar);
           }
         } else if (activePixel.isRight(this.firstTouchedPixel)) {
           for(var col = this.firstTouchedPixel.col; col <= activePixel.col; col ++) {
-            this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), "─");
-            this.draw(canvas.getPixelByRowCol(activePixel.row, col), "─");
+            this.draw(canvas.getPixelByRowCol(this.firstTouchedPixel.row, col), this.lateralChar);
+            this.draw(canvas.getPixelByRowCol(activePixel.row, col), this.lateralChar);
           }
         }
         this.moveJointLayers(originalJoints);
       } 
     }
-
-    
-    ///////////////////
-    ////// ERASE //////
-    ///////////////////
-
-    function erasingMouseUpEvent(event) {
-    }
-
-    function erasePixelEvent(event) {
-      let activePixel = canvas.getPixelById(event.target.id);
-      let layer = layerManager.getLayerByPixelId(activePixel.id());
-      if (layer) layer.erasePixel(activePixel.id());
-      activePixel.clear();
-    }
-
-    function eraseMouseDownEvent(event) {
-      erasePixelEvent(event);
-    }
-
-
-    function erasingMouseOverEvent(event) {
-      erasePixelEvent(event);
-    }
-      
 
     ////////////////
     //// PIXEL /////
@@ -1805,19 +1889,19 @@
         new MenuButton("Select",
           [], [modeMaster.reset, "select"], ["selected", "select"]),
         new MenuButton("Undo",
-          [], [], [], undoEvent),
+          [], [], [], () => layerManager.undoEvent()),
         new MenuButton("Redo",
-          [], [], [], redoEvent),
+          [], [], [], () => layerManager.redoEvent()),
         new MenuButton("Restart",
           [], [], [], () => layerManager.refresh(() => layerManager.empty())),
         new MenuButton("Copy",
-          [modeMaster.has, "selected"], [], [], copySelectedLayersEvent),
+          [modeMaster.has, "selected"], [], [], () => layerManager.copySelectedLayersEvent()),
         new MenuButton("Group",
-          [modeMaster.has, "selected"], [], [], () => layerManager.groupSelectedLayers()),
+          [modeMaster.has, "selected"], [], [], () => layerManager.groupSelectedLayersEvent()),
         new MenuButton("Ungroup",
-          [modeMaster.has, "selected"], [], [], () => layerManager.ungroupSelectedLayers()),
+          [modeMaster.has, "selected"], [], [], () => layerManager.ungroupSelectedLayersEvent()),
         new MenuButton("Delete",
-          [modeMaster.has, "selected"], [], [], deleteLayersEvent),
+          [modeMaster.has, "selected"], [modeMaster.reset, "select"], [], () => layerManager.deleteLayersEvent()),
         new MenuButton("<",
           [modeMaster.has, "draw", "line"], [modeMaster.toggle, "arrow-left"], ["arrow-left"]),
         new MenuButton(">",
@@ -1855,6 +1939,7 @@
     // MANAGERS
     modeMaster = new ModeMaster();
     layerManager = new LayerManager();
+    areaSelectManager = new AreaSelectManager();
     eventManager = new EventManager();
     
     // COMPONENTS
