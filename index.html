@@ -232,7 +232,7 @@
           keyEvents: {
             keypress: {
               "*": [
-                new EventDef([modeMaster.has, "writing", "text"], [], TextLayer.keyDown),
+                new EventDef([modeMaster.has, "writing", "text"], [], TextLayer.keyDownEvent),
               ],
             },
             keydown: {
@@ -254,7 +254,7 @@
               ],
               [keyGroup("back", "delete", ...ArrowKeyGroup)]: [
                 new EventDef([modeMaster.has, "writing", "text"],
-                    [], TextLayer.keyDown),
+                    [], TextLayer.keyDownEvent),
               ],
               [keyGroup("ctrl")]: [
                 new EventDef([],
@@ -307,21 +307,21 @@
           mouseEvents: {
             mousedown: [
               new EventDef([modeMaster.has, "draw", "text"],
-                  [modeMaster.change, "draw", "writing"], TextLayer.drawMouseDown),
+                  [modeMaster.change, "draw", "writing"], TextLayer.drawMouseDownEvent),
               new EventDef([modeMaster.has, "draw", "free-line"],
-                  [modeMaster.change, "draw", "drawing"], FreeLineLayer.drawMouseDown),
+                  [modeMaster.change, "draw", "drawing"], FreeLineLayer.drawMouseDownEvent),
               new EventDef([modeMaster.has, "draw", "step-line"],
-                  [modeMaster.change, "draw", "drawing"], StepLineLayer.drawMouseDown),
+                  [modeMaster.change, "draw", "drawing"], StepLineLayer.drawMouseDownEvent),
               new EventDef([modeMaster.has, "draw", "free"],
-                  [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDown),
+                  [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDownEvent),
               new EventDef([modeMaster.has, "draw", "square"],
-                  [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDown),
+                  [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDownEvent),
               new EventDef([modeMaster.has, "writing", "text"],
-                  [], TextLayer.writingMouseDown),
+                  [], TextLayer.writingMouseDownEvent),
               new EventDef([modeMaster.has, "erase"],
                   [modeMaster.change, "erase", "erasing"], (event) => layerManager.erasePixelEvent(event)),
               new EventDef([modeMaster.hasOr, "selected", "select"], 
-                  [], Layer.selectMouseDown),
+                  [], Layer.selectMouseDownEvent),
             ],
             mouseover: [
               new EventDef([modeMaster.has, "draw", "free-line"],
@@ -329,13 +329,13 @@
               new EventDef([modeMaster.has, "draw", "step-line"],
                   [], StepLineLayer.drawMouseOver),
               new EventDef([modeMaster.has, "drawing", "free"],
-                  [], FreeLayer.drawingMouseOver),
+                  [], FreeLayer.drawingMouseOverEvent),
               new EventDef([modeMaster.has, "drawing", "free-line"],
-                  [], FreeLineLayer.drawingMouseOver),
+                  [], FreeLineLayer.drawingMouseOverEvent),
               new EventDef([modeMaster.has, "drawing", "step-line"],
-                  [], StepLineLayer.drawingMouseOver),
+                  [], StepLineLayer.drawingMouseOverEvent),
               new EventDef([modeMaster.has, "drawing", "square"],
-                  [], SquareLayer.drawingMouseOver),
+                  [], SquareLayer.drawingMouseOverEvent),
               new EventDef([modeMaster.has, "erasing"],
                   [], (event) => layerManager.erasePixelEvent(event)),
               new EventDef([modeMaster.has, "moving"],
@@ -343,15 +343,15 @@
               new EventDef([modeMaster.has, "area-selecting"],
                   [], (event) => areaSelectManager.areaSelectingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "resizing", "free-line"],
-                  [], FreeLineLayer.resizingMouseOver),
+                  [], FreeLineLayer.resizingMouseOverEvent),
               new EventDef([modeMaster.has, "resizing", "step-line"],
-                  [], StepLineLayer.resizingMouseOver),
+                  [], StepLineLayer.resizingMouseOverEvent),
               new EventDef([modeMaster.has, "resizing", "square"],
-                  [], SquareLayer.resizingMouseOver),
+                  [], SquareLayer.resizingMouseOverEvent),
             ],
             dblclick: [
               new EventDef([modeMaster.has, "selected", "text"],
-                  [modeMaster.change, "selected", "writing"], TextLayer.selectedDoubleClick),
+                  [modeMaster.change, "selected", "writing"], TextLayer.selectedDoubleClickEvent),
             ]
           }
         }
@@ -795,7 +795,7 @@
         return randomInt(1, 100000).toString() + Date.now().toString();
       }
 
-      static selectMouseDown(event) {
+      static selectMouseDownEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         let selectedLayers = layerManager.getSelectedLayers();
@@ -1080,19 +1080,19 @@
         this.layer = null;
       }
       
-      static selectedDoubleClick(event) {
+      static selectedDoubleClickEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         layer.moveCursorToPixel(activePixel);
       }
 
-      static drawMouseDown(event) {
+      static drawMouseDownEvent(event) {
         let layer = new TextLayer(event.target.id);
         layerManager.add(layer);
         layer.firstTouchedPixel.renderFocus();
       }
 
-      static writingMouseDown(event) {
+      static writingMouseDownEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         if (layer) {
@@ -1103,7 +1103,7 @@
         }
       }
 
-      static keyDown(event) {
+      static keyDownEvent(event) {
         let selectedLayers = layerManager.getSelectedLayers();
         let layer = (selectedLayers.length) ? selectedLayers[0]: layerManager.getLatestLayer();
         layer.writeChar(event.keyCode);
@@ -1255,13 +1255,13 @@
         this.keepArrowStart = null;
       }
 
-      static drawingMouseOver(event) {
+      static drawingMouseOverEvent(event) {
         let layer = layerManager.getLatestLayer();
         layerManager.refresh(() => layer.drawLayer(event.target.id));
         layerManager.findJoints([layer]);
       }
 
-      static resizingMouseOver(event) {
+      static resizingMouseOverEvent(event) {
         let layer = layerManager.getSelectedLayers()[0];
         layerManager.refresh(() => layer.drawLayer(event.target.id));
         layerManager.findJoints([layer]);
@@ -1338,7 +1338,7 @@
       
       name = "free-line"
 
-      static drawMouseDown(event) {
+      static drawMouseDownEvent(event) {
         let layer = new FreeLineLayer(event.target.id);
         layerManager.add(layer);
       }
@@ -1431,7 +1431,7 @@
 
       name = "step-line"
 
-      static drawMouseDown(event) {
+      static drawMouseDownEvent(event) {
         let layer = new StepLineLayer(event.target.id);
         layerManager.add(layer);
       }
@@ -1481,13 +1481,13 @@
       
       name = "free";
 
-      static drawMouseDown(event) {
+      static drawMouseDownEvent(event) {
         let layer = new FreeLayer(event.target.id);
         layerManager.add(layer);
         layerManager.refresh(() => layer.drawFree(event.target.id));
       }
 
-      static drawingMouseOver(event) {
+      static drawingMouseOverEvent(event) {
         let layer = layerManager.getLatestLayer();
         layerManager.refresh(() => layer.drawFree(event.target.id));
       }
@@ -1506,17 +1506,17 @@
       
       name = "square" 
 
-      static drawMouseDown(event) {
+      static drawMouseDownEvent(event) {
         let layer = new SquareLayer(event.target.id);
         layerManager.add(layer);
       }
 
-      static drawingMouseOver(event) {
+      static drawingMouseOverEvent(event) {
         let layer = layerManager.getLatestLayer();
         layerManager.refresh(() => layer.drawLayer(event.target.id));
       }
 
-      static resizingMouseOver(event) {
+      static resizingMouseOverEvent(event) {
         let layer = layerManager.getSelectedLayers()[0];
         layerManager.refresh(() => layer.drawLayer(event.target.id));
       }
