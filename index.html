@@ -338,12 +338,12 @@
                   [], SquareLayer.drawingMouseOverEvent),
               new EventDef([modeMaster.has, "erasing"],
                   [], (event) => layerManager.erasePixelEvent(event)),
+              new EventDef([modeMaster.has, "area-selecting"],
+                  [], (event) => areaSelectManager.areaSelectingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "select"],
                   [], (event) => layerManager.selectMouseOverEvent(event)),
               new EventDef([modeMaster.has, "moving"],
                   [], (event) => layerManager.movingMouseOverEvent(event)),
-              new EventDef([modeMaster.has, "area-selecting"],
-                  [], (event) => areaSelectManager.areaSelectingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "resizing", "free-line"],
                   [], (event) => layerManager.resizingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "resizing", "step-line"],
@@ -475,7 +475,7 @@
       
       areaSelectingMouseOverEvent(event) {
         this.clearAreaSelection();
-        let firstPixel = layerManager.selectedPixel;
+        let firstPixel = layerManager.getSelectPixel();
         let activePixel = canvas.getPixelById(event.target.id);
 
         let lateralDiff = activePixel.col - firstPixel.col;
@@ -893,9 +893,9 @@
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         let selectedLayers = layerManager.getSelectedLayers();
+        layerManager.setSelectPixel(activePixel);
         if (!layer) {
           modeMaster.add("area-selecting");
-          layerManager.setSelectPixel(activePixel);
         }
         // Unselect all if...
         // 1. clicked-off (no layer selected)
@@ -913,7 +913,6 @@
           } else {
             modeMaster.add("moving");
           }
-          layerManager.setSelectPixel(activePixel);
           if (!modeMaster.has("ctrl")) layerManager.selectGroupsByMemberLayer(layer);
         }
       }
