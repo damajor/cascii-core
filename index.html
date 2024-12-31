@@ -31,18 +31,16 @@
 
     TODO
     FE 
+    - tables and diamonds
     - cmd v ctrl for Mac
-    - resize improvements: resize by % to avoid reverse
     - make joint pixels x
     - improve diagonals - filler lines
     - mini success messages
     - clever resize: text in boxes main issue
-    - arrows editable
+    - resize improvements: resize by % to avoid reverse
     - file break up?
     - export 
     - clever free draw straight chars
-    - more shapes: diagnol lines, tables, diamonds, triangles
-    - arrow headed lines
     - proper design / config
     - unicode v ascii
     - themes
@@ -54,10 +52,8 @@
       - guest auto save (refresh keeps)
       - plain text request / curl
 
-    BUGS / IMPROVEMENTS:
-    - writing cursor move focus one only
-    - cannot area select right most column
-    - pushing joint shapes off canvas will unjoin some
+    IMPROVEMENTS:
+      - copy layers with joints by canvas boundry will break joint.
 
     var out = "";
     for(var row = 0; row < canvas.rowCount; row ++ ) {
@@ -193,6 +189,7 @@
         this.remove("square");
         this.remove("free-line");
         this.remove("step-line");
+        this.remove("line");
         this.remove("free");
         this.remove("text");
       }
@@ -200,6 +197,8 @@
       setLayer(name) {
         this.removeLayers();
         this.add(name);
+
+        if (name.includes("line")) this.add("line");
       }
     }
 
@@ -272,7 +271,7 @@
               ],
               [keyGroup("a")]: [
                 new EventDef([modeMaster.has, "ctrl"],
-                    [modeMaster.reset, "selected"], () => layerManager.selectAll()),
+                    [modeMaster.reset, "selected"], (event) => layerManager.selectAllEvent(event)),
               ],
               [keyGroup("g")]: [
                 new EventDef([modeMaster.has, "selected"],
@@ -303,7 +302,7 @@
               new EventDef([modeMaster.has, "area-selecting"],
                   [modeMaster.remove, "area-selecting"], (event) => areaSelectManager.areaSelectingMouseUpEvent(event)),
               new EventDef([modeMaster.has, "resizing"],
-                  [modeMaster.reset, "selected"], () => layerManager.tidyLayers()),
+                  [modeMaster.remove, "resizing"], () => layerManager.tidyLayers()),
             ],
           }
         }, 
@@ -344,8 +343,6 @@
                   [], (event) => layerManager.erasePixelEvent(event)),
               new EventDef([modeMaster.has, "area-selecting"],
                   [], (event) => areaSelectManager.areaSelectingMouseOverEvent(event)),
-              new EventDef([modeMaster.has, "select"],
-                  [], (event) => layerManager.selectMouseOverEvent(event)),
               new EventDef([modeMaster.has, "moving"],
                   [], (event) => layerManager.movingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "resizing", "free-line"],
@@ -354,6 +351,8 @@
                   [], (event) => layerManager.resizingMouseOverEvent(event)),
               new EventDef([modeMaster.has, "resizing", "square"],
                   [], (event) => layerManager.resizingMouseOverEvent(event)),
+              new EventDef([modeMaster.hasOr, "selected", "select"],
+                  [], (event) => layerManager.selectMouseOverEvent(event)),
             ],
             dblclick: [
               new EventDef([modeMaster.has, "selected", "text"],
@@ -374,7 +373,6 @@
       assignKeyEventDefs(element, defs) {
         Object.keys(defs).forEach((eventType) => {
           element.addEventListener(eventType, (event) => {
-            event.preventDefault();
             for (var keys in defs[eventType]) {
               keys.split(",").forEach(key => {
                 if (key == event.keyCode.toString() || key == "*") {
@@ -489,11 +487,10 @@
 
         var drawRow = firstPixel.row;
         var drawCol = firstPixel.col;
-        for (var i = 0; i < Math.abs(verticalDiff); i ++) {
-          for (var x = 0; x < Math.abs(lateralDiff); x ++) {
+        for (var row = 0; row <= Math.abs(verticalDiff); row ++) {
+          for (var col = 0; col <= Math.abs(lateralDiff); col ++) {
             let pixel = canvas.getPixelByRowCol(parseInt(drawRow), parseInt(drawCol));
             this.areaSelectionPixels.push(pixel);
-            pixel.renderAreaSelected();
             drawCol += lateralDiff / Math.abs(lateralDiff);
           }
           drawRow += verticalDiff / Math.abs(verticalDiff);
@@ -501,6 +498,7 @@
         }
 
         this.selectLayersInAreaSelection();
+        this.areaSelectionPixels.forEach(pixel => pixel.renderAreaSelected());
       }
 
       selectLayersInAreaSelection() {
@@ -563,30 +561,42 @@
       }
 
       copyAndRenderSelectedLayers() {
+        // Copy layers and create a lookup for old to new. This can be used
+        // by various functions to update new layers with appropriate relationships
+        // and states (given those of old layers). 
+        let layerLookup = {};
         let layersToCopy = this.getSelectedLayers();
+        for (var layer of layersToCopy) layerLookup[layer.id] = {old: layer, new: layer.copyAndRender()};
+        this.repointJointsForCopiedLayers(layerLookup);
+        this.regroupForCopiedLayers(layerLookup);
+      }
+
+      regroupForCopiedLayers(layerLookup) {
+        // This groups the newly copied layers which were grouped before being copied.
+        let layersToCopy = Object.values(layerLookup).map(oldNewLayer => oldNewLayer.old);
         let groupsToCopy = this.groupManager.findGroupsFromLayers(layersToCopy);
-
-        // Render layers in groups
         for (var group of groupsToCopy) {
-          var newGroup = group.map(layerId => this.copyAndRender(this.getLayerById(layerId)));
+          var newGroup = group.map(layerId => layerLookup[layerId].new);
           this.groupManager.groupLayers(newGroup);
-        }
-
-        // Render remaining layers
-        for (var layer of layersToCopy) {
-          if (groupsToCopy.flat().includes(layer.id)) continue;
-          this.copyAndRender(layer);
         }
         this.capture();
       }
 
-      copyAndRender(layer) {
-        let layerCopy = layer.copy();
-        while (this.isLayerOverlapped(layerCopy)) layerCopy.move(1, 1);
-        this.add(layerCopy); 
-        layer.unselect();
-        layerCopy.select();
-        return layerCopy;
+      repointJointsForCopiedLayers(layerLookup) {
+        // This goes through joints of old layers and updates
+        // the joint layers to the newly copied joints if they 
+        // were included in the copied selection / are in the lookup. 
+        for (var oldLayerId in layerLookup) {
+          let oldNewLayer = layerLookup[oldLayerId];
+          for (var joint of oldNewLayer.old.joints) {
+            let jointOldNewLayer = layerLookup[joint.layerId];
+            if (jointOldNewLayer) {
+              let newJoint = structuredClone(joint);
+              newJoint.layerId = jointOldNewLayer.new.id;
+              oldNewLayer.new.joints.push(newJoint);
+            }
+          }
+        }
       }
 
       isLayerOverlapped(subjectLayer) {
@@ -595,10 +605,6 @@
         }
       }
       
-      selectAll() {
-        this.layers.forEach(layer => layer.select());
-      }
-
       unselectAll() {
         this.layers.forEach(layer => layer.unselect());
         modeMaster.removeLayers();
@@ -677,22 +683,28 @@
       getSelectPixel() {
         return this.selectedPixel;
       }
+        
+      moveLayersAtomically(layers, verticalDiff, lateralDiff) {
+        // If multiple layers are selected, they should all move
+        // together to avoid breaking joints. If one layer hits
+        // the canvas boundary, none should move. Hence, here
+        // we ensure all moves are doable before executing them.
+        let moves = {};
+        for (let layer of layers) {
+          let movePixels = layer.getMove(verticalDiff, lateralDiff);
+          if (!movePixels.length) return;
+          moves[layer.id] = movePixels;
+        }
+        for (let layer of layers) {
+          let originalJoints = layer.getJointPixels();
+          layer.moveByPixels(moves[layer.id]);
+          layer.resizeJointLayers(originalJoints, false);
+        }
+      }
 
       moveSelectedLayers(verticalDiff, lateralDiff) {
         let selectedLayers = this.getSelectedLayers();
-        this.refresh(() => {
-          selectedLayers.forEach((layer) => {
-            let originalJoints = layer.getJointPixels();
-            layer.move(verticalDiff, lateralDiff);
-
-            // Resize selected joint layers is false here because moving
-            // them takes priority, and doing both is error prone. They will move
-            // with their joining layer anyway, meaning the joint is persisted.
-            // Otherwise, a probed joining layer could unjoin because it's moved
-            // twice, from the main move routine and the resize joint routine. 
-            layer.resizeJointLayers(originalJoints, false);
-          });
-        });
+        this.refresh(() => this.moveLayersAtomically(selectedLayers, verticalDiff, lateralDiff));
         this.findJoints(selectedLayers);
       }
 
@@ -784,7 +796,7 @@
 
           if (!layer.isResizable()) {
             // If the layer is not resizable, the best thing we can do is move it.
-            this.refresh(() => layer.move(verticalDiff, lateralDiff));
+            this.refresh(() => layer.moveByDiff(verticalDiff, lateralDiff));
             continue;
           }
 
@@ -849,6 +861,8 @@
           for (var resizePixel of layer.getResizePixels()) {
             if (activePixel.isNear(resizePixel)) {
               resizePixel.renderResizable();
+            } else if (layer.isSelected()) {
+              resizePixel.renderSelected();
             } else {
               resizePixel.renderNormal();
             }
@@ -871,6 +885,19 @@
       ungroupSelectedLayersEvent(event) {
         this.groupManager.ungroupLayers(this.getSelectedLayers());
         layerManager.unselectAll();
+      }
+      
+      redrawLinesEvent(direction) {
+        for (var layer of this.getSelectedLayers()) {
+          if (layer.name.includes("line")) {
+            this.refresh(() => layer.toggleArrows(direction));
+          }
+        }
+      }
+
+      selectAllEvent(event) {
+        event.preventDefault();
+        this.layers.forEach(layer => layer.select());
       }
 
       erasePixelEvent(event) {
@@ -1028,14 +1055,6 @@
         this.pixels.forEach((pixel) => pixel.clear());
       }
 
-      copyRenameJointLayerIds() {
-        var index = 0;
-        for (var joint of this.joints) {
-          this.joints[index].layerId = joint.layerId + "c!";
-          index ++;
-        }
-      }
-
       tidyJoints() {
         let jointPixels = this.getJointPixels();
         for (var joint of this.joints) {
@@ -1066,19 +1085,22 @@
         if (replace) {
           // This is an exact copy, mainly used for capturing snapshots,
           // reverting history.
+          // We only copy joints here, as other use cases need to manually
+          // repoint joints to new layers.
+          layerCopy.joints = this.joints.map(joint => structuredClone(joint));
           layerCopy.id = this.id;
-          layerCopy.joints = this.joints.map(joint => joint); 
-        } else {
-          // Here we use the same ID to maintain identity / relationships in
-          // copied layer references (e.g joints), but add c! to provide a new identity.
-          // If a layer is copied, it assumes joints have been copied with it, and references
-          // are updated with c! too. Otherwise, these joints will be deleted in this.tidyJoints.
-          layerCopy.id = this.id + "c!"; 
-          layerCopy.joints = this.joints.map(joint => structuredClone(joint)); 
-          layerCopy.copyRenameJointLayerIds();
-        }
+        } 
         layerCopy.pixels = this.pixels.map(pixel => pixel);
         layerCopy.values = this.values.map(value => value);
+        return layerCopy;
+      }
+      
+      copyAndRender() {
+        let layerCopy = this.copy();
+        layerCopy.moveToFreeSpace();
+        layerManager.add(layerCopy); 
+        this.unselect();
+        layerCopy.select();
         return layerCopy;
       }
 
@@ -1099,11 +1121,16 @@
         return targetLayer.pixels.map(pixel => layerPixelIds.includes(pixel.id())).every(Boolean)
       }
       
-      renderUnselected() {
+      renderNormal() {
         this.pixels.forEach((pixel) => pixel.renderNormal());
       }
 
+      renderUnselected() {
+        this.renderNormal();
+      }
+
       renderSelected() {
+        this.getJointPixels().forEach(pixel => {if (pixel) pixel.renderNormal()});
         this.getResizePixels().forEach(pixel => pixel.renderResizable());
         this.pixels.forEach(pixel => pixel.renderSelected());
       }
@@ -1113,22 +1140,62 @@
         for (var i = 0; i < this.pixels.length; i++) this.pixels[i].setValue(this.values[i]);
       }
 
-      move(verticalDiff, lateralDiff) {
+      getMove(verticalDiff, lateralDiff) {
+        // This method can be used to inspect a move before carrying it out.
+        // Mainly, it's to check the move is safe and doesn't leave the canvas.
         let newPixels = [];
         for (var oldPixel of this.pixels) {
           let newPixel = canvas.getPixelByRowCol(
             oldPixel.row + verticalDiff,
             oldPixel.col + lateralDiff
           );
-          if (!newPixel) return;
+          if (!newPixel) return [];
           newPixels.push(newPixel);
         }
-        this.pixels = newPixels;
+
+        // This just checks joint pixels are also able to move.
+        // They might be separate from the layer pixels, and 
+        // hit a canvas boundary before the main layer does.
+        for (var jointPixel of this.getJointPixels()) {
+          let newPixel = canvas.getPixelByRowCol(
+            jointPixel.row + verticalDiff,
+            jointPixel.col + lateralDiff
+          );
+          if (!newPixel) return [];
+        }
+
+        return newPixels;
+      }
+
+      moveByDiff(verticalDiff, lateralDiff) {
+        let move = this.getMove(verticalDiff, lateralDiff);
+        if (move.length) {
+          this.pixels = move;
+          return true;
+        }
+        return false;
+      }
+
+      moveByPixels(pixels) {
+        this.pixels = pixels;
+      }
+
+      moveToFreeSpace() {
+        let directions = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
+        let directionIndex = 0;
+        while (layerManager.isLayerOverlapped(this)) {
+          // If the layer fails to move, it must be hitting the canvas boundary.
+          // In this case, we try a different direction.
+          // If the layer did move, we can keep trying to find a free space in
+          // the same direction.
+          let moved = this.moveByDiff(...directions[directionIndex]);
+          if (!moved) directionIndex ++;
+        }
       }
 
       resizeJointLayers(originalJointPixels, includeSelected=false) {
         // Only joint layers will have joints.
-        for (var joint of this.joints) {
+        for (let joint of this.joints) {
           let layer = layerManager.getLayerById(joint.layerId);
           
           // Depending on multi-select and the action being taken,
@@ -1248,10 +1315,10 @@
       static writingMouseDownEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = layerManager.getLayerByPixelId(activePixel.id());
-        if (layer) {
+        if (layer && layer.name == "text") {
           layer.moveCursorToPixel(activePixel);
         } else {
-          modeMaster.change("writing", "select");
+          modeMaster.reset("select");
           layerManager.unselectAll();
         }
       }
@@ -1263,14 +1330,16 @@
       }
 
       getJointPixels() {
-        if (this.pixels.length > 1) {
-          let firstPixel = this.getFirstPixel();
-          let lastPixel = this.getLastPixel();
-          let firstJointPixel = canvas.getPixelByRowCol(firstPixel.row, firstPixel.col - 1);
-          let lastJointPixel = canvas.getPixelByRowCol(lastPixel.row, lastPixel.col + 1);
-          if (firstJointPixel && lastJointPixel) {
-            return [firstJointPixel, lastJointPixel];
-          }
+        let firstPixel = this.getFirstPixel();
+        let lastPixel = this.getLastPixel();
+        let middlePixel = this.pixels[roundHalf(this.pixels.length / 2)];
+        if (this.pixels.length > 3) {
+           return [
+            canvas.getPixelByRowCol(firstPixel.row, firstPixel.col - 1), // Left
+            canvas.getPixelByRowCol(lastPixel.row, lastPixel.col + 1), // Right
+            canvas.getPixelByRowCol(middlePixel.row - 1, middlePixel.col), // Middle top
+            canvas.getPixelByRowCol(middlePixel.row + 1, middlePixel.col), // Middle bottom
+          ]
         }
         return [];
       }
@@ -1281,6 +1350,8 @@
       }
 
       moveCursorToPixel(pixel) {
+        this.renderNormal();
+        if (this.isSelected()) this.renderSelected();
         this.cursor = this.getPixelIndex(pixel.id()) + 1;
         pixel.renderFocus();
       }
@@ -1419,8 +1490,6 @@
         super(firstPixelId);
         this.hasArrowLeft = modeMaster.has("arrow-left");
         this.hasArrowRight = modeMaster.has("arrow-right");
-        this.keepArrowEnd = null;
-        this.keepArrowStart = null;
       }
 
       static drawMouseOver(event) {
@@ -1436,6 +1505,17 @@
             }
           }
         }
+      }
+      
+      toggleArrows(direction) {
+        this.setFirstTouchedPixel(this.getLastPixel());
+        if (direction == "left") {
+          this.hasArrowLeft = !this.hasArrowLeft;
+        }
+        if (direction == "right") {
+          this.hasArrowRight = !this.hasArrowRight;
+        }
+        this.draw(this.getFirstPixel().id(), false);
       }
 
       getEndPixels() {
@@ -1460,6 +1540,20 @@
       }
 
       getFromToPixels(activePixel) {
+        /* This method ensures lines are redrawn in the same order
+        it was previously drawn so that arrow ends appear in the 
+        same place. It also ensures consistent resizing. 
+
+        E.g if a layer has pixels [5, 4, 3, 2, 1]
+        we determine which side has been selected. 
+        FirstTouchedPixel will be the opposite to the selected pixel,
+        meaning if 1 was selected, FTP would be 5. If FTP is the first
+        pixel, it should be redrawn from there. 
+        
+        TODO explain better.
+
+        */
+
         let lastPixel = this.getLastPixel();
         let firstPixel = this.getFirstPixel();
         var fromPixel = firstPixel;
@@ -1519,44 +1613,24 @@
          
         var startValue = value;
         var endValue = value;
-        // Once a direction can be determined, work out arrows needed.
-        if (this.pixels.length > 3) {
-          if (Math.abs(verticalDiff) > Math.abs(lateralDiff)) {
-            if (toPixel.isAbove(fromPixel)) {
-              endValue = (this.hasArrowLeft || this.keepArrowEnd) ? "^" : value;
-              startValue = (this.hasArrowRight || this.keepArrowStart) ? "v" : value;
-              if (this.keepArrowEnd == null) {
-                this.keepArrowEnd = this.hasArrowLeft;
-                this.keepArrowStart = this.hasArrowRight;
-              }
-            } else {
-              endValue = (this.hasArrowLeft || this.keepArrowEnd) ? "v" : value;
-              startValue = (this.hasArrowRight || this.keepArrowStart) ? "^" : value;
-              if (this.keepArrowEnd == null) {
-                this.keepArrowEnd = this.hasArrowLeft;
-                this.keepArrowStart = this.hasArrowRight;
-              }
-            }
-          } else{
-            if (fromPixel.isLeft(toPixel)) {
-              endValue = (this.hasArrowRight || this.keepArrowEnd) ? ">" : value;
-              startValue = (this.hasArrowLeft || this.keepArrowStart) ? "<" : value;
-              if (this.keepArrowEnd == null) {
-                this.keepArrowEnd = this.hasArrowRight;
-                this.keepArrowStart = this.hasArrowLeft;
-              }
-            } else {
-              endValue = (this.hasArrowLeft || this.keepArrowEnd) ? "<" : value;
-              startValue = (this.hasArrowRight || this.keepArrowStart) ? ">" : value;
-              if (this.keepArrowEnd == null) {
-                this.keepArrowEnd = this.hasArrowLeft;
-                this.keepArrowStart = this.hasArrowRight;
-              }
-           } 
+        if (Math.abs(verticalDiff) > Math.abs(lateralDiff)) {
+          if (toPixel.isAbove(fromPixel)) {
+            endValue = (this.hasArrowLeft) ? "^" : value;
+            startValue = (this.hasArrowRight) ? "v" : value;
+          } else {
+            endValue = (this.hasArrowLeft) ? "v" : value;
+            startValue = (this.hasArrowRight) ? "^" : value;
           }
-          this.hasArrowRight = false;
-          this.hasArrowLeft = false;
+        } else{
+          if (fromPixel.isLeft(toPixel)) {
+            endValue = (this.hasArrowRight) ? ">" : value;
+            startValue = (this.hasArrowLeft) ? "<" : value;
+          } else {
+            endValue = (this.hasArrowLeft) ? "<" : value;
+            startValue = (this.hasArrowRight) ? ">" : value;
+         } 
         }
+
         this.empty();
         for (var i = 0; i <= totalSteps; i ++) {
           this.add(
@@ -1675,24 +1749,15 @@
       getJointPixels() {
         let corners = this.getCornerPixels();
         let halfways = this.getHalfwayPixels(corners);
-        return corners.concat(halfways);
-        /* 
-
-        This can be used if the joint pixels should be further out.
-
         if (corners.length && halfways.length) {
-          return [
-            canvas.getPixelByRowCol(corners[0].row - 1, corners[0].col - 1),
-            canvas.getPixelByRowCol(corners[1].row - 1, corners[1].col + 1),
-            canvas.getPixelByRowCol(corners[2].row + 1, corners[2].col - 1),
-            canvas.getPixelByRowCol(corners[3].row + 1, corners[3].col + 1),
-
+          let halfwaysOutter = [
             canvas.getPixelByRowCol(halfways[0].row, halfways[0].col - 1),
-            canvas.getPixelByRowCol(halfways[1].row, corners[1].col + 1),
-            canvas.getPixelByRowCol(halfways[2].row + 1, corners[2].col),
-            canvas.getPixelByRowCol(halfways[3].row - 1, corners[3].col),
-          ]
-        }*/
+            canvas.getPixelByRowCol(halfways[1].row, halfways[1].col + 1),
+            canvas.getPixelByRowCol(halfways[2].row + 1, halfways[2].col),
+            canvas.getPixelByRowCol(halfways[3].row - 1, halfways[3].col),
+          ];
+          return corners.concat(halfwaysOutter);
+        }
         return [];
       }
       
@@ -1844,12 +1909,13 @@
           pixel.element.style.borderRight = "none";
         }, 500, this);
         this.cursorFlashInterval = setInterval(
-            (pixel) => {
-              this.element.style.borderRight = "1px solid orange";
-              setTimeout(() => {
-                pixel.element.style.borderRight = "none";
-              }, 500);
-            }, 1000, this);
+          (pixel) => {
+            this.element.style.borderRight = "1px solid orange";
+            setTimeout(() => {
+              pixel.element.style.borderRight = "none";
+            }, 500);
+          },
+        1000, this);
       }
 
       renderFocus() {
@@ -2065,10 +2131,14 @@
           [modeMaster.has, "selected"], [], [], () => layerManager.ungroupSelectedLayersEvent()),
         new MenuButton("Delete",
           [modeMaster.has, "selected"], [modeMaster.reset, "select"], [], () => layerManager.deleteLayersEvent()),
-        new MenuButton("<",
+        new MenuButton("<-",
           [modeMaster.has, "draw", "line"], [modeMaster.toggle, "arrow-left"], ["arrow-left"]),
-        new MenuButton(">",
+        new MenuButton("->",
           [modeMaster.has, "draw", "line"], [modeMaster.toggle, "arrow-right"], ["arrow-right"]),
+        new MenuButton("<-",
+          [modeMaster.has, "selected", "line"], [], [], () => layerManager.redrawLinesEvent("left")),
+        new MenuButton("->",
+          [modeMaster.has, "selected", "line"], [], [], () => layerManager.redrawLinesEvent("right")),
       ] 
       
       constructor() {
