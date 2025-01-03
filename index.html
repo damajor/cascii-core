@@ -34,6 +34,7 @@
     - tables and diamonds
     - cmd v ctrl for Mac
     - make joint pixels x
+    - consider defaulting to select mode after draw:
     - improve diagonals - filler lines
     - mini success messages
     - clever resize: text in boxes main issue
@@ -524,6 +525,7 @@
         this.selectedPixel = null;
         this.layerHistory = [[]];
         this.historyCursor = 0;
+        this.editingTextLayer = null;
         this.groupManager = new GroupManager();
       }
 
@@ -1114,6 +1116,7 @@
           layerCopy.joints = this.joints.map(joint => structuredClone(joint));
           layerCopy.id = this.id;
         } 
+        // TODO consider copying table cells here otherwise they don't keep. Use a dervied copy in child class.
         layerCopy.pixels = this.pixels.map(pixel => pixel);
         layerCopy.values = this.values.map(value => value);
         return layerCopy;
@@ -1327,34 +1330,48 @@
       static selectedDoubleClickEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = layerManager.getLayerByPixelId(activePixel.id());
-        layerManager.setSelectPixel(activePixel);
+        layerManager.editingTextLayer = layer;
         layer.moveCursorToPixel(activePixel);
       }
 
       static drawMouseDownEvent(event) {
-        let layer = new TextLayer(event.target.id);
-        layerManager.add(layer);
-        layer.firstTouchedPixel.renderFocus();
+        let activePixel = canvas.getPixelById(event.target.id);
+        if (!TextLayer.focusedOtherTextLayer(activePixel)) {
+          let layer = new TextLayer(event.target.id);
+          layerManager.add(layer);
+          layerManager.editingTextLayer = layer;
+          layer.firstTouchedPixel.renderFocus();
+        }
       }
 
       static writingMouseDownEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
-        let layer = layerManager.getLayerByPixelId(activePixel.id());
-        if (layer && layer.name == "text") {
-          layer.moveCursorToPixel(activePixel);
-        } else {
+        if (!TextLayer.focusedOtherTextLayer(activePixel)) {
           modeMaster.reset("select");
           layerManager.unselectAll();
         }
       }
 
       static keyDownEvent(event) {
-        //let selectedLayers = layerManager.getSelectedLayers();
-        //let layer = (selectedLayers.length) ? selectedLayers[0]: layerManager.getLatestLayer();
-        let layer = layerManager.getLayerByPixelId(layerManager.getSelectPixel().id()); // TODO ensure this works
+        var layer = layerManager.editingTextLayer;
+        console.log("by pixel", layer);
+        if (!layer) {
+          layer = layerManager.getLatestLayer();
+          console.log("by latest", layer);
+        }
         if (layer && layer.name == "text") {
           layer.writeChar(event.keyCode);
         }
+      }
+      
+      static focusedOtherTextLayer(activePixel) {
+        let layer = layerManager.getLayerByPixelId(activePixel.id());
+        if (layer && layer.name == "text") {
+          layer.moveCursorToPixel(activePixel);
+          layerManager.editingTextLayer = layer;
+          return true;
+        }
+        return false;
       }
 
       getJointPixels() {
@@ -1772,8 +1789,8 @@
       constructor(table, row, col, absRow, absCol) {
         this.row = row;
         this.col = col;
-        this.table = table
-        this.contents = "Enter text...".split("");
+        this.table = table;
+        this.contents = this.table.defaultCellContents.split("");
         this.absRow = absRow;
         this.absCol = absCol;
       }
@@ -1807,7 +1824,38 @@
         this.absCol = absCol;
         let previousTouchedPixel = this.textLayer.getFirstPixel();
         this.textLayer.setFirstTouchedPixel(this.getFirstPixel());
+
+        let originalJointPixels = this.textLayer.getJointPixels();
         this.textLayer.moveByDiff(absRow - previousTouchedPixel.row, absCol - previousTouchedPixel.col);
+
+        // TODO work out how table can join. If textlayesr only ,resize trouble. 
+        if (this.textLayer.pixels) {
+          this.textLayer.resizeJointLayers(originalJointPixels, true);
+        }
+      }
+      
+      saveAndEmpty() {
+        if (this.textLayer.contents.length) {
+          this.contents = this.textLayer.contents;
+          this.textLayer.contents = [];
+          this.textLayer.empty();
+        }
+      }
+
+      loadAndFill() {
+        this.textLayer.contents = this.contents;
+        this.textLayer.drawLayer();
+        if (!layerManager.layers.map(layer => layer.id).includes(this.textLayer.id)) {
+          layerManager.addSecond(this.textLayer);
+        }
+      }
+
+      isLoaded() {
+        return Boolean(this.textLayer.pixels.length);
+      }
+
+      isVisible() {
+        return this.row < this.table.tblRows && this.col < this.table.tblCols;
       }
 
     }
@@ -1820,12 +1868,11 @@
         this.cells = {};
         this.tblRows = 0;
         this.tblCols = 0;
-        this.tblColDefaultWidth = 15;
+        this.defaultCellContents = "Enter text...";
+        this.tblColDefaultWidth = this.defaultCellContents.length;
         this.tblColWidths = [];
         this.tblRowHeights = [];
         this.tblRowDefaultHeight = 2;
-        this.verticalDirection = 1;
-        this.lateralDirection = 1;
       }
 
       static drawMouseDownEvent(event) {
@@ -1905,89 +1952,112 @@
         // Build an array of the lengths of the longest line per column
         this.tblColWidths = [];
         for (var col = 0; col < this.tblCols; col++) { 
-          var colWidth = this.tblColDefaultWidth;
+          var colWidth = 0;
           for (let cellId in this.cells) {
             if (this.cells[cellId].col == col) {
-              let longestLine = allLineLengths[cellId].longest;
+              let longestLine = allLineLengths[cellId].longest + 1;
               if (longestLine > colWidth) colWidth = longestLine;
             }
           }
+          // If the column widths result in < 2 (one char),
+          // text is about to be rendered but could not be used to measure width
+          // So we use the default width.
+          if (colWidth < 2) colWidth = this.tblColDefaultWidth + 1; 
           this.tblColWidths.push(colWidth);
         }
-
-        if (this.verticalDirection == -1) {
-          this.tblRowHeights = this.tblRowHeights.reverse();
-        }
-        if (this.lateralDirection == -1) {
-          this.tblColWidths = this.tblColWidths.reverse();
-        }
-
       }
+
+      ungroup() {
+        let allLayers = Object.values(this.cells).map(cell => cell.textLayer).concat(this);
+        layerManager.groupManager.ungroupLayers(allLayers);
+      }
+
+      group() {
+        let allLayers = Object.values(this.cells).map(cell => cell.textLayer).concat(this);
+        layerManager.groupManager.groupLayers(allLayers);
+      }
+      
       drawLayer(activePixelId) {
         let activePixel = canvas.getPixelById(activePixelId);
 
-        let verticalDiff = activePixel.row - this.firstTouchedPixel.row;
-        let lateralDiff = activePixel.col - this.firstTouchedPixel.col;
+        this.fromPixel = canvas.getPixelByRowCol(
+          Math.min(activePixel.row, this.firstTouchedPixel.row),
+          Math.min(activePixel.col, this.firstTouchedPixel.col),
+        )
+        let toPixel = canvas.getPixelByRowCol(
+          Math.max(activePixel.row, this.firstTouchedPixel.row),
+          Math.max(activePixel.col, this.firstTouchedPixel.col),
+        )
 
+        let verticalDiff = this.fromPixel.row - toPixel.row;
+        let lateralDiff = this.fromPixel.col - toPixel.col;
 
         this.tblRows = roundHalf(Math.abs(verticalDiff) / this.tblRowDefaultHeight);
         this.tblCols = roundHalf(Math.abs(lateralDiff) / this.tblColDefaultWidth);
-
-        this.lateralDirection = lateralDiff / Math.abs(lateralDiff);
-        this.verticalDirection = verticalDiff / Math.abs(verticalDiff);
-
-        
-        this.refresh();
+       
+        this.ungroup();
+        this.refresh(true);
+        this.group();
       }
 
-      refresh() {
+      refresh(drawing) {
+        
+        // If the layer isn't being actively resized, we need to manually determine
+        // where to refresh the layer (in case it's been moved). The first pixel can be used.
+        // Otherwise, fromPixel will be determined in using an active resize pixel.
+        if (!drawing) this.fromPixel = this.getFirstPixel(); 
+        
         this.empty();
         this.setTableSpacing();
-        let tblHeight = this.tblRowHeights.reduce((a, b) => a + b, 0);
+        let tblHeight = this.tblRowHeights.reduce((a, b) => a + b, 0); // TODO clean
         let tblWidth = this.tblColWidths.reduce((a, b) => a + b, 0);
         console.log(this.tblColWidths);
         console.log(this.tblRowHeights);
-        var row = this.firstTouchedPixel.row;
+
+        // Draw row lines with spacing based on text..
+        // -----------------
+        //
+        // -----------------
+        // -----------------
+        var row = this.fromPixel.row;
         for (var tblRow = 0; tblRow <= this.tblRows; tblRow ++) {
-            var col = this.firstTouchedPixel.col;
+            var col = this.fromPixel.col;
             for(var tblCol = 0; tblCol <= tblWidth; tblCol ++) {
+              // Make the first two lines solid for the header
               let value = ([0, 1, this.tblRows].includes(tblRow))? this.lateralChar: "-";
               this.add(canvas.getPixelByRowCol(row,  col), value);
-              col += this.lateralDirection;
+              col += 1;
             }
-            let tblRowStep = this.tblRowHeights[tblRow] * this.verticalDirection; 
+            let tblRowStep = this.tblRowHeights[tblRow]; 
             row += tblRowStep;
         }
-        var col = this.firstTouchedPixel.col;
+
+        // Draw col lines with spacing based on text..
+        // |      |   |    |
+        // |      |   |    |
+        // |      |   |    |
+        var col = this.fromPixel.col;
         for (var tblCol = 0; tblCol <= this.tblCols; tblCol ++) {
-            var row = this.firstTouchedPixel.row;
+            var row = this.fromPixel.row;
             for(var tblRow = 0; tblRow <= tblHeight; tblRow ++) {
               this.add(canvas.getPixelByRowCol(row,  col), this.verticalChar);
-              row += this.verticalDirection; 
+              row += 1; 
             }
-            let tblColStep = this.tblColWidths[tblCol] * this.lateralDirection; 
+            let tblColStep = this.tblColWidths[tblCol]; 
             col += tblColStep;
         }
-        
-
-        this.refreshCells();
-
-        console.log(this.cells);
-      } 
-
-      refreshCells() {
-        var allLayers = Object.values(this.cells).map(cell => cell.textLayer).concat(this);
-        layerManager.groupManager.ungroupLayers(allLayers);
-        let topLeftPixel = this.getCornerPixels()[0];
-        var rowCount = topLeftPixel.row;
-        var colCount = topLeftPixel.col;
-        for (var tblRow = 0; tblRow < this.tblRows; tblRow ++) {
+       
+        // Add in the cell text layers!
+        // If the cell has never existed, create it, otherwise it might need relocating.
+        // For example, if a table has been dragged / flipped, each cell needs to flip
+        // and move correctly with it. If the table is being created backwards, 
+        // cell 0,0 will constantly relocate to the top-left most position.
+        var rowPos = this.fromPixel.row;
+        var colPos = this.fromPixel.col;
+        for(var tblRow = 0; tblRow < this.tblRows; tblRow ++) {
           for (var tblCol = 0; tblCol < this.tblCols; tblCol ++) {
-            let absRow = rowCount + 1;
-            let absCol = colCount + 1;
-
-
-
+            let absRow = rowPos + 1; // Add 1s here to locate the text within the cell.
+            let absCol = colPos + 1;
             var cell = this.cells[TableCell.makeId(tblRow, tblCol)];
             if (!cell) {
               cell = new TableCell(this, tblRow, tblCol, absRow, absCol);
@@ -1996,32 +2066,26 @@
             } else {
               cell.relocate(absRow, absCol);
             }
-
-
-            colCount += this.tblColWidths[tblCol];
+            colPos += this.tblColWidths[tblCol];
           }
-          colCount = topLeftPixel.col;
-          rowCount += this.tblRowHeights[tblRow];
+          colPos = this.fromPixel.col;
+          rowPos += this.tblRowHeights[tblRow];
         }
 
-        allLayers = Object.values(this.cells).map(cell => cell.textLayer).concat(this);
-        layerManager.groupManager.groupLayers(allLayers);
+        this.toggleCellsVisible();
+      } 
+
+      toggleCellsVisible() {
         for (let cellId in this.cells) {
           let cell = this.cells[cellId];
-          if (cell.row >= this.tblRows || cell.col >= this.tblCols) {
-            if (cell.textLayer.contents.length) {
-              cell.contents = cell.textLayer.contents;
-              cell.textLayer.contents = [];
-              cell.textLayer.empty();
-              console.log("EMPTY", cell.textLayer)
-            }
-          } else if (!cell.textLayer.pixels.length) {
-            cell.textLayer.contents = cell.contents;
-            console.log("REDRAW", cell.contents);
-            cell.textLayer.drawLayer();
-            if (!layerManager.layers.map(layer => layer.id).includes(cell.textLayer.id)) {
-              layerManager.addSecond(cell.textLayer);
-            }
+          if (!cell.isVisible()) {
+            // Here, the cell should no longer be visible probably because of resizing.
+            // We save the content and empty the layer.
+            cell.saveAndEmpty();
+          } else if (!cell.isLoaded()) {
+            // Here, the cell should visible. If it isn't,
+            // loaded saved content and fill / redraw layer.
+            cell.loadAndFill();
           }
         }
       }
@@ -2121,6 +2185,7 @@
       }
 
       drawLayer(activePixelId) {
+        // TODO can this be rewritten using new table min min method
         this.empty();
         let activePixel = canvas.getPixelById(activePixelId);
         if (activePixel.isAbove(this.firstTouchedPixel)) {
@@ -2404,7 +2469,7 @@
         new MenuButton("Draw Square",
           [], [modeMaster.reset, "draw", "square", "dsbutton"], ["dsbutton"], () => layerManager.unselectAll()),
         new MenuButton("Text",
-          [], [modeMaster.reset, "draw", "text", "dtbutton"], ["dtbutton"], () => layerManager.unselectAll()),
+          [], [modeMaster.reset, "draw", "text", "dtbutton"], ["writing", "dtbutton"], () => layerManager.unselectAll()),
         new MenuButton("Draw Line",
           [], [modeMaster.reset, "draw", "line", "free-line", "dflbutton"], ["dflbutton"], () => layerManager.unselectAll()),
         new MenuButton("Draw Step Line", 
