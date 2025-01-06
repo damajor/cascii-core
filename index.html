@@ -754,7 +754,7 @@
           moves[layer.id] = movePixels;
         }
         for (let layer of layers) {
-          let originalJoints = layer.getJointPixels();
+          let originalJoints = layer.getKeyedJointPixels();
           layer.moveByPixels(moves[layer.id]);
           layer.resizeJointLayers(originalJoints, false);
         }
@@ -783,14 +783,14 @@
         for (var layer of this.layers) {
           if (layer.isSelected()) continue;
           // Only joinable layers will return joint pixels here and therefore get probed.
-          let jointPixels = layer.getJointPixels(); 
-          var jointIndex = 0;
-          for (var jointPixel of jointPixels) {
+          let keyedJoints = layer.getKeyedJointPixels(); 
+          for (let jointKey in keyedJoints) {
+            let jointPixel = keyedJoints[jointKey];
             var renderState = -1;
             for (var probingLayer of changedLayers) {
               if (probingLayer.id == layer.id) continue;
               // Only prober layers will look for joins (e.g lines).
-              let state = probingLayer.probeJoin(layer, jointIndex, jointPixel); 
+              let state = probingLayer.probeJoin(layer, jointKey, jointPixel); 
               if (state > renderState) renderState = state;
             }
             switch (renderState) {
@@ -801,7 +801,6 @@
                 jointPixel.renderJoint();
               break;
             }
-            jointIndex ++;
           } 
         }
       }
@@ -1079,7 +1078,7 @@
 
       draw(activePixelId, resizeSelectedJoinLayers) {
         if (this.isJoinable()) {
-          let originalJoints = this.getJointPixels();
+          let originalJoints = this.getKeyedJointPixels();
           this.drawLayer(activePixelId);
           this.resizeJointLayers(originalJoints, resizeSelectedJoinLayers);
         } else {
@@ -1124,9 +1123,15 @@
         }
       }
       
-      // Implement if the layer get be joined to (e.g a square)
       getJointPixels() {
-        return [];
+        return Object.values(this.getKeyedJointPixels());
+      }
+      
+      // Implement if the shape can be joined to. The keys should meaningful reflect
+      // the same part of a layer. E.g one key should always represent the top left
+      // corner pixel of a square.
+      getKeyedJointPixels() {
+        return {};
       }
       
       // Implement if the layer can join to another (e.g a line)
@@ -1159,7 +1164,7 @@
       isJoinable() {
         return Boolean(this.getJointPixels().length);
       }
-      
+
       getNearestResizePixel(pixel) {
         return pixel.isNearestTo(this.getResizePixels());
       }
@@ -1173,13 +1178,13 @@
       }
 
       tidyJoints() {
-        let jointPixels = this.getJointPixels();
-        for (var joint of this.joints) {
+        let keyedJoints = this.getKeyedJointPixels();
+        for (let joint of this.joints) {
           let layer = layerManager.getLayerById(joint.layerId);
           if (layer) {
-            let jointPixel = jointPixels[joint.jointIndex];
+            let jointPixel = keyedJoints[joint.jointKey];
             if (jointPixel) {
-              let state = layer.probeJoin(this, joint.jointIndex, jointPixel);
+              let state = layer.probeJoin(this, joint.jointKey, jointPixel);
               if (state == 2) {
                 continue;
               } else {
@@ -1194,7 +1199,7 @@
             // This should not happen because joints get deleted when layers do.
             debugError("had to unjoin dangling join: join layer gone");
           }
-          this.unjoin(joint.layerId, joint.jointIndex);
+          this.unjoin(joint.layerId, joint.jointKey);
         }
       }
 
@@ -1308,8 +1313,8 @@
           // Moved layers don't need to, where as resized layers do.
           if (!layer || (!includeSelected && layer.isSelected())) continue;
           
-          let currentJointPixel = this.getJointPixels()[joint.jointIndex];
-          let beforeJointPixel = originalJointPixels[joint.jointIndex];
+          let currentJointPixel = this.getKeyedJointPixels()[joint.jointKey];
+          let beforeJointPixel = originalJointPixels[joint.jointKey];
 
           if (!currentJointPixel) {
             // This means the layer has changed in such a way that the joint pixel
@@ -1334,37 +1339,37 @@
         }
       }
 
-      probeJoin(layer, jointIndex, jointPixel) {
+      probeJoin(layer, jointKey, jointPixel) {
           var state = 0;
           for (var probePixel of this.getProbeJointPixels()) {
             if (probePixel.isNear(jointPixel)) {
               state = 1;
               if (probePixel.is(jointPixel)) {
                 state = 2;
-                layer.join(this.id, jointIndex);
+                layer.join(this.id, jointKey);
                 // Break to avoid unjoining in the following iteration.
                 break;
               }
             }
-          layer.unjoin(this.id, jointIndex);
+          layer.unjoin(this.id, jointKey);
         }
         return state
       }
 
 
-      join(layerId, jointIndex) {
+      join(layerId, jointKey) {
         for (var joint of this.joints) {
-          if (layerId == joint.layerId && jointIndex == joint.jointIndex) {
+          if (layerId == joint.layerId && jointKey == joint.jointKey) {
             return;
           }
         }
-        this.joints.push({layerId: layerId, jointIndex: jointIndex});
+        this.joints.push({layerId: layerId, jointKey: jointKey});
       }
 
-      unjoin(layerId, jointIndex) {
+      unjoin(layerId, jointKey) {
         var index = 0;
         for (var joint of this.joints) {
-          if (layerId == joint.layerId && jointIndex == joint.jointIndex) {
+          if (layerId == joint.layerId && jointKey == joint.jointKey) {
             this.joints.splice(index, 1);
             return;
           }
@@ -1408,7 +1413,7 @@
 
     class TextLayer extends Layer {
       
-      name = "text"
+      name = "text";
 
       constructor(firstPixelId, tableId=null) {
         super(firstPixelId);
@@ -1416,6 +1421,7 @@
         this.contents = [];
         this.tableId = tableId;
       }
+
       
       static selectedDoubleClickEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
@@ -1469,21 +1475,19 @@
         return layerCopy;
       }
 
-      getJointPixels() {
-        if (this.hasTable()) return []; // The table itself will be joinable instead.
+      getKeyedJointPixels() {
+        if (this.hasTable()) return {}; // The table itself will be joinable instead.
+        if (this.pixels.length < 3) return {}
 
         let firstPixel = this.getFirstPixel();
         let lastPixel = this.getLastPixel();
         let middlePixel = this.pixels[roundHalf(this.pixels.length / 2)];
-        if (this.pixels.length > 3) {
-           return [
-            canvas.getPixelByRowCol(firstPixel.row, firstPixel.col - 1), // Left
-            canvas.getPixelByRowCol(lastPixel.row, lastPixel.col + 1), // Right
-            canvas.getPixelByRowCol(middlePixel.row - 1, middlePixel.col), // Middle top
-            canvas.getPixelByRowCol(middlePixel.row + 1, middlePixel.col), // Middle bottom
-          ]
+        return {
+          l: canvas.getPixelByRowCol(firstPixel.row, firstPixel.col - 1), // Left
+          r: canvas.getPixelByRowCol(lastPixel.row, lastPixel.col + 1), // Right
+          mt: canvas.getPixelByRowCol(middlePixel.row - 1, middlePixel.col), // Middle top
+          mb: canvas.getPixelByRowCol(middlePixel.row + 1, middlePixel.col), // Middle bottom
         }
-        return [];
       }
 
 
@@ -1761,24 +1765,24 @@
 
     class StepLineLayer extends BaseLineLayer {
 
-      name = "step-line"
+      name = "step-line";
 
       static drawMouseDownEvent(event) {
         let layer = new StepLineLayer(event.target.id);
         layerManager.add(layer);
       }
 
-      getJointPixels() {
-        if (!this.pixels.length) return [];
+      getKeyedJointPixels() {
+        if (!this.pixels.length) return {};
         var lastRow = this.pixels[0].row;
         var index = 0;
         for (var pixel of this.pixels) {
           if (pixel.row != lastRow) {
-            return [this.pixels[index - 1]];
+            return {m: this.pixels[index - 1]} // Middle;
           }
           index ++;
         }
-        return [this.getLastPixel()];
+        return {m: this.getLastPixel()} // Middle;
       }
 
       drawLayer(activePixelId) {
@@ -1897,7 +1901,7 @@
     //////////////////////
     
     class SquareBoundLayer extends Layer { 
-
+      
       getCornerPixels() {
         if (this.pixels.length == 0) {
           return [];
@@ -1954,20 +1958,20 @@
         layerManager.add(layer);
       }
 
-      getJointPixels() {
+      getKeyedJointPixels() {
         let corners = this.getCornerPixels();
         let halfways = this.getHalfwayPixels(corners);
-
-        if (corners.length && halfways.length) {
-          let halfwaysOutter = [
-            canvas.getPixelByRowCol(halfways[0].row, halfways[0].col - 1),
-            canvas.getPixelByRowCol(halfways[1].row, halfways[1].col + 1),
-            canvas.getPixelByRowCol(halfways[2].row + 1, halfways[2].col),
-            canvas.getPixelByRowCol(halfways[3].row - 1, halfways[3].col),
-          ];
-          return corners.concat(halfwaysOutter);
-        }
-        return [];
+        if (!corners.length || !halfways.length) return {};
+        return {
+          tl: corners[0], // Top left
+          tr: corners[1], // Top right
+          br: corners[2], // Bottom right
+          bl: corners[3], // Bottom left
+          l: canvas.getPixelByRowCol(halfways[0].row, halfways[0].col - 1), // Left
+          r: canvas.getPixelByRowCol(halfways[1].row, halfways[1].col + 1), // Right
+          b: canvas.getPixelByRowCol(halfways[2].row + 1, halfways[2].col), // Bottom
+          t: canvas.getPixelByRowCol(halfways[3].row - 1, halfways[3].col), // Top
+        };
       }
       
       getHalfwayPixels(corners) {
@@ -2047,6 +2051,8 @@
         // Copy row and col counts so that refresh() works immediately for copied tables.
         layerCopy.tblRows = this.tblRows;
         layerCopy.tblCols = this.tblCols;
+        layerCopy.tblRowHeights = this.tblRowHeights;
+        layerCopy.tblColWidths = this.tblColWidths;
         return layerCopy;
       }
       
@@ -2061,25 +2067,34 @@
         return Object.values(this.textLayers).map(layerId => layerManager.getLayerById(layerId));
       }
       
-      getJointPixels() {
-        let pixels = [];
+      getKeyedJointPixels() {
+        let pixels = {};
         let corners = this.getCornerPixels();
         if (!corners.length) return [];
         let [topLeftPixel, topRightPixel, bottomRightPixel, bottomLeftPixel] = corners;
         var rowPos = topLeftPixel.row + 1;
+        var index = 0;
         for (let height of this.tblRowHeights) {
-          pixels.push(canvas.getPixelByRowCol(rowPos, topLeftPixel.col - 1));
-          pixels.push(canvas.getPixelByRowCol(rowPos, topRightPixel.col + 1));
+          pixels[`l-${index}`] = canvas.getPixelByRowCol(rowPos, topLeftPixel.col - 1); // Left x
+          pixels[`r-${index}`] = canvas.getPixelByRowCol(rowPos, topRightPixel.col + 1); // Right x
           rowPos += height;
+          index ++;
         }
         var colPos = topLeftPixel.col + 1;
+        var index = 0;
         for (let width of this.tblColWidths) {
           colPos += width;
-          pixels.push(canvas.getPixelByRowCol(topLeftPixel.row - 1, colPos - roundHalf(width / 2)));
-          pixels.push(canvas.getPixelByRowCol(bottomLeftPixel.row + 1, colPos - roundHalf(width / 2)));
+          pixels[`t-${index}`] = canvas.getPixelByRowCol( // Top x
+            topLeftPixel.row - 1, colPos - roundHalf(width / 2)
+          );
+          pixels[`b-${index}`] = canvas.getPixelByRowCol( // Bottom x
+            bottomLeftPixel.row + 1, colPos - roundHalf(width / 2)
+          );
+          index ++;
         }
         return pixels;
       }
+
       ungroup() {
         // Ungroup all layers.
         layerManager.groupManager.ungroupLayers(this.getTextLayers().concat(this));
@@ -2172,7 +2187,7 @@
         } 
       }
       refresh(drawing) {
-        let originalJointPixels = this.getJointPixels();
+        let originalJointPixels = this.getKeyedJointPixels();
         this.setTableSpacing();
         
         // If the layer isn't being actively resized, we need to manually determine
