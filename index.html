@@ -33,6 +33,7 @@
     FE 
     - tables and diamonds
     - cmd v ctrl for Mac
+    - table joint pixels: choose text layer or not (no joints for text layer has table)
     - z-index concepting: renderPixel funcs stack prio,
         groups prio same z-index (resize table new textlayers are off)
         easy way to ensure arrow heads are seen on joins - consider outter halfways?
@@ -664,15 +665,15 @@
           }
         }
       }
-
-      getOverlappingCount(subjectLayer) {
+      
+      getNearOverlappingCount(subjectLayer) {
         var count = 0; 
         for (var layer of this.layers) {
-          count += layer.getOverlappingCount(subjectLayer);
+          count += layer.getNearOverlappingCount(subjectLayer);
         }
         return count;
       }
-      
+
       unselectAll() {
         this.layers.forEach(layer => layer.unselect());
         modeMaster.removeLayers();
@@ -768,7 +769,6 @@
       
       moveLayersToAvailableSpace(layers) {
         let directions = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
-        
         var layerMoves = [];
         for (let direction of directions) {
           layerMoves = layers.map(layer => layer.getMove(direction[0], direction[1]));
@@ -833,7 +833,9 @@
             // If the selected layer is the lead / currently selected layer 
             // Then we already know the activePixel is the resize pixel.
             resizePixel = activePixel;
-          } else if (resizeLayer.name == leadLayer.name) {
+          // TODO make better ruling about which layers do index v nearest.
+          // lines are actually better nearest? 
+          } else if (resizeLayer.name == leadLayer.name && !leadLayer.name.includes("line")) {
             // If the lead layer is the same type as a selected layer,
             // we can use the same resize pixel position and resize the layer
             // in the same way for the best experience.
@@ -1174,21 +1176,25 @@
         let jointPixels = this.getJointPixels();
         for (var joint of this.joints) {
           let layer = layerManager.getLayerById(joint.layerId);
-          if (!layer) {
-            alert("This doesn't happen anymore. Only unjoin for debug error below");
-            this.unjoin(joint.layerId, joint.jointIndex);
-            continue;
+          if (layer) {
+            let jointPixel = jointPixels[joint.jointIndex];
+            if (jointPixel) {
+              let state = layer.probeJoin(this, joint.jointIndex, jointPixel);
+              if (state == 2) {
+                continue;
+              } else {
+                // This should not happen.
+                debugError("had to unjoin dangling join: somehow disconnected");
+              }
+            } else {
+              // This could happen for tables (when rows/cols are removed).
+              debugError("had to unjoin dangling join: joint pixel gone");
+            }
+          } else {
+            // This should not happen because joints get deleted when layers do.
+            debugError("had to unjoin dangling join: join layer gone");
           }
-          let jointPixel = jointPixels[joint.jointIndex];
-
-          // We can use probeJoin here to clean up dangling joints.
-          // By probing, if the joints are no longer together, it will
-          // unjoin.
-          let state = layer.probeJoin(this, joint.jointIndex, jointPixel);
-          if (state != 2) {
-            debugError("had to unjoin dangling join");
-            this.unjoin(joint.layerId, joint.jointIndex);
-          }
+          this.unjoin(joint.layerId, joint.jointIndex);
         }
       }
 
@@ -1215,15 +1221,22 @@
         return layerCopy;
       }
 
-      getOverlappingCount(targetLayer) {
+      getNearOverlappingCount(targetLayer) {
         // Gets the amount of pixels which are common / the same (the amount of overlap).
+        // Or, nearly the same by 1 pixel in any direction.
+        var total = 0;
         if (targetLayer.id == this.id) return 0;
         let layerPixelIds = this.pixels.map(pixel => pixel.id());
-        return targetLayer.pixels.filter(pixel => layerPixelIds.includes(pixel.id())).length
+        let directions = [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+        for (let direction of directions) {
+          total += targetLayer.getMove(...direction).filter(pixel => layerPixelIds.includes(pixel.id())).length
+        }
+        return total;
       }
       
       renderNormal() {
         this.pixels.forEach((pixel) => pixel.renderNormal());
+        this.getJointPixels().forEach((pixel) => pixel.renderNormal());
       }
 
       renderUnselected() {
@@ -1231,7 +1244,7 @@
       }
 
       renderSelected() {
-        //this.getJointPixels().forEach(pixel => {if (pixel) pixel.renderNormal()});
+        //TODO this.getJointPixels().forEach(pixel => {if (pixel) pixel.renderNormal()});
         this.getResizePixels().forEach(pixel => pixel.renderResizable());
         this.pixels.forEach(pixel => pixel.renderSelected());
       }
@@ -1295,8 +1308,20 @@
           // Moved layers don't need to, where as resized layers do.
           if (!layer || (!includeSelected && layer.isSelected())) continue;
           
-          let jointPixel = this.getJointPixels()[joint.jointIndex];
-          let resizePixel = layer.getResizeOppositePixel(originalJointPixels[joint.jointIndex]);
+          let currentJointPixel = this.getJointPixels()[joint.jointIndex];
+          let beforeJointPixel = originalJointPixels[joint.jointIndex];
+
+          if (!currentJointPixel) {
+            // This means the layer has changed in such a way that the joint pixel
+            // is no longer available. It will get unjoined.
+            debugError("joint pixel not found");
+            return;
+          }
+
+          // Get the "from" pixel given the joint pixel before the main layer was moved.
+          // We have to use the before JointPixel as the joint layer hasn't moved yet,
+          // so that's where it's joining pixel still is.
+          let resizePixel = layer.getResizeOppositePixel(beforeJointPixel);
 
           // The resize pixel may not get found if the main layer has
           // somehow moved without the jointed layer. 
@@ -1305,7 +1330,7 @@
             return;
           }
           layer.setFirstTouchedPixel(resizePixel);
-          layer.draw(jointPixel.id()); 
+          layer.draw(currentJointPixel.id()); 
         }
       }
 
@@ -1445,6 +1470,8 @@
       }
 
       getJointPixels() {
+        if (this.hasTable()) return []; // The table itself will be joinable instead.
+
         let firstPixel = this.getFirstPixel();
         let lastPixel = this.getLastPixel();
         let middlePixel = this.pixels[roundHalf(this.pixels.length / 2)];
@@ -1768,9 +1795,9 @@
         and choose which ever is more visible depending on other layers overlapping.
         */
         this.drawFromTo(fromPixel, toPixel);
-        let overlapCountNormal = layerManager.getOverlappingCount(this);
+        let overlapCountNormal = layerManager.getNearOverlappingCount(this);
         this.drawFromTo(toPixel, fromPixel);
-        let overlapCountFlipped = layerManager.getOverlappingCount(this);
+        let overlapCountFlipped = layerManager.getNearOverlappingCount(this);
         if (overlapCountNormal < overlapCountFlipped) {
           this.drawFromTo(fromPixel, toPixel);
         } else {
@@ -1932,10 +1959,6 @@
         let halfways = this.getHalfwayPixels(corners);
 
         if (corners.length && halfways.length) {
-          return corners.concat(halfways);
-          /*
-
-          TODO: Could use these instead?
           let halfwaysOutter = [
             canvas.getPixelByRowCol(halfways[0].row, halfways[0].col - 1),
             canvas.getPixelByRowCol(halfways[1].row, halfways[1].col + 1),
@@ -1943,7 +1966,6 @@
             canvas.getPixelByRowCol(halfways[3].row - 1, halfways[3].col),
           ];
           return corners.concat(halfwaysOutter);
-          */
         }
         return [];
       }
@@ -2038,7 +2060,26 @@
       getTextLayers() {
         return Object.values(this.textLayers).map(layerId => layerManager.getLayerById(layerId));
       }
-
+      
+      getJointPixels() {
+        let pixels = [];
+        let corners = this.getCornerPixels();
+        if (!corners.length) return [];
+        let [topLeftPixel, topRightPixel, bottomRightPixel, bottomLeftPixel] = corners;
+        var rowPos = topLeftPixel.row + 1;
+        for (let height of this.tblRowHeights) {
+          pixels.push(canvas.getPixelByRowCol(rowPos, topLeftPixel.col - 1));
+          pixels.push(canvas.getPixelByRowCol(rowPos, topRightPixel.col + 1));
+          rowPos += height;
+        }
+        var colPos = topLeftPixel.col + 1;
+        for (let width of this.tblColWidths) {
+          colPos += width;
+          pixels.push(canvas.getPixelByRowCol(topLeftPixel.row - 1, colPos - roundHalf(width / 2)));
+          pixels.push(canvas.getPixelByRowCol(bottomLeftPixel.row + 1, colPos - roundHalf(width / 2)));
+        }
+        return pixels;
+      }
       ungroup() {
         // Ungroup all layers.
         layerManager.groupManager.ungroupLayers(this.getTextLayers().concat(this));
@@ -2131,6 +2172,7 @@
         } 
       }
       refresh(drawing) {
+        let originalJointPixels = this.getJointPixels();
         this.setTableSpacing();
         
         // If the layer isn't being actively resized, we need to manually determine
@@ -2140,6 +2182,7 @@
 
         this.drawFrame();
         this.moveTextLayers();
+        this.resizeJointLayers(originalJointPixels, true);
       }
 
       drawFrame(drawing) {
@@ -2216,9 +2259,7 @@
       moveTextLayer(row, col, absRow, absCol) {
         let textLayer = this.getTextLayer(this.makeCellId(row, col)); 
         let firstPixel = textLayer.getFirstPixel();
-        let originalJointPixels = textLayer.getJointPixels();
         textLayer.moveByDiff(absRow - firstPixel.row, absCol - firstPixel.col);
-        textLayer.resizeJointLayers(originalJointPixels, true);
       }
 
       addTextLayer(row, col) {
