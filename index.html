@@ -1047,7 +1047,6 @@
         this._isSelected = false;
         
         this.setFirstTouchedPixel(canvas.getPixelById(firstPixelId));
-        //layerManager.setSelectPixel(this.firstTouchedPixel); // TODO Move this to event handlers
       }
 
       makeId() {
@@ -1267,7 +1266,6 @@
       }
 
       renderSelected() {
-        //TODO this.getJointPixels().forEach(pixel => {if (pixel) pixel.renderNormal()});
         this.getResizePixels().forEach(pixel => pixel.renderResizable());
         this.pixels.forEach(pixel => pixel.renderSelected());
       }
@@ -1953,9 +1951,22 @@
         let activePixel = canvas.getPixelById(activePixelId);
         let fromPixel = this.firstTouchedPixel;
         let toPixel = activePixel;
-        
+        let verticalDiff  = toPixel.row - fromPixel.row;
+        let lateralDiff   = toPixel.col - fromPixel.col;
+        let absVerticalDiff = Math.abs(verticalDiff);
+        let absLateralDiff = Math.abs(lateralDiff);
 
-        /* Try and draw the switch line both ways e.g
+        // This number determines by how much more one
+        // form of the layer must be overlapped compared to the other
+        // in order to actually go ahead and use it. 
+        // It means we can still choose which ever the user 
+        // might expect given the direction they drew instead of
+        ///basing it on overlap rules.
+        let overlapThreshold = 10;
+
+
+        /*
+        Try and draw the switch line both ways e.g
             _____
             |                 | 
             |             ____| 
@@ -1964,30 +1975,119 @@
                               
 
         and choose which ever is more visible depending on other layers overlapping.
+        If there aren't notable overlaps, choose based on which direction is favoured.
         */
 
-        let verticalDiff  = toPixel.row - fromPixel.row;
-        let lateralDiff   = toPixel.col - fromPixel.col;
-        let absVerticalDiff = Math.abs(verticalDiff);
-        let absLateralDiff = Math.abs(lateralDiff);
-       
+        // TODO decide if overlap logic is worth it here. Sometimes just creates mess.
+        // Caveat, without it, vertical needs to be weighted more...
+
         this.drawVertical(fromPixel, toPixel);
         let verticalOverlap = layerManager.getNearOverlappingCount(this);
         this.drawLateral(fromPixel, toPixel);
         let lateralOverlap = layerManager.getNearOverlappingCount(this);
-        
-        if (verticalOverlap > lateralOverlap + 10) { // TODO clear / think / explain 10
+        if (verticalOverlap > lateralOverlap + overlapThreshold) {
           this.drawLateral(fromPixel, toPixel);
-        } else if (lateralOverlap > verticalOverlap + 10) {
+        } else if (lateralOverlap > verticalOverlap + overlapThreshold) {
           this.drawVertical(fromPixel, toPixel);
-
-        } else if (absVerticalDiff > absLateralDiff) { // TODO favour?
+        } else if (absVerticalDiff > absLateralDiff) {
           this.drawVertical(fromPixel, toPixel);
         } else {
           this.drawLateral(fromPixel, toPixel);
         }
       }
-      
+
+      drawVertical(fromPixel, toPixel) {
+        let [firstChar, lastChar] = this.getArrowValuesVertical(fromPixel, toPixel); 
+        this.drawFromTo(
+          fromPixel.col,
+          fromPixel.row,
+          toPixel.col,
+          toPixel.row,
+          [this.verticalChar, this.lateralChar, firstChar, lastChar],
+          (a, b) => canvas.getPixelByRowCol(a, b),
+        );
+      }
+
+      drawLateral(fromPixel, toPixel) {
+        let [firstChar, lastChar] = this.getArrowValuesLateral(fromPixel, toPixel); 
+        this.drawFromTo(
+          fromPixel.row,
+          fromPixel.col,
+          toPixel.row,
+          toPixel.col,
+          [this.lateralChar, this.verticalChar, firstChar, lastChar],
+          (a, b) => canvas.getPixelByRowCol(b, a),
+        );
+      } 
+
+      drawFromTo(fromPixelCol, fromPixelRow, toPixelCol, toPixelRow, chars, pixelFunc) {
+        this.empty();
+        let [mainChar, midChar, firstChar, lastChar] = chars;
+        let diffA = toPixelRow - fromPixelRow;
+        let diffB = toPixelCol - fromPixelCol;
+        let absDiffA = Math.abs(diffA);
+        let absDiffB = Math.abs(diffB);
+        var drawCol = fromPixelCol; 
+        var drawRow = fromPixelRow;
+        /*
+         The following three loops represent each part of a
+         switch layer in order.
+
+         E.g
+
+        "Lateral" 
+                               __________ 
+                               |     3
+                     __________| 2
+                         1   
+        
+        "Vertical"
+            
+                          | 1
+                          |
+                          |____
+                            2  |
+                               | 3
+                               | 
+
+        Note, the logic is the same both ways, but to draw laterally,
+        this method is called  with cols and rows swapped.
+        It's quite confusing but I've found it works wonderfully.
+        */
+
+        let halfwayA = roundHalf(absDiffA / 2);
+        // First line
+        for (var i = 0; i < halfwayA; i ++) {
+          this.add(pixelFunc(drawRow, drawCol), (i == 0)? firstChar: mainChar);
+          drawRow += diffA / absDiffA;
+        }
+
+        // If there is no middle line (no diff in a direction),
+        // fill with a continuation pixel using mainChar.
+        if (absDiffB == 0) {
+          this.add(pixelFunc(drawRow, drawCol), mainChar);
+        } else {
+          // Second line (middle)
+          this.add(pixelFunc(drawRow, drawCol), this.cornerChar);
+          for (var i = 0; i < absDiffB - 1; i ++) {
+            drawCol += diffB / absDiffB;
+            this.add(pixelFunc(drawRow, drawCol), midChar);
+          }
+          drawCol += diffB / absDiffB;
+          this.add(pixelFunc(drawRow, drawCol), this.cornerChar);
+        }
+        // Third line. We use a while to ensure the line is drawn all the way.
+        // Otherwise, using, using another "halfwayA" might be uneven due to rounding. 
+        while(drawRow != toPixelRow) {
+          drawRow += diffA / absDiffA;
+          console.log(drawCol, toPixelRow);
+          this.add(pixelFunc(drawRow, toPixelCol), mainChar);
+        }
+
+        // This will replace the last char with arrows if needed.
+        this.add(pixelFunc(drawRow, toPixelCol), lastChar); 
+      }
+
       getArrowValuesVertical(fromPixel, toPixel) {
         var firstChar = this.verticalChar;
         var lastChar = this.verticalChar;
@@ -2032,115 +2132,6 @@
         return [firstChar, lastChar];
       }
 
-      drawVertical(fromPixel, toPixel) {
-        this.empty();
-        this.isVertical = true;
-        var verticalDiff  = toPixel.row - fromPixel.row;
-        let lateralDiff   = toPixel.col - fromPixel.col;
-        let absVerticalDiff = Math.abs(verticalDiff);
-        let absLateralDiff = Math.abs(lateralDiff);
-        var drawCol = fromPixel.col; 
-        var drawRow = fromPixel.row;
-        let [firstChar, lastChar] = this.getArrowValuesVertical(fromPixel, toPixel);
-        // TODO please comment each loop and explain 
-        let halfwayRow = roundHalf(absVerticalDiff / 2);
-        for (var i = 0; i < halfwayRow; i ++) {
-          this.add(
-            canvas.getPixelByRowCol(drawRow, drawCol),
-            (i == 0)? firstChar: this.verticalChar 
-          );
-          drawRow += verticalDiff / absVerticalDiff;
-        }
-        if (absLateralDiff == 0) {
-          this.add(
-            canvas.getPixelByRowCol(drawRow, drawCol),
-            this.verticalChar
-          );
-        } else {
-          this.add(
-            canvas.getPixelByRowCol(drawRow, drawCol),
-            this.cornerChar,
-          );
-          for (var i = 0; i < absLateralDiff - 1; i ++) {
-            drawCol += lateralDiff / absLateralDiff;
-            this.add(
-              canvas.getPixelByRowCol(drawRow, drawCol),
-              this.lateralChar
-            );
-          }
-          drawCol += lateralDiff / absLateralDiff;
-          this.add(
-            canvas.getPixelByRowCol(drawRow, drawCol),
-            this.cornerChar,
-          );
-        }
-        while(drawRow != toPixel.row) {
-          drawRow += verticalDiff / absVerticalDiff;
-          this.add(
-            canvas.getPixelByRowCol(drawRow, toPixel.col),
-            this.verticalChar
-          );
-        }
-        this.add(
-          canvas.getPixelByRowCol(drawRow, toPixel.col),
-         lastChar 
-        );
-      }
-      drawLateral(fromPixel, toPixel) {
-        this.empty();
-        this.isVertical = false;
-        let verticalDiff  = toPixel.row - fromPixel.row;
-        let lateralDiff   = toPixel.col - fromPixel.col;
-        let absVerticalDiff = Math.abs(verticalDiff);
-        let absLateralDiff = Math.abs(lateralDiff);
-        var drawCol = fromPixel.col; 
-        var drawRow = fromPixel.row;
-        let [firstChar, lastChar] = this.getArrowValuesLateral(fromPixel, toPixel);
-       
-        let halfwayCol = roundHalf(absLateralDiff / 2);
-        
-        for (var i = 0; i < halfwayCol; i ++) {
-          this.add(
-            canvas.getPixelByRowCol(drawRow, drawCol),
-            (i == 0)? firstChar: this.lateralChar
-          );
-          drawCol += lateralDiff / absLateralDiff;
-        }
-        if (absVerticalDiff == 0) {
-          this.add(
-            canvas.getPixelByRowCol(drawRow, drawCol),
-            this.lateralChar
-          );
-        } else {
-          this.add(
-            canvas.getPixelByRowCol(drawRow, drawCol),
-            this.cornerChar,
-          );
-          for (var i = 0; i < absVerticalDiff - 1; i ++) {
-            drawRow += verticalDiff / absVerticalDiff;
-            this.add(
-              canvas.getPixelByRowCol(drawRow, drawCol),
-              this.verticalChar
-            );
-          }
-          drawRow += verticalDiff / absVerticalDiff;
-          this.add(
-            canvas.getPixelByRowCol(drawRow, drawCol),
-            this.cornerChar,
-          );
-        }
-        while(drawCol != toPixel.col) {
-          drawCol += lateralDiff / absLateralDiff;
-          this.add(
-            canvas.getPixelByRowCol(drawRow, drawCol),
-            this.lateralChar
-          );
-        }
-        this.add(
-          canvas.getPixelByRowCol(drawRow, drawCol),
-          lastChar,
-        );
-      }
     }
 
     /////////////////////////
