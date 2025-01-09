@@ -32,7 +32,7 @@
     TODO
     FE 
     - switch lines (auto from step?) and diamonds
-    - better unicode chars. Arrow heads, etc.
+    - better unicode chars. Arrow heads, etc. char sets. dotted / bullet point lines optins.
     - cmd v ctrl for Mac
     - table joint pixels: choose text layer or not (no joints for text layer has table)
     - z-index concepting: renderPixel funcs stack prio,
@@ -71,6 +71,16 @@
     console.log(out);
 
     */
+
+    var layerManager;
+    var eventManager;
+    var areaSelectManager;
+    var modeMaster;
+    var charManager;
+
+    var menu;
+    var canvas;
+
     const KEYS = {
       "up"      : 38,
       "right"   : 39,
@@ -91,6 +101,10 @@
     }
 
     const ArrowKeyGroup = ["up", "down", "left", "right"];
+
+    //////////////////
+    ////// UTILS /////
+    //////////////////
     
     function reportError(message) {
       console.log(message);
@@ -120,13 +134,6 @@
       let keys = names.map(name => KEYS[name].toString());
       return keys.join(",");
     }
-
-    var layerManager;
-    var eventManager;
-    var areaSelectManager;
-    var modeMaster;
-    var menu;
-    var canvas;
 
     //////////////////
     ////// MODES /////
@@ -410,6 +417,109 @@
         }
       }
     }
+    
+    /*
+    unicode:
+
+    dotted lines •
+    dashed lines -
+    solid lines  ―
+
+    ascii:
+    dotted lines .
+    dashed lines 
+
+
+
+
+    */
+
+    class CharManager {
+        
+        form = "unicode";
+        line = "solid-bold";
+
+        // Useful: https://www.w3.org/TR/xml-entity-names/025.html
+        charset = {
+
+          // Dotted lines
+          "•": ["dotted", "line", "vertical", "lateral", "unicode"],
+          ".": ["dotted", "line", "vertical", "lateral", "ascii"],
+
+          // Solid lines
+          "━": ["solid-bold", "line", "lateral", "unicode"],
+          "┃": ["solid-bold", "line", "vertical", "unicode"],
+          "─": ["solid-thin", "line", "lateral", "unicode"],
+          "│": ["solid-thin", "line", "vertical", "unicode"],
+          "|": ["solid-thin", "solid-bold", "line", "vertical", "ascii"],
+
+          // Dashed lines
+          "¦": ["dashed", "line", "vertical", "unicode"],
+          "'": ["dashed", "line", "vertical", "ascii"],
+          "-": ["dashed", "solid-bold", "solid-thin", "line", "lateral", "ascii", "unicode"],
+
+          // Arrows
+          "^": ["arrow", "up", "ascii"],
+          ">": ["arrow", "right", "ascii"],
+          "<": ["arrow", "left", "ascii"],
+          "v": ["arrow", "down", "ascii"],
+          "▲": ["arrow", "up", "unicode"],
+          "▶": ["arrow", "right", "unicode"],
+          "◀": ["arrow", "left", "unicode"],
+          "▼": ["arrow", "down", "unicode"],
+
+          // Corners 
+          "┏": ["corner", "solid-bold", "top-left", "unicode"],
+          "┓": ["corner", "solid-bold", "top-right", "unicode"],
+          "┗": ["corner", "solid-bold", "bottom-left", "unicode"],
+          "┛": ["corner", "solid-bold", "bottom-right", "unicode"],
+
+          "┌": ["corner", "solid-thin", "top-left", "unicode"],
+          "┐": ["corner", "solid-thin", "top-right", "unicode"],
+          "└": ["corner", "solid-thin", "bottom-left", "unicode"],
+          "┘": ["corner", "solid-thin", "bottom-right", "unicode"],
+
+          "+": ["corner", "solid-bold", "solid-thin", "dashed", "ascii", "unicode", "top-left", "top-right", "bottom-left", "bottom-right"],
+    
+          // Misc
+          "x": ["free"],
+        }
+        getBestChar(...description) {
+          var lastMatches = -1;
+          var lastChar = null;
+          for (let character in this.charset) {
+            let tags = this.charset[character]; 
+            let matches = tags.filter(tag => description.includes(tag)).length;
+            if (matches > lastMatches) {
+              lastMatches = matches;
+              lastChar = character;
+            }
+          }
+          return lastChar;
+        }
+
+        getVerticalLine() {
+          return this.getBestChar("vertical", "line", this.form, this.line, this.strength);
+        }
+
+        getLateralLine() {
+          return this.getBestChar("lateral", "line", this.form, this.line, this.strength);
+        }
+
+        getArrow (direction) {
+          return this.getBestChar("arrow", direction, this.form, this.strength);
+        }
+
+        getCorner(position) {
+          return this.getBestChar("corner", position, this.form, this.line, this.strength);
+        }
+
+        getFree() {
+          return this.getBestChar("free");
+        }
+    }
+
+
     ////////////////////
     ////// LAYERS //////
     ////////////////////
@@ -1032,12 +1142,20 @@
       }
     }
     
-
+    
     class Layer {
 
-      lateralChar = "―";
-      verticalChar = "|";
-      cornerChar = "+";
+      lateralChar = charManager.getLateralLine();
+      verticalChar = charManager.getVerticalLine();
+      cornerTopLeftChar = charManager.getCorner("top-left");
+      cornerTopRightChar = charManager.getCorner("top-right");
+      cornerBottomLeftChar = charManager.getCorner("bottom-left");
+      cornerBottomRightChar = charManager.getCorner("bottom-right");
+      arrowUpChar    = charManager.getArrow("up");
+      arrowDownChar  = charManager.getArrow("down");
+      arrowLeftChar  = charManager.getArrow("left");
+      arrowRightChar = charManager.getArrow("right");
+
 
       constructor(firstPixelId) {
         this.id = this.makeId();
@@ -1764,19 +1882,19 @@
         var endValue = value;
         if (Math.abs(verticalDiff) > Math.abs(lateralDiff)) {
           if (toPixel.isAbove(fromPixel)) {
-            endValue = (this.hasArrowLeft) ? "^" : value;
-            startValue = (this.hasArrowRight) ? "v" : value;
+            endValue = (this.hasArrowLeft) ? this.arrowUpChar : value;
+            startValue = (this.hasArrowRight) ? this.arrowDownChar : value;
           } else {
-            endValue = (this.hasArrowLeft) ? "v" : value;
-            startValue = (this.hasArrowRight) ? "^" : value;
+            endValue = (this.hasArrowLeft) ? this.arrowDownChar : value;
+            startValue = (this.hasArrowRight) ? this.arrowUpChar : value;
           }
         } else{
           if (fromPixel.isLeft(toPixel)) {
-            endValue = (this.hasArrowRight) ? ">" : value;
-            startValue = (this.hasArrowLeft) ? "<" : value;
+            endValue = (this.hasArrowRight) ? this.arrowRightChar : value;
+            startValue = (this.hasArrowLeft) ? this.arrowLeftChar : value;
           } else {
-            endValue = (this.hasArrowLeft) ? "<" : value;
-            startValue = (this.hasArrowRight) ? ">" : value;
+            endValue = (this.hasArrowLeft) ? this.arrowLeftChar : value;
+            startValue = (this.hasArrowRight) ? this.arrowRightChar : value;
          } 
         }
 
@@ -1847,11 +1965,12 @@
         let absVerticalDiff = Math.abs(verticalDiff);
         let absLateralDiff = Math.abs(lateralDiff);
        
-        let [lateralArrowValue, verticalArrowValue] = this.getArrowValues(fromPixel, toPixel);
+        let [lateralArrowValue, verticalArrowValue] = this.getArrowChars(fromPixel, toPixel);
+        let cornerChar = this.getCornerChar(fromPixel, toPixel);
 
         var drawCol = fromPixel.col; 
         var drawRow = fromPixel.row;
-        
+
         // TODO: allow straight lines without corner if 0 diff
         for (var i = 0; i < absLateralDiff; i ++) {
           this.add(
@@ -1860,7 +1979,7 @@
           );
           drawCol += lateralDiff / absLateralDiff;
         }
-        this.add(canvas.getPixelByRowCol(drawRow, drawCol), this.cornerChar);
+        this.add(canvas.getPixelByRowCol(drawRow, drawCol), cornerChar);
         for (var i = 0; i < absVerticalDiff; i ++) {
           drawRow += verticalDiff / absVerticalDiff;
           this.add(
@@ -1870,7 +1989,16 @@
         }
       }
 
-      getArrowValues(fromPixel, toPixel) {
+      getCornerChar(fromPixel, toPixel) {
+        if (fromPixel.col < toPixel.col) {
+          return fromPixel.row < toPixel.row? this.cornerTopRightChar:  this.cornerBottomRightChar;
+        } else {
+          return fromPixel.row < toPixel.row? this.cornerTopLeftChar:  this.cornerBottomLeftChar;
+        }
+        return "";
+      }
+
+      getArrowChars(fromPixel, toPixel) {
         var lateralArrowValue = this.lateralChar;
         var verticalArrowValue = this.verticalChar;
         if (fromPixel.col > toPixel.col) {
@@ -1878,35 +2006,24 @@
           //    |
           //    |
           //    |____
-          if (this.hasArrowRight) {
-             lateralArrowValue = ">"; 
-          }
+          if (this.hasArrowRight) lateralArrowValue = this.arrowRightChar; 
           if (this.hasArrowLeft) {
-            if (fromPixel.row > toPixel.row) {
-             verticalArrowValue = "^"; 
-            } else {
-             verticalArrowValue = "v"; 
-            }
+            verticalArrowValue = fromPixel.row > toPixel.row? this.arrowUpChar: this.arrowDownChar;
           }
         } else {
           // Vertical line is on left
           //       |
           //       |
           //    ___|
-          if (this.hasArrowLeft) {
-             lateralArrowValue = "<"; 
-          }
+          if (this.hasArrowLeft) lateralArrowValue = this.arrowLeftChar; 
           if (this.hasArrowRight) {
-            if (fromPixel.row > toPixel.row) {
-             verticalArrowValue = "^"; 
-            } else {
-             verticalArrowValue = "v"; 
-            }
+           verticalArrowValue = fromPixel.row > toPixel.row? this.arrowUpChar: this.arrowDownChar;
           }
         }
         return [lateralArrowValue, verticalArrowValue];
       }
     }
+
 
     class SwitchLineLayer extends BaseLineLayer {
 
@@ -1918,6 +2035,7 @@
       }
 
       getKeyedJointPixels() {
+        // TODO explain this better or consider using draw corner pixels
         let firstPixel = this.getFirstPixel();
         if(this.pixels.length < 2) return {0: firstPixel, 1: firstPixel};
         let joints = [];
@@ -1997,32 +2115,34 @@
       }
 
       drawVertical(fromPixel, toPixel) {
-        let [firstChar, lastChar] = this.getArrowValuesVertical(fromPixel, toPixel); 
+        let [firstChar, lastChar] = this.getArrowCharsVertical(fromPixel, toPixel); 
+        let [firstCornerChar, lastCornerChar] = this.getCornerCharsVertical(fromPixel, toPixel); 
         this.drawFromTo(
           fromPixel.col,
           fromPixel.row,
           toPixel.col,
           toPixel.row,
-          [this.verticalChar, this.lateralChar, firstChar, lastChar],
+          [this.verticalChar, this.lateralChar, firstChar, lastChar, firstCornerChar, lastCornerChar],
           (a, b) => canvas.getPixelByRowCol(a, b),
         );
       }
 
       drawLateral(fromPixel, toPixel) {
-        let [firstChar, lastChar] = this.getArrowValuesLateral(fromPixel, toPixel); 
+        let [firstChar, lastChar] = this.getArrowCharsLateral(fromPixel, toPixel); 
+        let [firstCornerChar, lastCornerChar] = this.getCornerCharsLateral(fromPixel, toPixel); 
         this.drawFromTo(
           fromPixel.row,
           fromPixel.col,
           toPixel.row,
           toPixel.col,
-          [this.lateralChar, this.verticalChar, firstChar, lastChar],
+          [this.lateralChar, this.verticalChar, firstChar, lastChar, firstCornerChar, lastCornerChar],
           (a, b) => canvas.getPixelByRowCol(b, a),
         );
       } 
 
       drawFromTo(fromPixelCol, fromPixelRow, toPixelCol, toPixelRow, chars, pixelFunc) {
         this.empty();
-        let [mainChar, midChar, firstChar, lastChar] = chars;
+        let [mainChar, midChar, firstChar, lastChar, firstCornerChar, lastCornerChar] = chars;
         let diffA = toPixelRow - fromPixelRow;
         let diffB = toPixelCol - fromPixelCol;
         let absDiffA = Math.abs(diffA);
@@ -2051,7 +2171,7 @@
                                | 
 
         Note, the logic is the same both ways, but to draw laterally,
-        this method is called  with cols and rows swapped.
+        this method is called with cols and rows swapped.
         It's quite confusing but I've found it works wonderfully.
         */
 
@@ -2067,14 +2187,16 @@
         if (absDiffB == 0) {
           this.add(pixelFunc(drawRow, drawCol), mainChar);
         } else {
+          // First corner
+          this.add(pixelFunc(drawRow, drawCol), firstCornerChar);
           // Second line (middle)
-          this.add(pixelFunc(drawRow, drawCol), this.cornerChar);
           for (var i = 0; i < absDiffB - 1; i ++) {
             drawCol += diffB / absDiffB;
             this.add(pixelFunc(drawRow, drawCol), midChar);
           }
           drawCol += diffB / absDiffB;
-          this.add(pixelFunc(drawRow, drawCol), this.cornerChar);
+          // Second corner
+          this.add(pixelFunc(drawRow, drawCol), lastCornerChar);
         }
         // Third line. We use a while to ensure the line is drawn all the way.
         // Otherwise, using, using another "halfwayA" might be uneven due to rounding. 
@@ -2088,46 +2210,104 @@
         this.add(pixelFunc(drawRow, toPixelCol), lastChar); 
       }
 
-      getArrowValuesVertical(fromPixel, toPixel) {
+      getArrowCharsVertical(fromPixel, toPixel) {
         var firstChar = this.verticalChar;
         var lastChar = this.verticalChar;
         if (fromPixel.row < toPixel.row) {
           // Going down
           if (fromPixel.col < toPixel.col) {
             // Going right
-            if (this.hasArrowRight) lastChar = "v";
-            if (this.hasArrowLeft) firstChar = "^";
+            if (this.hasArrowRight) lastChar = this.arrowDownChar;
+            if (this.hasArrowLeft) firstChar = this.arrowUpChar;
           } else {
             // Going left
-            if (this.hasArrowLeft) lastChar = "v";
-            if (this.hasArrowRight) firstChar = "^";
+            if (this.hasArrowLeft) lastChar = this.arrowDownChar;
+            if (this.hasArrowRight) firstChar = this.arrowUpChar;
           }
         } else {
           // Going up
           if (fromPixel.col < toPixel.col) {
             // Going right
-            if (this.hasArrowRight) lastChar = "^";
-            if (this.hasArrowLeft) firstChar = "v";
+            if (this.hasArrowRight) lastChar = this.arrowUpChar;
+            if (this.hasArrowLeft) firstChar = this.arrowDownChar;
           } else {
             // Going left
-            if (this.hasArrowLeft) lastChar = "^";
-            if (this.hasArrowRight) firstChar = "v";
+            if (this.hasArrowLeft) lastChar = this.arrowUpChar;
+            if (this.hasArrowRight) firstChar = this.arrowDownChar;
           }
         }
         return [firstChar, lastChar];
       }
 
-      getArrowValuesLateral(fromPixel, toPixel) {
+      getArrowCharsLateral(fromPixel, toPixel) {
         var firstChar = this.lateralChar;
         var lastChar = this.lateralChar;
         if (fromPixel.col < toPixel.col) {
           // Going right
-          if (this.hasArrowLeft) firstChar = "<";
-          if (this.hasArrowRight) lastChar = ">";
+          if (this.hasArrowLeft) firstChar = this.arrowLeftChar;
+          if (this.hasArrowRight) lastChar = this.arrowRightChar;
         } else {
           // Going left
-          if (this.hasArrowLeft) lastChar = "<";
-          if (this.hasArrowRight) firstChar = ">";
+          if (this.hasArrowLeft) lastChar = this.arrowLeftChar;
+          if (this.hasArrowRight) firstChar = this.arrowRightChar;
+        }
+        return [firstChar, lastChar];
+      }
+
+      getCornerCharsVertical(fromPixel, toPixel) {
+        var firstChar = "";
+        var lastChar = "";
+        if (fromPixel.row < toPixel.row) {
+          // Going down
+          if (fromPixel.col < toPixel.col) {
+            // Going right
+            firstChar = this.cornerBottomLeftChar; 
+            lastChar = this.cornerTopRightChar;
+          } else {
+            // Going left
+            firstChar = this.cornerBottomRightChar; 
+            lastChar = this.cornerTopLeftChar;
+          }
+        } else {
+          // Going up
+          if (fromPixel.col < toPixel.col) {
+            // Going right
+            firstChar = this.cornerTopLeftChar; 
+            lastChar = this.cornerBottomRightChar;
+          } else {
+            // Going left
+            firstChar = this.cornerTopRightChar; 
+            lastChar = this.cornerBottomLeftChar;
+          }
+        }
+        return [firstChar, lastChar];
+      }
+
+      getCornerCharsLateral(fromPixel, toPixel) {
+        var firstChar = "";
+        var lastChar = "";
+        if (fromPixel.row < toPixel.row) {
+          // Going down
+          if (fromPixel.col < toPixel.col) {
+            // Going right
+            firstChar = this.cornerTopRightChar; 
+            lastChar = this.cornerBottomLeftChar;
+          } else {
+            // Going left
+            firstChar = this.cornerTopLeftChar; 
+            lastChar = this.cornerBottomRightChar;
+          }
+        } else {
+          // Going up
+          if (fromPixel.col < toPixel.col) {
+            // Going right
+            firstChar = this.cornerBottomRightChar; 
+            lastChar = this.cornerTopLeftChar;
+          } else {
+            // Going left
+            firstChar = this.cornerBottomLeftChar; 
+            lastChar = this.cornerTopRightChar;
+          }
         }
         return [firstChar, lastChar];
       }
@@ -2141,6 +2321,8 @@
     class FreeLayer extends Layer {
       
       name = "free";
+      
+      freeChar = charManager.getFree();
 
       static drawMouseDownEvent(event) {
         let layer = new FreeLayer(event.target.id);
@@ -2150,7 +2332,7 @@
 
       drawLayer(activePixelId) {
         let activePixel = canvas.getPixelById(activePixelId);
-        this.add(activePixel, "x");
+        this.add(activePixel, this.freeChar);
       }
     }
 
@@ -2218,6 +2400,20 @@
       }
 
       getKeyedJointPixels() {
+        let firstPixel = this.getFirstPixel();
+        if (this.pixels.length < 2) {
+          return {
+            tl: firstPixel, 
+            tr: firstPixel,
+            br: firstPixel,
+            bl: firstPixel, 
+            l: firstPixel,
+            r: firstPixel,
+            b: firstPixel,
+            t: firstPixel,
+          };
+        }
+
         let corners = this.getCornerPixels();
         let halfways = this.getHalfwayPixels(corners);
         if (!corners.length || !halfways.length) return {};
@@ -2256,25 +2452,39 @@
       drawLayer(activePixelId) {
         this.empty();
         let activePixel = canvas.getPixelById(activePixelId);
-        let verticalDiff  = activePixel.row - this.firstTouchedPixel.row;
-        let lateralDiff   = activePixel.col - this.firstTouchedPixel.col;
+        let fromPixel = canvas.getPixelByRowCol(
+          Math.min(activePixel.row, this.firstTouchedPixel.row),
+          Math.min(activePixel.col, this.firstTouchedPixel.col),
+        )
+        let toPixel = canvas.getPixelByRowCol(
+          Math.max(activePixel.row, this.firstTouchedPixel.row),
+          Math.max(activePixel.col, this.firstTouchedPixel.col),
+        )
+
+        let verticalDiff = toPixel.row - fromPixel.row;
+        let lateralDiff = toPixel.col - fromPixel.col;
+        
         let absVerticalDiff = Math.abs(verticalDiff);
         let absLateralDiff = Math.abs(lateralDiff);
-        var rowPos = this.firstTouchedPixel.row;
-        var colPos = this.firstTouchedPixel.col;
-        this.add(canvas.getPixelByRowCol(rowPos, colPos), this.cornerChar);
-        this.add(canvas.getPixelByRowCol(rowPos, activePixel.col), this.cornerChar);
-        this.add(canvas.getPixelByRowCol(activePixel.row, colPos), this.cornerChar);
-        this.add(canvas.getPixelByRowCol(activePixel.row, activePixel.col), this.cornerChar);
+        var rowPos = fromPixel.row;
+        var colPos = fromPixel.col;
+
+        // Draw corners
+        this.add(canvas.getPixelByRowCol(rowPos, colPos), this.cornerTopLeftChar);
+        this.add(canvas.getPixelByRowCol(rowPos, toPixel.col), this.cornerTopRightChar);
+        this.add(canvas.getPixelByRowCol(toPixel.row, colPos), this.cornerBottomLeftChar);
+        this.add(canvas.getPixelByRowCol(toPixel.row, toPixel.col), this.cornerBottomRightChar);
+
+        // Draw lines
         for(var row = 0; row < absVerticalDiff - 1; row ++) {
           rowPos += verticalDiff / absVerticalDiff;
-          this.add(canvas.getPixelByRowCol(rowPos, this.firstTouchedPixel.col), this.verticalChar);
-          this.add(canvas.getPixelByRowCol(rowPos, activePixel.col), this.verticalChar);
+          this.add(canvas.getPixelByRowCol(rowPos, fromPixel.col), this.verticalChar);
+          this.add(canvas.getPixelByRowCol(rowPos, toPixel.col), this.verticalChar);
         }
         for(var col = 0; col < absLateralDiff - 1; col ++) {
           colPos += lateralDiff / absLateralDiff;
-          this.add(canvas.getPixelByRowCol(this.firstTouchedPixel.row, colPos), this.lateralChar);
-          this.add(canvas.getPixelByRowCol(activePixel.row, colPos), this.lateralChar);
+          this.add(canvas.getPixelByRowCol(fromPixel.row, colPos), this.lateralChar);
+          this.add(canvas.getPixelByRowCol(toPixel.row, colPos), this.lateralChar);
         }
       } 
     }
@@ -2439,7 +2649,10 @@
           (Math.abs(lateralDiff) - this.getExcessColWidth()) / this.tblColDefaultWidth
         );
 
-        if (newTblRows != this.tblRows || newTblCols != this.tblCols) {
+        if (
+           (newTblRows != this.tblRows || newTblCols != this.tblCols) && 
+           (newTblCols != 0 && newTblRows != 0)
+        ) {
           this.tblRows = newTblRows;
           this.tblCols = newTblCols;
           this.ungroup();
@@ -2467,19 +2680,26 @@
         this.empty();
         let tblHeight = sum(this.tblRowHeights);
         let tblWidth = sum(this.tblColWidths);
+        var row = this.fromPixel.row;
+        let toRow = row + tblHeight;
+        let toCol = this.fromPixel.col + tblWidth;
+
+        // Draw corners...
+        this.add(canvas.getPixelByRowCol(row, this.fromPixel.col), this.cornerTopLeftChar);
+        this.add(canvas.getPixelByRowCol(row, toCol), this.cornerTopRightChar);
+        this.add(canvas.getPixelByRowCol(toRow, this.fromPixel.col), this.cornerBottomLeftChar);
+        this.add(canvas.getPixelByRowCol(toRow, toCol), this.cornerBottomRightChar);
+
         // Draw row lines with spacing based on text..
         // -----------------
         //
         // -----------------
         // -----------------
-        var row = this.fromPixel.row;
         for (var tblRow = 0; tblRow <= this.tblRows; tblRow ++) {
-            var col = this.fromPixel.col;
-            for(var tblCol = 0; tblCol <= tblWidth; tblCol ++) {
-              // Make the first two lines solid for the header
-              let value = ([0, 1, this.tblRows].includes(tblRow))? this.lateralChar: "-";
-              this.add(canvas.getPixelByRowCol(row,  col), value);
-              col += 1;
+            for(var col = this.fromPixel.col + 1; col < toCol; col++) {
+              // TODO Make the first two lines solid for the header - how to with CharManager
+              //let value = ([0, 1, this.tblRows].includes(tblRow))? this.lateralChar: "-";
+              this.add(canvas.getPixelByRowCol(row,  col), this.lateralChar);
             }
             let tblRowStep = this.tblRowHeights[tblRow]; 
             row += tblRowStep;
@@ -2491,10 +2711,8 @@
         // |      |   |    |
         var col = this.fromPixel.col;
         for (var tblCol = 0; tblCol <= this.tblCols; tblCol ++) {
-            var row = this.fromPixel.row;
-            for(var tblRow = 0; tblRow <= tblHeight; tblRow ++) {
+            for(var row = this.fromPixel.row + 1; row < toRow; row++) {
               this.add(canvas.getPixelByRowCol(row,  col), this.verticalChar);
-              row += 1; 
             }
             let tblColStep = this.tblColWidths[tblCol]; 
             col += tblColStep;
@@ -2903,13 +3121,14 @@
     
     
     // MANAGERS
-    modeMaster = new ModeMaster();
-    layerManager = new LayerManager();
-    areaSelectManager = new AreaSelectManager();
-    eventManager = new EventManager();
+    modeMaster         = new ModeMaster();
+    layerManager       = new LayerManager();
+    areaSelectManager  = new AreaSelectManager();
+    eventManager       = new EventManager();
+    charManager        = new CharManager();
     
     // COMPONENTS
-    menu = new Menu();
+    menu   = new Menu();
     canvas = new Canvas();
 
     menu.render();
