@@ -29,46 +29,40 @@
   <script defer>
     /*
 
-    TODO
-    FE 
-    - switch lines (auto from step?) and diamonds
-    - better unicode chars. Arrow heads, etc. char sets. dotted / bullet point lines optins.
-    - cmd v ctrl for Mac
-    - table joint pixels: choose text layer or not (no joints for text layer has table)
-    - z-index concepting: renderPixel funcs stack prio,
-        groups prio same z-index (resize table new textlayers are off)
-        easy way to ensure arrow heads are seen on joins - consider outter halfways?
-    - make joint pixels x
-    - consider defaulting to select mode after draw:
-    - improve diagonals - filler lines
-    - mini success messages
-    - clever resize: text in boxes main issue
-    - resize improvements: resize by % to avoid reverse
-    - file break up?
-    - export 
-    - clever free draw straight chars
-    - proper design / config
-    - setting: unicode v ascii
-    - themes
-    - intro / why ascii
-    - manual page. shortcuts, etc.
+    *** TODO ***
+    
+    FE  -
 
-    - BE: save, share, manage, user, login google + github,  CRUD
+      - various todos
+      - char manager: better redraw logic all around, unicode v ascii switch, line options. 
+      - diamond layers
+      - cmd v ctrl for Mac
+      - z-index concepting: renderPixel funcs stack prio,
+          groups prio same z-index (resize table new textlayers are off)
+          easy way to ensure arrow heads are seen on joins that aren't outter 
+          make joint pixels x / nicer
+      - consider defaulting to select mode after draw
+      - improve diagonals - filler lines
+      - mini success messages
+      - clever resize: text in boxes main issue
+      - resize improvements: resize by % to avoid reverse
+      - file break up?
+      - export 
+      - import :)
+      - clever free draw straight chars
+      - proper design / config
+      - themes
+      - intro / why ascii
+      - manual page. shortcuts, etc.
+
+    BE -
+
+      - save, share, manage, user, login google + github,  CRUD
       - guest auto save (refresh keeps)
       - plain text request / curl
 
     IMPROVEMENTS:
       - copy layers with joints by canvas boundry will break joint.
-
-    var out = "";
-    for(var row = 0; row < canvas.rowCount; row ++ ) {
-        for (var col = 0; col < canvas.colCount; col ++) {
-           let content = canvas.getPixelByRowCol(row, col).element.innerHTML;
-           out += (content == "")? " ": content;
-        }
-        out += "\n";
-    }
-    console.log(out);
 
     */
 
@@ -1863,6 +1857,8 @@
         var rowDraw = fromPixel.row;
 
         var value = "x";
+
+        // TODO make this work nicely with char manager
         
         if (Math.abs(verticalStep) < 0.3){
           value = this.lateralChar;
