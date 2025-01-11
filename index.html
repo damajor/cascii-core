@@ -34,6 +34,7 @@
     FE  -
 
       - various todos
+      - TextLayer activepixel for drawLayer /redraw
       - export 
       - diamond layers
       - z-index concepting: renderPixel funcs stack prio,
@@ -1730,7 +1731,7 @@
         return lengths;
       }
 
-      drawLayer() {
+      drawLayer(activePixelId) {
         // Get latest first pixel given the layer may have moved and this could be
         // an edit. 
         this.setFromPixel(this.pixels.length? this.getFirstPixel(): this.fromPixel);
