@@ -34,20 +34,20 @@
     FE  -
 
       - various todos
-      - char manager: better redraw logic all around, unicode v ascii switch, line options. 
+      - export 
       - diamond layers
-      - cmd v ctrl for Mac
       - z-index concepting: renderPixel funcs stack prio,
           groups prio same z-index (resize table new textlayers are off)
           easy way to ensure arrow heads are seen on joins that aren't outter 
           make joint pixels x / nicer
+      - char manager: better redraw logic all around, unicode v ascii switch, line options. 
       - consider defaulting to select mode after draw
+      - cmd v ctrl for Mac
       - improve diagonals - filler lines, unicode chars?
       - mini success messages
       - clever resize: text in boxes main issue
       - resize improvements: resize by % to avoid reverse
       - file break up?
-      - export 
       - import :)
       - clever free draw straight chars
       - proper design / config
@@ -415,7 +415,7 @@
 
     class CharManager {
         
-        form = "unicode";
+        form = "ascii";
         line = "solid-bold";
 
         // Useful: https://www.w3.org/TR/xml-entity-names/025.html
@@ -660,7 +660,7 @@
       getLayerByPixelId(id) {
         // Descending (reversed)
         for (var layer of this.getLayersOrderedByZindex().reverse()) { 
-          if (layer.getPixelIndex(id) > -1) return layer;
+          if (layer.hasPixel(id)) return layer;
         }
       }
 
@@ -834,8 +834,7 @@
 
         // Descending
         for (let layer of this.getLayersOrderedByZindex().reverse()) {
-          console.log(layer.getPixelIndex(pixel.id()));
-          if (layer.getPixelIndex(pixel.id()) > -1) return layer.id == targetLayer.id;
+          if (layer.hasPixel(pixel.id())) return layer.id == targetLayer.id;
         }
         return false;
       }
@@ -916,6 +915,9 @@
               if (state > renderState) renderState = state;
             }
             switch (renderState) {
+              case 0:
+                jointPixel.renderWasSelected();
+              break;
               case 1:
                 jointPixel.renderJointNear();
               break;
@@ -1234,7 +1236,6 @@
           return;
         }
         if (layer) {
-          console.log("REFRESH");
           layerManager.refresh(() => layer.select());
           modeMaster.change("select", "selected");
           modeMaster.setLayer(layer.name);
@@ -1290,7 +1291,7 @@
 
       add(pixel, value) {
         if (!pixel) return;
-        let existingPixelIndex = this.getPixelIndex(pixel.id());
+          let existingPixelIndex = this.getPixelIndex(pixel.id());
         if (existingPixelIndex == -1) {
           this.pixels.push(pixel);
           this.values.push(value);
@@ -1559,6 +1560,13 @@
         }
       }
 
+      hasPixel(id) {
+        return (
+          this.getPixelIndex(id) > -1 ||
+          this.getJointPixels().map(pixel => pixel.id()).includes(id)
+        );
+      }
+
       getPixelIndex(id) {
         for (var i = 0; i < this.pixels.length; i++) {
           let pixel = this.pixels[i];
@@ -1674,7 +1682,6 @@
       }
 
       moveCursorToPixel(pixel) {
-        this.renderNormal();
         if (this.isSelected()) this.renderSelected();
         this.cursor = this.getPixelIndex(pixel.id()) + 1;
         pixel.renderFocus();
@@ -1823,7 +1830,7 @@
         let activePixel = canvas.getPixelById(event.target.id);
         for (var layer of layerManager.layers) {
           for (var jointPixel of layer.getJointPixels()) {
-            if (activePixel.isNear(jointPixel) && this.layerPixelIsVisible(layer, jointPixel)) {
+            if (activePixel.isNear(jointPixel) && layerManager.layerPixelIsVisible(layer, jointPixel)) {
               jointPixel.renderJointNear();
             } else {
               jointPixel.renderWasSelected();
