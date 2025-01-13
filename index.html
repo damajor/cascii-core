@@ -34,6 +34,7 @@
     FE  -
 
       - various todos
+      - COPY zindex
       - TextLayer activepixel for drawLayer /redraw
       - export 
       - diamond layers
@@ -202,6 +203,7 @@
       
       removeLayers() {
         this.remove("square");
+        this.remove("diamond");
         this.remove("free-line");
         this.remove("step-line");
         this.remove("switch-line");
@@ -338,6 +340,8 @@
                   [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDownEvent),
               new EventDef([modeMaster.has, "draw", "square"],
                   [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDownEvent),
+              new EventDef([modeMaster.has, "draw", "diamond"],
+                  [modeMaster.change, "draw", "drawing"], DiamondLayer.drawMouseDownEvent),
               new EventDef([modeMaster.has, "draw", "table"],
                   [modeMaster.change, "draw", "drawing"], TableLayer.drawMouseDownEvent),
               new EventDef([modeMaster.has, "writing", "text"],
@@ -417,7 +421,7 @@
     class CharManager {
         
         form = "ascii";
-        line = "solid-bold";
+        line = "solid-thin";
 
         // Useful: https://www.w3.org/TR/xml-entity-names/025.html
         charset = {
@@ -432,6 +436,10 @@
           "─": ["solid-thin", "line", "lateral", "unicode"],
           "│": ["solid-thin", "line", "vertical", "unicode"],
           "|": ["solid-thin", "solid-bold", "line", "vertical", "ascii"],
+          "\\": ["solid-thin", "solid-bold", "diag-back", "line", "ascii"],
+          "＼": ["solid-thin", "solid-bold", "diag-back", "line", "unicode"],
+          "/": ["solid-thin", "solid-bold", "diag-forward", "line", "ascii"],
+          "／": ["solid-thin", "solid-bold", "diag-forward", "line", "unicode"],
 
           // Dashed lines
           "¦": ["dashed", "line", "vertical", "unicode"],
@@ -482,20 +490,28 @@
           return lastChar;
         }
 
+        getDiagBackLine() {
+          return this.getBestChar("diag-back", "line", this.form, this.line);
+        }
+
+        getDiagForwardLine() {
+          return this.getBestChar("diag-forward", "line", this.form, this.line);
+        }
+
         getVerticalLine() {
-          return this.getBestChar("vertical", "line", this.form, this.line, this.strength);
+          return this.getBestChar("vertical", "line", this.form, this.line);
         }
 
         getLateralLine() {
-          return this.getBestChar("lateral", "line", this.form, this.line, this.strength);
+          return this.getBestChar("lateral", "line", this.form, this.line);
         }
 
         getArrow (direction) {
-          return this.getBestChar("arrow", direction, this.form, this.strength);
+          return this.getBestChar("arrow", direction, this.form);
         }
 
         getCorner(position) {
-          return this.getBestChar("corner", position, this.form, this.line, this.strength);
+          return this.getBestChar("corner", position, this.form, this.line);
         }
 
         getFree() {
@@ -944,14 +960,7 @@
         let resizePixelIndex = leadLayer.getResizePixelIndex(activePixel);
         if (resizePixelIndex == -1) return false;
         for (var resizeLayer of this.getSelectedLayers()) {
-
-          // Reset the toPixel (see resizingMouseOverEvent) so that it is 
-          // calculated fresh per resize act. 
-          resizeLayer.toPixel = null;
-
-          if (!resizeLayer.isResizable()) {
-            continue;
-          }
+          if (!resizeLayer.isResizable()) continue;
           var resizePixel;
           if (resizeLayer.id == leadLayer.id) {
             // If the selected layer is the lead / currently selected layer 
@@ -975,6 +984,9 @@
           // the act of drawing it from the first pixel selected.
           let fromResizePixel = resizeLayer.getResizeOppositePixel(resizePixel);
           resizeLayer.setFromPixel(fromResizePixel);
+
+
+          resizeLayer.toPixel = resizePixel; // TODO explain
         }
         return true;
       }
@@ -1032,15 +1044,15 @@
           With both of these determined, the layer can be resized.
           */
 
-          if (!layer.toPixel) {
-            layer.toPixel = layer.getResizeOppositePixel(layer.fromPixel);
-          }
+          ///if (!layer.toPixel) {
+          //  layer.toPixel = layer.getResizeOppositePixel(layer.fromPixel);
+          //} // TODO clear this
           layer.toPixel = canvas.getPixelByRowCol(
             layer.toPixel.row + verticalDiff, layer.toPixel.col + lateralDiff
           );
           // For this layer, the resize pixel is out of bounds.
           if (!layer.toPixel) continue;
-
+          
           // resizeSelectedJoinerLayers is true because layers are changing
           // and selected joiner layers should favour maintaining joints and resizing
           // that way, instead of resizing independently.
@@ -1188,6 +1200,8 @@
 
       lateralChar = charManager.getLateralLine();
       verticalChar = charManager.getVerticalLine();
+      diagBackChar = charManager.getDiagBackLine();
+      diagForwardChar = charManager.getDiagForwardLine();
       cornerTopLeftChar = charManager.getCorner("top-left");
       cornerTopRightChar = charManager.getCorner("top-right");
       cornerBottomLeftChar = charManager.getCorner("bottom-left");
@@ -1196,7 +1210,6 @@
       arrowDownChar  = charManager.getArrow("down");
       arrowLeftChar  = charManager.getArrow("left");
       arrowRightChar = charManager.getArrow("right");
-
 
       constructor(firstPixelId) {
         this.id = this.makeId();
@@ -1236,16 +1249,14 @@
           modeMaster.add("area-selecting");
           return;
         }
-        if (layer) {
-          layerManager.refresh(() => layer.select());
-          modeMaster.change("select", "selected");
-          modeMaster.setLayer(layer.name);
-          if(layerManager.prepareLayerResizing(activePixel, layer)) {
-            modeMaster.add("resizing");
-          } else {
-            modeMaster.add("moving");
-          }
-          if (!modeMaster.has("ctrl")) layerManager.refresh(() => layerManager.selectGroupsByMemberLayer(layer));
+        layerManager.refresh(() => layer.select());
+        modeMaster.change("select", "selected");
+        modeMaster.setLayer(layer.name);
+        modeMaster.add(
+          layerManager.prepareLayerResizing(activePixel, layer)? "resizing": "moving"
+        );
+        if (!modeMaster.has("ctrl")) {
+          layerManager.refresh(() => layerManager.selectGroupsByMemberLayer(layer));
         }
       }
 
@@ -1416,7 +1427,9 @@
         let layerPixelIds = this.pixels.map(pixel => pixel.id());
         let directions = [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]];
         for (let direction of directions) {
-          total += targetLayer.getMove(...direction).filter(pixel => layerPixelIds.includes(pixel.id())).length
+          total += targetLayer.getMove(...direction).filter(
+            pixel => layerPixelIds.includes(pixel.id())
+          ).length
         }
         return total;
       }
@@ -1426,7 +1439,9 @@
       }
 
       renderSelected() {
-        this.getJointPixels().forEach((pixel) => pixel.renderNormal());
+        this.getJointPixels().filter(
+          pixel => Boolean(pixel)).forEach(pixel => pixel.renderWasSelected()
+        );
         this.pixels.forEach(pixel => pixel.renderSelected());
         this.getResizePixels().forEach(pixel => pixel.renderResizable());
       }
@@ -1629,6 +1644,10 @@
           layerManager.add(layer);
           layerManager.editingTextLayer = layer;
           layer.fromPixel.renderFocus();
+
+          // Give an instant cursor position so it can be cleared
+          // even if no writing was done.
+          layer.lastCursorPixel = layer.fromPixel;
         }
       }
 
@@ -1653,6 +1672,11 @@
           return true;
         }
         return false;
+      }
+
+      unselect() {
+        super.unselect();
+        this.lastCursorPixel.renderNormal();
       }
       
       copy(replace=false) {
@@ -1683,7 +1707,7 @@
       }
 
       moveCursorToPixel(pixel) {
-        if (this.isSelected()) this.renderSelected();
+        this.render();
         this.cursor = this.getPixelIndex(pixel.id()) + 1;
         pixel.renderFocus();
       }
@@ -1908,13 +1932,13 @@
         } else if (Math.abs(lateralStep) < 0.5) {
           value = this.verticalChar;
         } else if (toPixel.isLeft(fromPixel) && toPixel.isBelow(fromPixel)) {
-          value = "/";
+          value = this.diagForwardChar;
         } else if (toPixel.isRight(fromPixel) && toPixel.isBelow(fromPixel)) {
-          value = "\\";
+          value = this.diagBackChar;
         } else if (toPixel.isLeft(fromPixel) && toPixel.isAbove(fromPixel)) {
-          value = "\\";
+          value = this.diagBackChar;
         } else if (toPixel.isRight(fromPixel) && toPixel.isAbove(fromPixel)) {
-          value = "/";
+          value = this.diagForwardChar;
         }
          
         var startValue = value;
@@ -1939,10 +1963,12 @@
 
         this.empty();
         for (var i = 0; i <= totalSteps; i ++) {
+          //if (roundHalf(rowDraw + verticalStep) != roundHalf(rowDraw)) {
           this.add(
             canvas.getPixelByRowCol(roundHalf(rowDraw), roundHalf(colDraw)),
             (i == 0)? startValue: value
           );
+          //}
           rowDraw += verticalStep;
           colDraw += lateralStep;
         }
@@ -2387,18 +2413,10 @@
         var maxRow = -1;
         var minRow = -1;
         for (var pixel of this.pixels) {
-          if (pixel.col > maxCol) {
-            maxCol = pixel.col;
-          }
-          if (pixel.col < minCol || minCol == -1) {
-            minCol = pixel.col; 
-          }
-          if (pixel.row > maxRow) {
-            maxRow = pixel.row;
-          }
-          if (pixel.row < minRow || minRow == -1) {
-            minRow = pixel.row; 
-          }
+          if (pixel.col > maxCol) maxCol = pixel.col;
+          if (pixel.col < minCol || minCol == -1) minCol = pixel.col; 
+          if (pixel.row > maxRow) maxRow = pixel.row;
+          if (pixel.row < minRow || minRow == -1) minRow = pixel.row; 
         }
         return [
           canvas.getPixelByRowCol(minRow, minCol), // Top left
@@ -2417,12 +2435,149 @@
         let cornerMatchPixel = this.getResizePixelIndex(targetPixel);
         if (cornerMatchPixel == -1) return;
         let firstPixelIndex = cornerMatchPixel + 2;
-        if (firstPixelIndex > 3) {
-          firstPixelIndex = firstPixelIndex - 4;
-        }
+        if (firstPixelIndex > 3) firstPixelIndex = firstPixelIndex - 4;
         return corners[firstPixelIndex];
       }
+    }
 
+    class DiamondLayer extends Layer {
+      
+      name = "diamond" 
+
+      static drawMouseDownEvent(event) {
+        let layer = new DiamondLayer(event.target.id);
+        layerManager.add(layer);
+      }
+
+      getKeyedJointPixels() {
+        let firstPixel = this.getFirstPixel();
+        if (this.pixels.length < 4) return {t: firstPixel, r: firstPixel, b: firstPixel, l: firstPixel};
+        let [leftPixel, rightPixel, topPixel, bottomPixel] = this.getCornerPixelIndexes().pixels;
+
+        return {
+          t: canvas.getPixelByRowCol(topPixel.row - 1, topPixel.col), 
+          r: canvas.getPixelByRowCol(rightPixel.row, rightPixel.col + 1), 
+          b: canvas.getPixelByRowCol(bottomPixel.row + 1, topPixel.col), 
+          l: canvas.getPixelByRowCol(leftPixel.row, leftPixel.col - 1), 
+        };
+      }
+      
+      getCornerPixelIndexes() {
+        var minCol = null;
+        var maxCol = null;
+        var minRow = null;
+        var maxRow = null;
+        var minColIndex = null;
+        var maxColIndex = null;
+        var minRowIndex = null;
+        var maxRowIndex = null;
+        
+        var index = 0;
+        for (let pixel of this.pixels) {
+          if (!minColIndex || pixel.col < minCol.col) [minColIndex, minCol] = [index, pixel];
+          if (!maxColIndex || pixel.col > maxCol.col) [maxColIndex, maxCol] = [index, pixel];
+          if (!minRowIndex || pixel.row < minRow.row) [minRowIndex, minRow] = [index, pixel];
+          if (!maxRowIndex || pixel.row > maxRow.row) [maxRowIndex, maxRow] = [index, pixel];
+          index ++;
+        }
+
+        return {
+          indexes: [minColIndex, maxColIndex, minRowIndex, maxRowIndex],
+          pixels: [minCol, maxCol, minRow, maxRow],
+        };
+      }
+
+      getResizePixels() {
+        // TODO explain this shit
+        let [minColIndex, maxColIndex, minRowIndex, maxRowIndex] = this.getCornerPixelIndexes().indexes;
+        let topLeftPixel = this.pixels[minColIndex + roundHalf((this.pixels.length - minColIndex) / 2)];
+        let bottomRightPixel = this.pixels[maxColIndex + roundHalf((maxRowIndex - maxColIndex) / 2)];
+        let topRightPixel = this.pixels[roundHalf(maxColIndex / 2)];
+        let bottomLeftPixel = this.pixels[maxRowIndex + roundHalf((minColIndex - maxRowIndex) / 2)];
+        return [topLeftPixel, topRightPixel, bottomRightPixel, bottomLeftPixel];
+      }
+
+      getResizeOppositePixel(targetPixel) {
+        let corners = this.getResizePixels();
+        let cornerMatchPixel = this.getResizePixelIndex(targetPixel);
+        if (cornerMatchPixel == -1) return;
+        let firstPixelIndex = cornerMatchPixel + 2;
+        if (firstPixelIndex > 3) firstPixelIndex = firstPixelIndex - 4;
+        return corners[firstPixelIndex];
+      }
+      
+      drawLayer(activePixelId) {
+        this.toPixel = canvas.getPixelById(activePixelId);
+        let topLeftPixel = canvas.getPixelByRowCol(
+          Math.min(this.toPixel.row, this.fromPixel.row),
+          Math.min(this.toPixel.col, this.fromPixel.col),
+        )
+
+        let bottomRightPixel = canvas.getPixelByRowCol(
+          Math.max(this.toPixel.row, this.fromPixel.row),
+          Math.max(this.toPixel.col, this.fromPixel.col),
+        )
+
+        let verticalDiff = Math.abs(bottomRightPixel.row - topLeftPixel.row);
+        let lateralDiff = Math.abs(bottomRightPixel.col - topLeftPixel.col);
+        
+        var middlePixel = canvas.getPixelByRowCol(
+          topLeftPixel.row + roundHalf(verticalDiff / 2), topLeftPixel.col + roundHalf(lateralDiff / 2)
+        );
+        let topHalfPixel = canvas.getPixelByRowCol(middlePixel.row - (verticalDiff), middlePixel.col);
+        let leftHalfPixel = canvas.getPixelByRowCol(middlePixel.row, middlePixel.col - (lateralDiff));
+        let rightHalfPixel = canvas.getPixelByRowCol(middlePixel.row, middlePixel.col + (lateralDiff));
+        let bottomHalfPixel = canvas.getPixelByRowCol(middlePixel.row + (verticalDiff), middlePixel.col);
+        
+        let halfPixels = [topHalfPixel, rightHalfPixel, bottomHalfPixel, leftHalfPixel, topHalfPixel];
+      
+        if (!halfPixels.every(Boolean)) return;
+
+        this.empty();
+        for (var pixelIndex = 0; pixelIndex < halfPixels.length - 1; pixelIndex++) {
+          let fromPixel = halfPixels[pixelIndex];
+          let toPixel = halfPixels[pixelIndex + 1];
+          let localVerticalDiff  = toPixel.row - fromPixel.row;
+          let localLateralDiff   = toPixel.col - fromPixel.col;
+          
+          var totalSteps   = Math.max(Math.abs(localVerticalDiff), Math.abs(localLateralDiff));
+          var verticalStep = localVerticalDiff / totalSteps;
+          var lateralStep  = localLateralDiff / totalSteps;
+
+          var colDraw = fromPixel.col;
+          var rowDraw = fromPixel.row;
+
+          var value = "";
+          var form = 1;
+          console.log(verticalStep, lateralStep);
+          if (Math.abs(verticalStep) < 0.5){
+            value = this.lateralChar;
+            form = 2;
+          } else if (Math.abs(lateralStep) < 0.9) {
+            form = 2;
+            value = this.verticalChar;
+          } else if (toPixel.isLeft(fromPixel) && toPixel.isBelow(fromPixel)) {
+            value = this.diagForwardChar;
+          } else if (toPixel.isRight(fromPixel) && toPixel.isBelow(fromPixel)) {
+            value = this.diagBackChar;
+          } else if (toPixel.isLeft(fromPixel) && toPixel.isAbove(fromPixel)) {
+            value = this.diagBackChar;
+          } else if (toPixel.isRight(fromPixel) && toPixel.isAbove(fromPixel)) {
+            value = this.diagForwardChar;
+          }
+
+          for (var i = 0; i <= totalSteps; i ++) {
+            if (form == 2 || roundHalf(rowDraw + verticalStep) != roundHalf(rowDraw)) {
+              this.add(
+                canvas.getPixelByRowCol(roundHalf(rowDraw), roundHalf(colDraw)),
+                value 
+              );
+            }
+            rowDraw += verticalStep;
+            colDraw += lateralStep;
+          }
+        }
+      } 
     }
 
     class SquareLayer extends SquareBoundLayer {
@@ -2846,6 +3001,7 @@
         this.defaultBgColor = "transparent";
         this.defaultBorder = "none";
         this.cursorFlashInterval = null;
+        this.selected = false;
       }
       
       id() {
@@ -2893,11 +3049,12 @@
       }
 
       renderWasSelected() {
-        if (this.selected) {
-          this.renderSelected();
-        } else {
-          this.renderUnselected();
-        }
+        this.selected? this.renderSelected(): this.renderUnselected();
+      }
+
+      renderNoCursor() {
+        clearInterval(this.cursorFlashInterval);
+        this.element.style.border = "none";
       }
 
       renderCursor() {
@@ -2921,10 +3078,9 @@
       }
 
       renderNormal() {
-        clearInterval(this.cursorFlashInterval);
+        this.renderNoCursor();
         this.setColor(this.defaultColor);
         this.setBgColor(this.defaultBgColor);
-        this.element.style.border = "none";
       }
 
       setColor(color) {
@@ -3111,6 +3267,8 @@
           [], [modeMaster.reset, "draw", "line", "step-line", "dslbutton"], ["dslbutton"], () => layerManager.switchModeCallback()),
         new MenuButton("Switch Line", 
           [], [modeMaster.reset, "draw", "line", "switch-line", "dswlbutton"], ["dswlbutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("Diamond",
+          [], [modeMaster.reset, "draw", "diamond", "ddibutton"], ["ddibutton"], () => layerManager.switchModeCallback()),
         new MenuButton("Table",
           [], [modeMaster.reset, "draw", "table", "dtblbutton"], ["dtblbutton"], () => layerManager.switchModeCallback()),
         new MenuButton("Free",
@@ -3118,7 +3276,7 @@
         new MenuButton("Erase",
           [], [modeMaster.reset, "erase", "ebutton"], ["ebutton"], () => layerManager.switchModeCallback()),
         new MenuButton("Select",
-          [], [modeMaster.reset, "select"], ["selected", "select"]),
+          [], [modeMaster.reset, "select"], ["selected", "select"], () => layerManager.switchModeCallback()),
         new MenuButton("Undo",
           [], [], [], (event) => layerManager.undoEvent(event)),
         new MenuButton("Redo",
