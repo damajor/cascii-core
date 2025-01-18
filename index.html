@@ -2,22 +2,30 @@
   <head>
     <style>
       body {
-        background: black;
+        background: white;
+        margin: 0;
+        font-family: monospace;
       }
       #canvas {
-        background: black;
+        background: white;
         user-select: none;
       }
 
       #menu {
-        height: 50px;
+        height: 60px;
+        margin: 0;
       }
 
       #menu button {
+        font-family: monospace;
         padding: 10px;
         margin-left: 10px;
+        margin-top: 10px;
+        height: 40px;
         color: white;
-        border: 1px solid white;
+        border: 1px solid #212121;
+        box-shadow: 0px 0px 20px #403f3f;
+        border-radius: 15px;
         float: left;
       }
     </style>
@@ -35,7 +43,8 @@
 
       - various todos
       - COPY zindex
-      - TextLayer activepixel for drawLayer /redraw
+      - check diamond behavioru for multi resize.
+      - TextLayer activepixel for drawLayer /redraw - ensure consistent params for drawLayer
       - export 
       - diamond layers
       - z-index concepting: renderPixel funcs stack prio,
@@ -136,7 +145,19 @@
     //////////////////
 
     class ModeMaster {
-      constructor() {
+
+      layerModes = [
+        "square",
+        "free",
+        "free-line",
+        "step-line",
+        "switch-line",
+        "line",
+        "text",
+        "table"
+      ];
+
+      constructor(layerTypes) {
         this._modes = [];
         this.callbacks = [];
       }
@@ -202,21 +223,12 @@
       }
       
       removeLayers() {
-        this.remove("square");
-        this.remove("diamond");
-        this.remove("free-line");
-        this.remove("step-line");
-        this.remove("switch-line");
-        this.remove("line");
-        this.remove("free");
-        this.remove("text");
-        this.remove("table");
+        this.layerModes.forEach(mode => this.remove(mode));
       }
 
       setLayer(name) {
         this.removeLayers();
         this.add(name);
-
         if (name.includes("line")) this.add("line");
       }
     }
@@ -298,6 +310,9 @@
               ],
             },
             keyup: {
+              "*": [
+                new EventDef([modeMaster.has, "writing", "text"], [], () => layerManager.tidyLayers()),
+              ],
               [keyGroup("shift")]: [
                 new EventDef([modeMaster.has, "shift"],
                     [modeMaster.remove, "shift"]),
@@ -436,10 +451,8 @@
           "─": ["solid-thin", "line", "lateral", "unicode"],
           "│": ["solid-thin", "line", "vertical", "unicode"],
           "|": ["solid-thin", "solid-bold", "line", "vertical", "ascii"],
-          "\\": ["solid-thin", "solid-bold", "diag-back", "line", "ascii"],
-          "＼": ["solid-thin", "solid-bold", "diag-back", "line", "unicode"],
-          "/": ["solid-thin", "solid-bold", "diag-forward", "line", "ascii"],
-          "／": ["solid-thin", "solid-bold", "diag-forward", "line", "unicode"],
+          "\\": ["solid-thin", "solid-bold", "diag-back", "line", "unicode", "ascii"],
+          "/": ["solid-thin", "solid-bold", "diag-forward", "line", "unicode", "ascii"],
 
           // Dashed lines
           "¦": ["dashed", "line", "vertical", "unicode"],
@@ -470,7 +483,7 @@
           "+": [
             "corner", "solid-bold", "solid-thin", "dashed",
             "ascii", "unicode", "top-left", "top-right",
-            "bottom-left", "bottom-right"
+            "bottom-left", "bottom-right", "generic"
           ],
     
           // Misc
@@ -783,10 +796,19 @@
         }
       }
       
-      getNearOverlappingCount(subjectLayer) {
+      getNearOverlappingCount(subjectLayer, withNames) {
+        /*
+        This counts how many pixels from other layers are near
+        or overlapping the subjectLayer. withNames can also
+        be provided to only worry about specific layer types
+        being near/overlapping. This is mainly used to make decisions
+        based on how busy a space is.
+        */
         var count = 0; 
-        for (var layer of this.layers) {
-          count += layer.getNearOverlappingCount(subjectLayer);
+        for (let layer of this.layers) {
+          if (withNames && withNames.includes(layer.name)) {
+            count += layer.getNearOverlappingCount(subjectLayer);
+          }
         }
         return count;
       }
@@ -849,9 +871,15 @@
         // This checks if the value of a layer at a specific pixel is actually showing.
         // (Otherwise, a layer on the same pixel is showing it's value first)
 
+        // For each layer, we also check it isn't a joiner to the targetLayer,
+        // as that means it's probably only covering the joint pixel, which 
+        // we still want to show for other joiners. The edge case that it's a
+        // joiner and doesn't properly hide other overlapped pixels is fine.
+        let joinerLayers = this.getJoinersFromLayers([targetLayer]);
+
         // Descending
         for (let layer of this.getLayersOrderedByZindex().reverse()) {
-          if (layer.hasPixel(pixel.id())) return layer.id == targetLayer.id;
+          if (layer.hasPixel(pixel.id()) && !joinerLayers.includes(layer.id)) return layer.id == targetLayer.id;
         }
         return false;
       }
@@ -878,23 +906,26 @@
         // If multiple layers are selected, they should all move
         // together to avoid breaking joints. If one layer hits
         // the canvas boundary, none should move. Hence, here
-        // we ensure all moves are doable before executing them.
-        let moves = {};
+        // we ensure all moves are doable before keeping them.
+        let committedLayers = [];
         for (let layer of layers) {
-          let movePixels = layer.getMove(verticalDiff, lateralDiff);
-          if (!movePixels.length) return false;
-          moves[layer.id] = movePixels;
+          let committed = layer.commit(() => layer.move(verticalDiff, lateralDiff));
+          if (!committed) {
+            // If a the layer failed to move, then rollback the others that did move.
+            committedLayers.forEach(layer => layer.rollback());
+            return;
+          }
+          committedLayers.push(layer);
         }
+        // If we are here, all layers have moved, so we can now resize
+        // their joiner layers.
         for (let layer of layers) {
-          let originalJoints = layer.getKeyedJointPixels();
-          layer.moveByPixels(moves[layer.id]);
-
           // resizeSelectedJoinerLayers is false here because moving
           // them takes priority, and doing both is error prone. They will move
           // with their joint layer anyway, meaning the joint is persisted.
           // Otherwise, the joiner layer could unjoin because it's moved
           // twice, from the main move routine and the resize joiner layer routine.  
-          layer.resizeJoinerLayers(originalJoints, false);
+          layer.resizeJoinerLayers(false);
         }
         return true;
       }
@@ -907,14 +938,10 @@
       
       moveLayersToAvailableSpace(layers) {
         let directions = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
-        var layerMoves = [];
         for (let direction of directions) {
-          layerMoves = layers.map(layer => layer.getMove(direction[0], direction[1]));
-          if (layerMoves.every(pixels => Boolean(pixels.length))) break;
+          if(this.moveLayersAtomically(layers, ...direction)) return true;
         }
-        for (var i = 0; i < layers.length; i ++) {
-          layers[i].moveByPixels(layerMoves[i]);
-        }
+        return false;
       }
 
       findJoints(changedLayers) {
@@ -946,7 +973,7 @@
         }
       }
 
-      getLayersWithProbedJoints(layers) {
+      getJoinersFromLayers(layers) {
         var layerIds = [];
         for (var layer of layers) {
           for (var joint of layer.joints) {
@@ -966,12 +993,13 @@
             // If the selected layer is the lead / currently selected layer 
             // Then we already know the activePixel is the resize pixel.
             resizePixel = activePixel;
-          // TODO make better ruling about which layers do index v nearest.
-          // lines are actually better nearest? 
           } else if (resizeLayer.name == leadLayer.name && !leadLayer.name.includes("line")) {
             // If the lead layer is the same type as a selected layer,
             // we can use the same resize pixel position and resize the layer
             // in the same way for the best experience.
+
+            // Lines are excluded because resize positions are subjective to the line
+            // depending on where it was drawn from. Using the "nearest" logic is better.
             resizePixel = resizeLayer.getResizePixels()[resizePixelIndex];
           } else {
             // Otherwise, we find the layer's nearest resize pixel and
@@ -979,14 +1007,14 @@
             resizePixel = resizeLayer.getNearestResizePixel(activePixel);
           }
 
+          // The "to" pixel has been determined above depending on various rules. 
+          resizeLayer.setToPixel(resizePixel);
+
           // The resize "from" pixel is the opposite to the active "to" resize pixel
           // determined above. We set it here as the from pixel to mimic
           // the act of drawing it from the first pixel selected.
           let fromResizePixel = resizeLayer.getResizeOppositePixel(resizePixel);
           resizeLayer.setFromPixel(fromResizePixel);
-
-
-          resizeLayer.toPixel = resizePixel; // TODO explain
         }
         return true;
       }
@@ -995,19 +1023,23 @@
 
       resizingMouseOverEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
+        let layers = this.getSelectedLayers();
+        this.refresh(() => this.resizeLayers(layers, activePixel));
+        this.findJoints(layers);
+      }
+
+      resizeLayers(layers, activePixel) {
         let selectPixel = this.getSelectPixel();
         let verticalDiff = activePixel.row - selectPixel.row;
         let lateralDiff = activePixel.col - selectPixel.col;
-        let layers = this.getSelectedLayers();
-
-        let layersWithProbedJoints = this.getLayersWithProbedJoints(layers);
+        let joinerLayers = this.getJoinersFromLayers(layers);
         
         for (var layer of layers) {
-          // Selected layers that are joint to another selected layer should not
-          // get resized, as their joint will handle moving it correctly.
+          // Selected layers that are joiners to another selected layer should not
+          // get resized, as the joint will handle moving it correctly.
           // Otherwise, the resize is at risk of unexpectly unjoining the layers
           // in question.
-          if (layersWithProbedJoints.includes(layer.id)) continue;
+          if (joinerLayers.includes(layer.id)) continue;
 
           // If the layer belongs to a table, resizing should never happen
           // as resizing tables is used to add/remove columns, not move child
@@ -1016,7 +1048,7 @@
 
           if (!layer.isResizable()) {
             // If the layer is not resizable, the best thing we can do is move it.
-            this.refresh(() => layer.moveByDiff(verticalDiff, lateralDiff));
+            if (layer.commit(() => layer.move(verticalDiff, lateralDiff))) layer.resizeJoinerLayers(true);
             continue;
           }
           /*             
@@ -1043,23 +1075,19 @@
 
           With both of these determined, the layer can be resized.
           */
+          
+          // For this layer, the resize pixel is out of bounds.
 
-          ///if (!layer.toPixel) {
-          //  layer.toPixel = layer.getResizeOppositePixel(layer.fromPixel);
-          //} // TODO clear this
-          layer.toPixel = canvas.getPixelByRowCol(
+          let toPixel = canvas.getPixelByRowCol(
             layer.toPixel.row + verticalDiff, layer.toPixel.col + lateralDiff
           );
-          // For this layer, the resize pixel is out of bounds.
-          if (!layer.toPixel) continue;
+          if (!toPixel) continue;
           
           // resizeSelectedJoinerLayers is true because layers are changing
           // and selected joiner layers should favour maintaining joints and resizing
           // that way, instead of resizing independently.
-          this.refresh(() => layer.draw(layer.toPixel.id(), true));
+          layer.draw(toPixel.id(), true);
         }
-        this.findJoints(layers);
-
         // Note we set selectPixel to activePixel so that the next iteration
         // can diff the new activePixel to this one.
         this.setSelectPixel(activePixel);
@@ -1150,9 +1178,9 @@
       }
 
       erasePixelEvent(event) {
-        // TODO: This only really works for free draw layers. Also bug if erase resize pixels. 
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = this.getLayerByPixelId(activePixel.id());
+        if (layer && layer.name != "free") return;
         if (layer) layer.erasePixel(activePixel.id());
         activePixel.clear();
       }
@@ -1206,6 +1234,7 @@
       cornerTopRightChar = charManager.getCorner("top-right");
       cornerBottomLeftChar = charManager.getCorner("bottom-left");
       cornerBottomRightChar = charManager.getCorner("bottom-right");
+      cornerGenericChar = charManager.getCorner("generic");
       arrowUpChar    = charManager.getArrow("up");
       arrowDownChar  = charManager.getArrow("down");
       arrowLeftChar  = charManager.getArrow("left");
@@ -1216,10 +1245,11 @@
         this.pixels = [];
         this.values = [];
         this.joints = [];
+        this.stashed = null;
         this.zindex = layerManager.getHighestZindex() + 1;
         this._isSelected = false;
         
-        this.toPixel = null;
+        this.setToPixel(null) // This gets set when drawing begins;
         this.setFromPixel(canvas.getPixelById(firstPixelId));
       }
 
@@ -1255,19 +1285,48 @@
         modeMaster.add(
           layerManager.prepareLayerResizing(activePixel, layer)? "resizing": "moving"
         );
-        if (!modeMaster.has("ctrl")) {
+        if (!modeMaster.has("ctrl") || layer.name == "table" || layer.hasTable()) {
+          // Select all members of a group if not bypassed by ctrl to select a grouped
+          // layer.
+          // This bypass shouldn't work for tables / table children to avoid undefined behaviour.
           layerManager.refresh(() => layerManager.selectGroupsByMemberLayer(layer));
         }
       }
 
       draw(activePixelId) {
-        if (this.isJoinable()) {
-          let originalJoints = this.getKeyedJointPixels();
-          this.drawLayer(activePixelId);
-          this.resizeJoinerLayers(originalJoints, true);
-        } else {
-          this.drawLayer(activePixelId);
-        }
+        let committed = this.commit(() => this.drawLayer(activePixelId));
+        if (committed && this.isJoinable()) this.resizeJoinerLayers(true);
+      }
+      
+      isHappy() {
+        // Anything that doesn't satisfy this condition will cause a rollback.
+        // Currently, it just ensures pixels are valid, but it could be anything,
+        // and extending this in specific layers is welcomed.
+        return (this.pixels.every(Boolean) && this.getJointPixels().every(Boolean));
+      }
+
+      commit(updateFunc) {
+        // Committing is used to trial ANY pixel/value changes of a layer.
+        // The draw/move functions might recommend pixels that are out of bounds,
+        // or in whatever way invalid. If the commited change (updateFunc)
+        // results in an 'unhappy' state, we rollback to the stashed pixel related states.
+        this.lastKeyedJointPixels = this.getKeyedJointPixels();
+        this.stash();
+        updateFunc();
+        let isHappy = this.isHappy();
+        if (!isHappy) this.rollback();
+        return isHappy;
+      }
+
+      stash() {
+        // This is used to store / remember a layer's pixels and values
+        // in case a layer becomes unhappy.
+        this.stashed = [this.fromPixel, this.toPixel, this.pixels.map(p => p), this.values.map(v => v)];
+      }
+
+      rollback() {
+        // Uses stashed pixels/values and restores them to active state.
+        [this.fromPixel, this.toPixel, this.pixels, this.values] = this.stashed;
       }
       
       redraw() {
@@ -1284,6 +1343,9 @@
         this.renderUnselected();
       }
 
+      setToPixel(pixel) {
+        this.toPixel = pixel;
+      }
 
       setFromPixel(pixel) {
         this.fromPixel = pixel;
@@ -1303,7 +1365,7 @@
 
       add(pixel, value) {
         if (!pixel) return;
-          let existingPixelIndex = this.getPixelIndex(pixel.id());
+        let existingPixelIndex = this.getPixelIndex(pixel.id());
         if (existingPixelIndex == -1) {
           this.pixels.push(pixel);
           this.values.push(value);
@@ -1371,6 +1433,7 @@
       }
 
       tidyJoints() {
+        // TODO consider requirement here
         let keyedJoints = this.getKeyedJointPixels();
         for (let joint of this.joints) {
           let layer = layerManager.getLayerById(joint.layerId);
@@ -1382,15 +1445,16 @@
                 continue;
               } else {
                 // This should not happen.
-                debugError("had to unjoin dangling join: somehow disconnected");
+                alert("had to unjoin dangling join: somehow disconnected");
               }
             } else {
-              // This could happen for tables (when rows/cols are removed).
-              debugError("had to unjoin dangling join: joint pixel gone");
+              // This should not happen
+              // - originally for tables only but they get unjoined now (when rows/cols are removed).
+              alert("had to unjoin dangling join: joint pixel gone");
             }
           } else {
             // This should not happen because joints get deleted when layers do.
-            debugError("had to unjoin dangling join: join layer gone");
+            alert("had to unjoin dangling join: join layer gone");
           }
           this.unjoin(joint.layerId, joint.jointKey);
         }
@@ -1406,6 +1470,8 @@
           layerCopy.joints = this.joints.map(joint => structuredClone(joint));
           layerCopy.id = this.id;
         } 
+        layerCopy.setFromPixel(this.fromPixel);
+        layerCopy.setToPixel(this.toPixel);
         layerCopy.pixels = this.pixels.map(pixel => pixel);
         layerCopy.values = this.values.map(value => value);
         return layerCopy;
@@ -1428,7 +1494,7 @@
         let directions = [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]];
         for (let direction of directions) {
           total += targetLayer.getMove(...direction).filter(
-            pixel => layerPixelIds.includes(pixel.id())
+            pixel => pixel && layerPixelIds.includes(pixel.id())
           ).length
         }
         return total;
@@ -1439,9 +1505,7 @@
       }
 
       renderSelected() {
-        this.getJointPixels().filter(
-          pixel => Boolean(pixel)).forEach(pixel => pixel.renderWasSelected()
-        );
+        this.getJointPixels().forEach(pixel => pixel.renderWasSelected());
         this.pixels.forEach(pixel => pixel.renderSelected());
         this.getResizePixels().forEach(pixel => pixel.renderResizable());
       }
@@ -1452,51 +1516,23 @@
       }
 
       getMove(verticalDiff, lateralDiff) {
-        // This method can be used to inspect a move before carrying it out.
-        // Mainly, it's to check the move is safe and doesn't leave the canvas.
-        let newPixels = [];
-        for (var oldPixel of this.pixels) {
-          let newPixel = canvas.getPixelByRowCol(
-            oldPixel.row + verticalDiff,
-            oldPixel.col + lateralDiff
-          );
-          if (!newPixel) return [];
-          newPixels.push(newPixel);
-        }
-
-        // This just checks joint pixels are also able to move.
-        // They might be separate from the layer pixels, and 
-        // hit a canvas boundary before the main layer does.
-        for (var jointPixel of this.getJointPixels()) {
-
-          // Edge case if a layer is already beyond the canvas border.
-          if (!jointPixel) continue;
-          
-          let newPixel = canvas.getPixelByRowCol(
-            jointPixel.row + verticalDiff,
-            jointPixel.col + lateralDiff
-          );
-          if (!newPixel) return [];
-        }
-
-        return newPixels;
+        return this.pixels.map(
+          pixel => canvas.getPixelByRowCol(pixel.row + verticalDiff, pixel.col + lateralDiff)
+        );
       }
 
-      moveByDiff(verticalDiff, lateralDiff) {
-        let move = this.getMove(verticalDiff, lateralDiff);
-        if (move.length) {
-          this.pixels = move;
-          return true;
-        }
-        return false;
+      move(verticalDiff, lateralDiff) {
+        this.pixels = this.getMove(verticalDiff, lateralDiff);
+        // We must update the to/from pixels so that redraws happen at the new position.
+        this.setFromPixel(
+          canvas.getPixelByRowCol(this.fromPixel.row + verticalDiff, this.fromPixel.col + lateralDiff)
+        );
+        this.setToPixel(
+          canvas.getPixelByRowCol(this.toPixel.row + verticalDiff, this.toPixel.col + lateralDiff)
+        );
       }
 
-      moveByPixels(pixels) {
-        this.pixels = pixels;
-      }
-
-      resizeJoinerLayers(originalJointPixels, resizeSelectedJoinerLayers=false) {
-        
+      resizeJoinerLayers(resizeSelectedJoinerLayers=false) {
         // resizeSelectedJoinerLayers is used to determine what to do with a probe
         // joint layer if it's selected (as well as the main layer it's joint to).
         // Generally, it should resize as normal. However, if both layers are being 
@@ -1511,13 +1547,15 @@
           // Moved layers don't need to, where as resized layers do.
           if (!layer || (!resizeSelectedJoinerLayers && layer.isSelected())) continue;
           
+          let beforeJointPixel = this.lastKeyedJointPixels[joint.jointKey];
           let currentJointPixel = this.getKeyedJointPixels()[joint.jointKey];
-          let beforeJointPixel = originalJointPixels[joint.jointKey];
 
           if (!currentJointPixel) {
             // This means the layer has changed in such a way that the joint pixel
-            // is no longer available. It will get unjoined.
+            // is no longer available. It will get unjoined. This only should happen
+            // with tables.
             debugError("joint pixel not found");
+            this.unjoin(joint.layerId, joint.jointKey);
             return;
           }
 
@@ -1529,7 +1567,7 @@
           // The resize pixel may not get found if the main layer has
           // somehow moved without the jointed layer. 
           if (!fromPixel) {
-            debugError("resize pixel not found");
+            alert("resize pixel not found");
             return;
           }
           layer.setFromPixel(fromPixel);
@@ -1577,6 +1615,8 @@
       }
 
       hasPixel(id) {
+        // We include joint pixels so that z-index visibility works nicely.
+        // There is yet to be a reason not to do this.
         return (
           this.getPixelIndex(id) > -1 ||
           this.getJointPixels().map(pixel => pixel.id()).includes(id)
@@ -1623,6 +1663,10 @@
 
       constructor(firstPixelId, tableId=null) {
         super(firstPixelId);
+
+        // TextLayer's don't use toPixels, but it's easier to just set it. 
+        this.setToPixel(this.fromPixel);
+
         this.cursor = 0;
         this.contents = [];
         this.tableId = tableId;
@@ -1676,7 +1720,7 @@
 
       unselect() {
         super.unselect();
-        this.lastCursorPixel.renderNormal();
+        if (this.lastCursorPixel) this.lastCursorPixel.renderNormal();
       }
       
       copy(replace=false) {
@@ -1686,10 +1730,16 @@
         return layerCopy;
       }
 
+      rollback() {
+        // A little more is needed for TextLayer rollbacks, 
+        // to ensure the cursor is removed if the rollback
+        // caused the layer to get deleted (0 pixels).
+        this.pixels.forEach(pixel => pixel.renderNormal());
+        super.rollback();
+      }
+
       getKeyedJointPixels() {
         if (this.hasTable()) return {}; // The table itself will be joinable instead.
-        if (this.pixels.length < 3) return {}
-
         let firstPixel = this.getFirstPixel();
         let lastPixel = this.getLastPixel();
         let middlePixel = this.getMiddlePixel();
@@ -1756,10 +1806,6 @@
       }
 
       drawLayer(activePixelId) {
-        // Get latest first pixel given the layer may have moved and this could be
-        // an edit. 
-        this.setFromPixel(this.pixels.length? this.getFirstPixel(): this.fromPixel);
-        if(this.lastCursorPixel) this.lastCursorPixel.renderNormal();
         this.empty();
         let pixels = [];
         var line = 0;
@@ -1831,8 +1877,13 @@
           break;
         }
 
+        // This is a quick way of not loosing a layer just because
+        // a user backspaced all characters. 
+        if (this.contents.length == 0) this.contents = [">"];
+
         layerManager.refresh(() => {
-          this.draw();
+          this.draw(null); // TextLayer's don't use toPixels, hence the null
+
           // If the text is part of a table, the table may need spacing.
           if (this.hasTable()) layerManager.getLayerById(this.tableId).refresh();
         });
@@ -1910,7 +1961,7 @@
       }
 
       drawLayer(activePixelId) {
-        this.toPixel = canvas.getPixelById(activePixelId);
+        this.setToPixel(canvas.getPixelById(activePixelId));
         let fromPixel = this.fromPixel;
         let toPixel = this.toPixel;
         let verticalDiff  = toPixel.row - fromPixel.row;
@@ -1925,8 +1976,6 @@
 
         var value = "x";
 
-        // TODO make this work nicely with char manager
-        
         if (Math.abs(verticalStep) < 0.3){
           value = this.lateralChar;
         } else if (Math.abs(lateralStep) < 0.5) {
@@ -1963,12 +2012,10 @@
 
         this.empty();
         for (var i = 0; i <= totalSteps; i ++) {
-          //if (roundHalf(rowDraw + verticalStep) != roundHalf(rowDraw)) {
           this.add(
             canvas.getPixelByRowCol(roundHalf(rowDraw), roundHalf(colDraw)),
             (i == 0)? startValue: value
           );
-          //}
           rowDraw += verticalStep;
           colDraw += lateralStep;
         }
@@ -1986,7 +2033,6 @@
       }
 
       getKeyedJointPixels() {
-        if (!this.pixels.length) return {};
         var lastRow = this.getFirstPixel().row;
         var index = 0;
         for (var pixel of this.pixels) {
@@ -1999,7 +2045,7 @@
       }
 
       drawLayer(activePixelId) {
-        this.toPixel = canvas.getPixelById(activePixelId);
+        this.setToPixel(canvas.getPixelById(activePixelId));
 
         /* Try and draw the step line both ways e.g
             _____
@@ -2008,11 +2054,11 @@
                             
         and choose which ever is more visible depending on other layers overlapping.
         */
+        let layersToAvoid = ["square", "table", "diamond"];
         this.drawFromTo(this.fromPixel, this.toPixel);
-        let resultNorm = layerManager.getNearOverlappingCount(this);
+        let resultNorm = layerManager.getNearOverlappingCount(this, layersToAvoid);
         this.drawFromTo(this.toPixel, this.fromPixel);
-        let resultFlip = layerManager.getNearOverlappingCount(this);
-        
+        let resultFlip = layerManager.getNearOverlappingCount(this, layersToAvoid);
         if (resultNorm > resultFlip) {
           this.drawFromTo(this.toPixel, this.fromPixel);
         } else {
@@ -2028,12 +2074,11 @@
         let absLateralDiff = Math.abs(lateralDiff);
        
         let [lateralArrowValue, verticalArrowValue] = this.getArrowChars(fromPixel, toPixel);
-        let cornerChar = this.getCornerChar(fromPixel, toPixel);
+        var cornerChar = this.getCornerChar(fromPixel, toPixel);
 
         var drawCol = fromPixel.col; 
         var drawRow = fromPixel.row;
 
-        // TODO: allow straight lines without corner if 0 diff
         for (var i = 0; i < absLateralDiff; i ++) {
           this.add(
             canvas.getPixelByRowCol(fromPixel.row, drawCol),
@@ -2041,9 +2086,17 @@
           );
           drawCol += lateralDiff / absLateralDiff;
         }
+
+        if (verticalDiff && !lateralDiff) {
+          cornerChar = this.verticalChar;
+        } else if (!verticalDiff && lateralDiff) {
+          cornerChar = this.lateralChar;
+        }
         this.add(canvas.getPixelByRowCol(drawRow, drawCol), cornerChar);
-        for (var i = 0; i < absVerticalDiff; i ++) {
+
+        for (var i = 1; i <= absVerticalDiff; i ++) {
           drawRow += verticalDiff / absVerticalDiff;
+          let value = (verticalDiff && lateralDiff)? cornerChar: this.verticalChar;
           this.add(
             canvas.getPixelByRowCol(drawRow, toPixel.col),
             (i == absVerticalDiff)? verticalArrowValue: this.verticalChar
@@ -2097,7 +2150,7 @@
       }
 
       getKeyedJointPixels() {
-        // TODO explain this better or consider using draw corner pixels
+        // This finds the two corners of a switch line.
         let firstPixel = this.getFirstPixel();
         if(this.pixels.length < 2) return {0: firstPixel, 1: firstPixel};
         let joints = [];
@@ -2112,10 +2165,15 @@
             joints.push(pixel);
           }
         }
+
+        // This means the line is straight, so we just join to the middle.
         if (joints.length != 2) {
           let middlePixel = this.getMiddlePixel();
           return {0: middlePixel, 1: middlePixel};
         }
+        
+        // This ensures the keys are the same for the meaningful locations,
+        // regardless of a flip.
         let keyedJoints = {};
         if (joints[0].row > joints[1].row || joints[0].col > joints[1].col) {
           keyedJoints[0] = joints[0];
@@ -2128,22 +2186,13 @@
       }
 
       drawLayer(activePixelId) {
-        this.toPixel = canvas.getPixelById(activePixelId);
+        this.setToPixel(canvas.getPixelById(activePixelId));
         let fromPixel = this.fromPixel;
         let toPixel = this.toPixel;
         let verticalDiff  = toPixel.row - fromPixel.row;
         let lateralDiff   = toPixel.col - fromPixel.col;
         let absVerticalDiff = Math.abs(verticalDiff);
         let absLateralDiff = Math.abs(lateralDiff);
-
-        // This number determines by how much more one
-        // form of the layer must be overlapped compared to the other
-        // in order to actually go ahead and use it. 
-        // It means we can still choose which ever the user 
-        // might expect given the direction they drew instead of
-        ///basing it on overlap rules.
-        let overlapThreshold = 10;
-
 
         /*
         Try and draw the switch line both ways e.g
@@ -2157,17 +2206,14 @@
         and choose which ever is more visible depending on other layers overlapping.
         If there aren't notable overlaps, choose based on which direction is favoured.
         */
-
-        // TODO decide if overlap logic is worth it here. Sometimes just creates mess.
-        // Caveat, without it, vertical needs to be weighted more...
-
+        let layersToAvoid = ["square", "table", "diamond"];
         this.drawVertical(fromPixel, toPixel);
-        let verticalOverlap = layerManager.getNearOverlappingCount(this);
+        let verticalOverlap = layerManager.getNearOverlappingCount(this, layersToAvoid);
         this.drawLateral(fromPixel, toPixel);
-        let lateralOverlap = layerManager.getNearOverlappingCount(this);
-        if (verticalOverlap > lateralOverlap + overlapThreshold) {
+        let lateralOverlap = layerManager.getNearOverlappingCount(this, layersToAvoid);
+        if (verticalOverlap > lateralOverlap) {
           this.drawLateral(fromPixel, toPixel);
-        } else if (lateralOverlap > verticalOverlap + overlapThreshold) {
+        } else if (lateralOverlap > verticalOverlap) {
           this.drawVertical(fromPixel, toPixel);
         } else if (absVerticalDiff > absLateralDiff) {
           this.drawVertical(fromPixel, toPixel);
@@ -2382,6 +2428,7 @@
     class FreeLayer extends Layer {
       
       name = "free";
+
       
       freeChar = charManager.getFree();
 
@@ -2392,8 +2439,8 @@
       }
 
       drawLayer(activePixelId) {
-        this.toPixel = canvas.getPixelById(activePixelId);
-        this.add(this,toPixel, this.freeChar);
+        this.setToPixel(canvas.getPixelById(activePixelId));
+        this.add(this.toPixel, this.freeChar);
       }
     }
 
@@ -2448,12 +2495,11 @@
         let layer = new DiamondLayer(event.target.id);
         layerManager.add(layer);
       }
-
+      
       getKeyedJointPixels() {
         let firstPixel = this.getFirstPixel();
         if (this.pixels.length < 4) return {t: firstPixel, r: firstPixel, b: firstPixel, l: firstPixel};
-        let [leftPixel, rightPixel, topPixel, bottomPixel] = this.getCornerPixelIndexes().pixels;
-
+        let [leftPixel, rightPixel, topPixel, bottomPixel] = this.getCornerPixels();
         return {
           t: canvas.getPixelByRowCol(topPixel.row - 1, topPixel.col), 
           r: canvas.getPixelByRowCol(rightPixel.row, rightPixel.col + 1), 
@@ -2461,121 +2507,70 @@
           l: canvas.getPixelByRowCol(leftPixel.row, leftPixel.col - 1), 
         };
       }
-      
-      getCornerPixelIndexes() {
-        var minCol = null;
-        var maxCol = null;
-        var minRow = null;
-        var maxRow = null;
-        var minColIndex = null;
-        var maxColIndex = null;
-        var minRowIndex = null;
-        var maxRowIndex = null;
-        
-        var index = 0;
-        for (let pixel of this.pixels) {
-          if (!minColIndex || pixel.col < minCol.col) [minColIndex, minCol] = [index, pixel];
-          if (!maxColIndex || pixel.col > maxCol.col) [maxColIndex, maxCol] = [index, pixel];
-          if (!minRowIndex || pixel.row < minRow.row) [minRowIndex, minRow] = [index, pixel];
-          if (!maxRowIndex || pixel.row > maxRow.row) [maxRowIndex, maxRow] = [index, pixel];
-          index ++;
-        }
 
-        return {
-          indexes: [minColIndex, maxColIndex, minRowIndex, maxRowIndex],
-          pixels: [minCol, maxCol, minRow, maxRow],
-        };
+      getCornerPixels() {
+        var minCol;
+        var maxCol;
+        var minRow;
+        var maxRow;
+        for (let pixel of this.pixels) {
+          if (!minCol || pixel.col < minCol.col) minCol = pixel;
+          if (!maxCol || pixel.col > maxCol.col) maxCol = pixel;
+          if (!minRow || pixel.row < minRow.row) minRow = pixel;
+          if (!maxRow || pixel.row > maxRow.row) maxRow = pixel;
+        }
+        return [minCol, maxCol, minRow, maxRow];
       }
 
       getResizePixels() {
-        // TODO explain this shit
-        let [minColIndex, maxColIndex, minRowIndex, maxRowIndex] = this.getCornerPixelIndexes().indexes;
-        let topLeftPixel = this.pixels[minColIndex + roundHalf((this.pixels.length - minColIndex) / 2)];
-        let bottomRightPixel = this.pixels[maxColIndex + roundHalf((maxRowIndex - maxColIndex) / 2)];
-        let topRightPixel = this.pixels[roundHalf(maxColIndex / 2)];
-        let bottomLeftPixel = this.pixels[maxRowIndex + roundHalf((minColIndex - maxRowIndex) / 2)];
-        return [topLeftPixel, topRightPixel, bottomRightPixel, bottomLeftPixel];
+        return this.getCornerPixels();
       }
 
       getResizeOppositePixel(targetPixel) {
-        let corners = this.getResizePixels();
-        let cornerMatchPixel = this.getResizePixelIndex(targetPixel);
-        if (cornerMatchPixel == -1) return;
-        let firstPixelIndex = cornerMatchPixel + 2;
-        if (firstPixelIndex > 3) firstPixelIndex = firstPixelIndex - 4;
-        return corners[firstPixelIndex];
+        let [minCol, maxCol, minRow, maxRow] = this.getCornerPixels();
+        return canvas.getPixelByRowCol(
+          minRow.row + roundHalf((maxRow.row - minRow.row) / 2),
+          minCol.col + roundHalf((maxCol.col - minCol.col) / 2),
+        )
       }
       
       drawLayer(activePixelId) {
-        this.toPixel = canvas.getPixelById(activePixelId);
-        let topLeftPixel = canvas.getPixelByRowCol(
-          Math.min(this.toPixel.row, this.fromPixel.row),
-          Math.min(this.toPixel.col, this.fromPixel.col),
-        )
-
-        let bottomRightPixel = canvas.getPixelByRowCol(
-          Math.max(this.toPixel.row, this.fromPixel.row),
-          Math.max(this.toPixel.col, this.fromPixel.col),
-        )
-
-        let verticalDiff = Math.abs(bottomRightPixel.row - topLeftPixel.row);
-        let lateralDiff = Math.abs(bottomRightPixel.col - topLeftPixel.col);
+        this.setToPixel(canvas.getPixelById(activePixelId));
+        let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
+        let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
+        var diff = verticalDiff > lateralDiff? verticalDiff: roundHalf(lateralDiff / 2);
         
-        var middlePixel = canvas.getPixelByRowCol(
-          topLeftPixel.row + roundHalf(verticalDiff / 2), topLeftPixel.col + roundHalf(lateralDiff / 2)
-        );
-        let topHalfPixel = canvas.getPixelByRowCol(middlePixel.row - (verticalDiff), middlePixel.col);
-        let leftHalfPixel = canvas.getPixelByRowCol(middlePixel.row, middlePixel.col - (lateralDiff));
-        let rightHalfPixel = canvas.getPixelByRowCol(middlePixel.row, middlePixel.col + (lateralDiff));
-        let bottomHalfPixel = canvas.getPixelByRowCol(middlePixel.row + (verticalDiff), middlePixel.col);
+        var middlePixel = this.fromPixel;
         
-        let halfPixels = [topHalfPixel, rightHalfPixel, bottomHalfPixel, leftHalfPixel, topHalfPixel];
-      
-        if (!halfPixels.every(Boolean)) return;
+        let topPixel = canvas.getPixelByRowCol(middlePixel.row - diff, middlePixel.col);
+        let leftPixel = canvas.getPixelByRowCol(middlePixel.row, middlePixel.col - (diff * 2));
+        let rightPixel = canvas.getPixelByRowCol(middlePixel.row, middlePixel.col + (diff * 2));
+        let bottomPixel = canvas.getPixelByRowCol(middlePixel.row + diff, middlePixel.col);
+        
+        let corners = [topPixel, leftPixel, rightPixel, bottomPixel];
+        if (!corners.every(Boolean)) return;
 
         this.empty();
-        for (var pixelIndex = 0; pixelIndex < halfPixels.length - 1; pixelIndex++) {
-          let fromPixel = halfPixels[pixelIndex];
-          let toPixel = halfPixels[pixelIndex + 1];
-          let localVerticalDiff  = toPixel.row - fromPixel.row;
-          let localLateralDiff   = toPixel.col - fromPixel.col;
-          
-          var totalSteps   = Math.max(Math.abs(localVerticalDiff), Math.abs(localLateralDiff));
-          var verticalStep = localVerticalDiff / totalSteps;
-          var lateralStep  = localLateralDiff / totalSteps;
-
-          var colDraw = fromPixel.col;
-          var rowDraw = fromPixel.row;
-
-          var value = "";
-          var form = 1;
-          console.log(verticalStep, lateralStep);
-          if (Math.abs(verticalStep) < 0.5){
-            value = this.lateralChar;
-            form = 2;
-          } else if (Math.abs(lateralStep) < 0.9) {
-            form = 2;
-            value = this.verticalChar;
-          } else if (toPixel.isLeft(fromPixel) && toPixel.isBelow(fromPixel)) {
-            value = this.diagForwardChar;
-          } else if (toPixel.isRight(fromPixel) && toPixel.isBelow(fromPixel)) {
-            value = this.diagBackChar;
-          } else if (toPixel.isLeft(fromPixel) && toPixel.isAbove(fromPixel)) {
-            value = this.diagBackChar;
-          } else if (toPixel.isRight(fromPixel) && toPixel.isAbove(fromPixel)) {
-            value = this.diagForwardChar;
-          }
-
-          for (var i = 0; i <= totalSteps; i ++) {
-            if (form == 2 || roundHalf(rowDraw + verticalStep) != roundHalf(rowDraw)) {
-              this.add(
-                canvas.getPixelByRowCol(roundHalf(rowDraw), roundHalf(colDraw)),
-                value 
-              );
-            }
-            rowDraw += verticalStep;
-            colDraw += lateralStep;
-          }
+        corners.forEach(pixel => this.add(pixel, this.cornerGenericChar)); 
+        for (var backCount = 1; backCount < diff; backCount ++) {
+          this.add(
+            canvas.getPixelByRowCol(rightPixel.row - backCount, rightPixel.col - (backCount * 2)),
+            this.diagBackChar, 
+          );
+          this.add(
+            canvas.getPixelByRowCol(bottomPixel.row - backCount, bottomPixel.col - (backCount * 2)),
+            this.diagBackChar, 
+          );
+        }
+        for (var fCount = 1; fCount < diff; fCount ++) {
+          this.add(
+            canvas.getPixelByRowCol(leftPixel.row - fCount, leftPixel.col + (fCount * 2)),
+            this.diagForwardChar, 
+          );
+          this.add(
+            canvas.getPixelByRowCol(bottomPixel.row - fCount, bottomPixel.col + (fCount * 2)),
+            this.diagForwardChar, 
+          );
         }
       } 
     }
@@ -2590,18 +2585,9 @@
       }
 
       getKeyedJointPixels() {
-        let firstPixel = this.getFirstPixel();
+        let fp = this.getFirstPixel();
         if (this.pixels.length < 2) {
-          return {
-            tl: firstPixel, 
-            tr: firstPixel,
-            br: firstPixel,
-            bl: firstPixel, 
-            l: firstPixel,
-            r: firstPixel,
-            b: firstPixel,
-            t: firstPixel,
-          };
+          return {tl: fp, tr: fp, br: fp, bl: fp, l: fp, r: fp, b: fp, t: fp};
         }
 
         let corners = this.getCornerPixels();
@@ -2620,17 +2606,13 @@
       }
       
       getHalfwayPixels(corners) {
-        if (this.pixels.length == 0) {
-          return [];
-        }
+        if (this.pixels.length == 0) return [];
         let minRow = corners[0].row;
         let maxRow = corners[2].row;
         let minCol = corners[0].col;
         let maxCol = corners[2].col;
-
         let halfwayRow = parseInt((maxRow - minRow) / 2);
         let halfwayCol = parseInt((maxCol - minCol) / 2);
-
         return [
           canvas.getPixelByRowCol(minRow + halfwayRow, minCol), // Left
           canvas.getPixelByRowCol(minRow + halfwayRow, maxCol), // Right
@@ -2640,8 +2622,7 @@
       }
 
       drawLayer(activePixelId) {
-        this.empty();
-        this.toPixel = canvas.getPixelById(activePixelId);
+        this.setToPixel(canvas.getPixelById(activePixelId));
         let topLeftPixel = canvas.getPixelByRowCol(
           Math.min(this.toPixel.row, this.fromPixel.row),
           Math.min(this.toPixel.col, this.fromPixel.col),
@@ -2653,11 +2634,15 @@
 
         let verticalDiff = bottomRightPixel.row - topLeftPixel.row;
         let lateralDiff = bottomRightPixel.col - topLeftPixel.col;
+
+        if (!verticalDiff || !lateralDiff) return;
         
         let absVerticalDiff = Math.abs(verticalDiff);
         let absLateralDiff = Math.abs(lateralDiff);
         var rowPos = topLeftPixel.row;
         var colPos = topLeftPixel.col;
+
+        this.empty();
 
         // Draw corners
         this.add(canvas.getPixelByRowCol(rowPos, colPos), this.cornerTopLeftChar);
@@ -2693,7 +2678,7 @@
         this.tableContents = {};
         this.tblRows = 0;
         this.tblCols = 0;
-        this.defaultCellContents = "Enter text...";
+        this.defaultCellContents = "text...";
         this.tblColDefaultWidth = this.defaultCellContents.length;
         this.tblColWidths = [];
         this.tblRowHeights = [];
@@ -2814,20 +2799,25 @@
         }
       }
 
-      drawLayer(activePixelId) {
-        this.toPixel = canvas.getPixelById(activePixelId);
 
-        this.topLeftPixel = canvas.getPixelByRowCol(
+      getTopLeftPixel() {
+        return canvas.getPixelByRowCol(
           Math.min(this.toPixel.row, this.fromPixel.row),
           Math.min(this.toPixel.col, this.fromPixel.col),
-        )
+        );
+      }
+
+      drawLayer(activePixelId) {
+        this.setToPixel(canvas.getPixelById(activePixelId));
+        
+        let topLeftPixel = this.getTopLeftPixel();
         let bottomRightPixel = canvas.getPixelByRowCol(
           Math.max(this.toPixel.row, this.fromPixel.row),
           Math.max(this.toPixel.col, this.fromPixel.col),
-        )
+        );
 
-        let verticalDiff = this.topLeftPixel.row - bottomRightPixel.row;
-        let lateralDiff = this.topLeftPixel.col - bottomRightPixel.col;
+        let verticalDiff = topLeftPixel.row - bottomRightPixel.row;
+        let lateralDiff = topLeftPixel.col - bottomRightPixel.col;
         
 
         // We deduct excess pixels so that larger cells don't count as multiple cells
@@ -2848,36 +2838,36 @@
           this.ungroup();
           this.emptyTextLayers();
           this.addTextLayers();
-          this.refresh(true);
+          this.drawFrame(topLeftPixel);
+          this.moveTextLayers(topLeftPixel);
           this.group();
         } 
       }
-      refresh(drawing) {
-        let originalJointPixels = this.getKeyedJointPixels();
-        this.setTableSpacing();
-        
-        // If the layer isn't being actively resized, we need to manually determine
-        // where to refresh the layer (in case it's been moved). The first pixel can be used.
-        // Otherwise, fromPixel will be determined in using an active resize pixel.
-        if (!drawing) this.topLeftPixel = this.getFirstPixel(); 
 
-        this.drawFrame();
-        this.moveTextLayers();
-        this.resizeJoinerLayers(originalJointPixels, true);
+      refresh() {
+        let topLeftPixel = this.getTopLeftPixel();
+        if (this.commit(() => this.drawFrame(topLeftPixel))) {
+          this.moveTextLayers(topLeftPixel);
+          this.resizeJoinerLayers(true);
+        }
       }
 
-      drawFrame(drawing) {
+      drawFrame(topLeftPixel) {
         this.empty();
+
+        this.setTableSpacing();
         let tblHeight = sum(this.tblRowHeights);
         let tblWidth = sum(this.tblColWidths);
-        var row = this.topLeftPixel.row;
-        let toRow = row + tblHeight;
-        let toCol = this.topLeftPixel.col + tblWidth;
+
+        let fromRow = topLeftPixel.row;
+        let fromCol = topLeftPixel.col;
+        let toRow = fromRow + tblHeight;
+        let toCol = fromCol + tblWidth;
 
         // Draw corners...
-        this.add(canvas.getPixelByRowCol(row, this.topLeftPixel.col), this.cornerTopLeftChar);
-        this.add(canvas.getPixelByRowCol(row, toCol), this.cornerTopRightChar);
-        this.add(canvas.getPixelByRowCol(toRow, this.topLeftPixel.col), this.cornerBottomLeftChar);
+        this.add(canvas.getPixelByRowCol(fromRow, fromCol), this.cornerTopLeftChar);
+        this.add(canvas.getPixelByRowCol(fromRow, toCol), this.cornerTopRightChar);
+        this.add(canvas.getPixelByRowCol(toRow, fromCol), this.cornerBottomLeftChar);
         this.add(canvas.getPixelByRowCol(toRow, toCol), this.cornerBottomRightChar);
 
         // Draw row lines with spacing based on text..
@@ -2885,29 +2875,25 @@
         //
         // -----------------
         // -----------------
+        var row = fromRow;
         for (var tblRow = 0; tblRow <= this.tblRows; tblRow ++) {
-            for(var col = this.topLeftPixel.col + 1; col < toCol; col++) {
-              // TODO Make the first two lines solid for the header - how to with CharManager
-              //let value = ([0, 1, this.tblRows].includes(tblRow))? this.lateralChar: "-";
-              this.add(canvas.getPixelByRowCol(row,  col), this.lateralChar);
-            }
-            let tblRowStep = this.tblRowHeights[tblRow]; 
-            row += tblRowStep;
+          for (var col = fromCol + 1; col < toCol; col++) {
+            this.add(canvas.getPixelByRowCol(row,  col), this.lateralChar);
+          }
+          row += this.tblRowHeights[tblRow];
         }
 
         // Draw col lines with spacing based on text..
         // |      |   |    |
         // |      |   |    |
         // |      |   |    |
-        var col = this.topLeftPixel.col;
+        var col = fromCol;
         for (var tblCol = 0; tblCol <= this.tblCols; tblCol ++) {
-            for(var row = this.topLeftPixel.row + 1; row < toRow; row++) {
-              this.add(canvas.getPixelByRowCol(row,  col), this.verticalChar);
-            }
-            let tblColStep = this.tblColWidths[tblCol]; 
-            col += tblColStep;
+          for (var row = fromRow + 1; row < toRow; row ++) {
+            this.add(canvas.getPixelByRowCol(row,  col), this.verticalChar);
+          }
+          col += this.tblColWidths[tblCol];
         }
-       
       } 
       
       makeCellId(row, col) {
@@ -2927,7 +2913,6 @@
             toKeep[cellId] = this.textLayers[cellId];
             continue;
           }
-
           // Otherwise, empty the layer but save it's contents.
           let textLayer = this.getTextLayer(cellId);
           this.tableContents[cellId] = textLayer.contents;
@@ -2944,7 +2929,7 @@
       moveTextLayer(row, col, absRow, absCol) {
         let textLayer = this.getTextLayer(this.makeCellId(row, col)); 
         let firstPixel = textLayer.getFirstPixel();
-        textLayer.moveByDiff(absRow - firstPixel.row, absCol - firstPixel.col);
+        textLayer.commit(() => textLayer.move(absRow - firstPixel.row, absCol - firstPixel.col));
       }
 
       addTextLayer(row, col) {
@@ -2955,7 +2940,7 @@
       
         // Otherwise, add a new layer and fill it with any saved content from the past
         // at the same cell location.
-        let textLayer = new TextLayer(this.topLeftPixel.id(), this.id); 
+        let textLayer = new TextLayer(this.fromPixel.id(), this.id); 
         let existingContents = this.tableContents[cellId];
         let contents = (existingContents)? existingContents: this.defaultCellContents.split("");
         textLayer.contents = contents; 
@@ -2972,16 +2957,16 @@
         }
       }
 
-      moveTextLayers() {
-        var rowPos = this.topLeftPixel.row;
-        var colPos = this.topLeftPixel.col;
+      moveTextLayers(topLeftPixel) {
+        var rowPos = topLeftPixel.row;
+        var colPos = topLeftPixel.col;
         for(var tblRow = 0; tblRow < this.tblRows; tblRow ++) {
           for (var tblCol = 0; tblCol < this.tblCols; tblCol ++) {
             // Add 1s here to locate the text within the cell.
             this.moveTextLayer(tblRow, tblCol, rowPos + 1, colPos + 1);
             colPos += this.tblColWidths[tblCol];
           }
-          colPos = this.topLeftPixel.col;
+          colPos = topLeftPixel.col;
           rowPos += this.tblRowHeights[tblRow];
         }
       }
@@ -2997,7 +2982,7 @@
         this.col = col;
         this.size = size;
         this.widthDivider = widthDivider;
-        this.defaultColor = "#ffffff";
+        this.defaultColor = "black";
         this.defaultBgColor = "transparent";
         this.defaultBorder = "none";
         this.cursorFlashInterval = null;
@@ -3336,9 +3321,21 @@
       }
     }
     
+
+    // CONSTS
+    let layerTypes = [
+      FreeLayer,
+      FreeLineLayer,
+      StepLineLayer,
+      SwitchLineLayer,
+      SquareLayer,
+      TableLayer,
+      DiamondLayer,
+      TextLayer,
+    ]
     
     // MANAGERS
-    modeMaster         = new ModeMaster();
+    modeMaster         = new ModeMaster(layerTypes);
     layerManager       = new LayerManager();
     areaSelectManager  = new AreaSelectManager();
     eventManager       = new EventManager();
