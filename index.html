@@ -2,24 +2,52 @@
   <head>
     <style>
       body {
-        background: white;
         margin: 0;
         font-family: monospace;
+        overflow: hidden;
       }
+
       #canvas {
-        background: white;
+        //background: pink;
         user-select: none;
+        margin-left: calc(7vw + 5px);
+        margin-top: 5px;
+      }
+      
+      .menuButtonIcon {
+        font-size: 17px;
       }
 
-      #menu {
-        height: 60px;
-        margin: 0;
+      #menu-main {
+        width: 100vw;
+        height: 7vh;
+      }
+      #menu-top {
+        height: 100%;
+        //background: red;
+        width: 70vw;
+        float: left;
       }
 
-      #menu button {
+      #menu-left {
+        //background: blue;
+        height: 100vh;
+        width: 7vw;
+        float: left;
+      }
+
+      #menu-right {
+        //background: yellow;
+        float: right;
+        width: 30vw;
+        height: 100%;
+      }
+
+      button {
         font-family: monospace;
-        padding: 10px;
-        margin-left: 10px;
+        font-size: 13px;
+        padding: 5px;
+        margin-left: 5px;
         margin-top: 10px;
         height: 40px;
         color: white;
@@ -28,10 +56,18 @@
         border-radius: 15px;
         float: left;
       }
+      #menu-left button {
+        width: 85%;
+        margin-left: 7.5%;
+      }
     </style>
   </head>
   <body>
-    <div id="menu"></div>
+    <div id="menu-main">
+      <div id="menu-top"></div>
+      <div id="menu-right"></div>
+    </div>
+    <div id="menu-left"></div>
     <div id="canvas"></div>
 
   <script defer>
@@ -40,41 +76,41 @@
     *** TODO ***
     
     FE  -
-
       - various todos
-      - COPY zindex
-      - check diamond behavioru for multi resize.
-      - TextLayer activepixel for drawLayer /redraw - ensure consistent params for drawLayer
-      - export 
-      - diamond layers
-      - z-index concepting: renderPixel funcs stack prio,
-          groups prio same z-index (resize table new textlayers are off)
-          easy way to ensure arrow heads are seen on joins that aren't outter 
-          make joint pixels x / nicer
       - char manager: better redraw logic all around, unicode v ascii switch, line options. 
       - consider defaulting to select mode after draw
+        - resize pixels should switch to select
       - cmd v ctrl for Mac
-      - improve diagonals - filler lines, unicode chars?
       - mini success messages
-      - clever resize: text in boxes main issue
       - resize improvements: resize by % to avoid reverse
       - file break up?
       - import :)
-      - clever free draw straight chars
-      - proper design / config
-      - themes
+      - proper UI / config
+        - dotted/lined/dashed
+        - menu splitting
+        - free layer options
+        - themes
+        - settings: unicode v ascii
+      - export 
       - intro / why ascii
       - manual page. shortcuts, etc.
 
     BE -
-
       - save, share, manage, user, login google + github,  CRUD
       - guest auto save (refresh keeps)
       - plain text request / curl
 
-    IMPROVEMENTS:
-      - copy layers with joints by canvas boundry will break joint.
+    BIG IDEAS:
+       - ML for auto parsing imported diagrams
+       - Testing - full web driver / record intergration testing
 
+    IMPROVEMENTS (arguably features):
+      - deleting layers in groups, group doesn't recover on undo. 
+      - diamond resize bit odd with other layers.
+      - joiner layer with arrow heads won't always show - zindex.
+      - captures on every change instead of mouseup
+      - improve diagonal lines
+      - clever resize: text in boxes main issue
     */
 
     var layerManager;
@@ -140,6 +176,82 @@
       return keys.join(",");
     }
 
+    ///////////////////
+    ////// THEMES /////
+    ///////////////////
+
+    class Theme {
+
+      static Color = {
+        blue     : "#0394fc",
+        darkBlue : "#0069b5",
+        red      : "red",
+        black    : "black",
+        white    : "white",
+        none     : "transparent",
+        pink     : "pink",
+        green    : "green",
+        orange   : "orange",
+      }
+
+      config = {
+        menuButtonBgColor: Theme.Color.black,
+        menuButtonFgColor: Theme.Color.white,
+        menuButtonSelectedBgColor: Theme.Color.blue,
+        menuButtonClickBgColor: Theme.Color.blue,
+
+        canvasBgColor: Theme.Color.none,
+        
+        pixelNormalBgColor: Theme.Color.none,
+        pixelNormalFgColor: Theme.Color.white,
+        pixelSelectedBgColor: Theme.Color.none,
+        pixelSelectedFgColor: Theme.Color.darkBlue,
+        pixelResizeBgColor: Theme.Color.red,
+        pixelJointBgColor: Theme.Color.pink,
+        pixelJointNearBgColor: Theme.Color.green,
+        pixelCursorColor: Theme.Color.orange,
+
+        areaSelectionBgColor: Theme.Color.blue,
+
+        canvasFont: "monospace",
+      }
+
+      constructor(config) {
+        for (let key in config) { 
+          this.config[key] = config[key];
+        }
+      }
+
+      render() {
+      }
+    }
+
+    darkTheme = new Theme(
+      {
+        menuButtonBgColor: Theme.Color.black,
+        menuButtonFgColor: Theme.Color.white,
+        
+        canvasBgColor: Theme.Color.black,
+
+        pixelNormalFgColor: Theme.Color.white,
+      }
+      
+    )
+
+    lightTheme = new Theme(
+      {
+        menuButtonBgColor: Theme.Color.white,
+        menuButtonFgColor: Theme.Color.black,
+
+        canvasBgColor: Theme.Color.white,
+
+        pixelNormalFgColor: Theme.Color.black,
+      }
+    )
+
+    let theme = darkTheme.config;
+    document.body.style.backgroundColor = theme.canvasBgColor;
+
     //////////////////
     ////// MODES /////
     //////////////////
@@ -147,14 +259,28 @@
     class ModeMaster {
 
       layerModes = [
+        // Primitive
         "square",
         "free",
         "free-line",
         "step-line",
         "switch-line",
-        "line",
         "text",
-        "table"
+        "table",
+        "diamond",
+        
+        // Dynamic
+        "line",
+        "line-based",
+      ];
+      
+      lineBasedModes = [
+        "table", //TODO: Table not working here (why but unwanted.)
+        "square",
+        "free-line",
+        "step-line",
+        "switch-line",
+        "diamond",
       ];
 
       constructor(layerTypes) {
@@ -206,6 +332,7 @@
       }
 
       add(...modes) {
+        modes = modes.filter(mode => !this.has(mode));
         this._modes = this._modes.concat(modes);
         this.modeChangedCallback();
       }
@@ -222,14 +349,17 @@
         return this._modes.toString() == modes.toString(); 
       }
       
-      removeLayers() {
+      removeLayerModes() {
         this.layerModes.forEach(mode => this.remove(mode));
       }
 
-      setLayer(name) {
-        this.removeLayers();
+      setSelectedLayerMode(name) {
+        this.removeLayerModes();
         this.add(name);
+
+        // Rules for dynamic layer modes
         if (name.includes("line")) this.add("line");
+        if (this.lineBasedModes.includes(name)) this.add("line-based");
       }
     }
 
@@ -279,7 +409,7 @@
                     [modeMaster.reset, "select"], () => layerManager.deleteLayersEvent()),
               ],
               [keyGroup("esc")]: [
-                new EventDef([modeMaster.has, "selected"],
+                new EventDef([modeMaster.hasOr, "writing", "selected"],
                     [modeMaster.reset, "select"], () => layerManager.unselectAll()),
               ],
               [keyGroup("back", "delete", ...ArrowKeyGroup)]: [
@@ -310,9 +440,6 @@
               ],
             },
             keyup: {
-              "*": [
-                new EventDef([modeMaster.has, "writing", "text"], [], () => layerManager.tidyLayers()),
-              ],
               [keyGroup("shift")]: [
                 new EventDef([modeMaster.has, "shift"],
                     [modeMaster.remove, "shift"]),
@@ -328,15 +455,15 @@
           mouseEvents: {
             mouseup: [
               new EventDef([modeMaster.has, "drawing"],
-                  [modeMaster.change, "drawing", "draw"], () => layerManager.tidyLayers()), 
+                  [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayersEvent(event)), 
               new EventDef([modeMaster.has, "erasing"],
                   [modeMaster.change, "erasing", "erase"]),
               new EventDef([modeMaster.has, "moving"],
-                  [modeMaster.remove, "moving"], () => layerManager.tidyLayers()),
+                  [modeMaster.remove, "moving"], (event) => layerManager.tidyLayersEvent(event)),
               new EventDef([modeMaster.has, "area-selecting"],
                   [modeMaster.remove, "area-selecting"], (event) => areaSelectManager.areaSelectingMouseUpEvent(event)),
               new EventDef([modeMaster.has, "resizing"],
-                  [modeMaster.remove, "resizing"], () => layerManager.tidyLayers()),
+                  [modeMaster.remove, "resizing"], (event) => layerManager.tidyLayersEvent(event)),
             ],
           }
         }, 
@@ -435,15 +562,15 @@
 
     class CharManager {
         
-        form = "ascii";
+        form = "unicode";
         line = "solid-thin";
 
         // Useful: https://www.w3.org/TR/xml-entity-names/025.html
         charset = {
 
           // Dotted lines
-          "•": ["dotted", "line", "vertical", "lateral", "unicode"],
-          ".": ["dotted", "line", "vertical", "lateral", "ascii"],
+          "•": ["dotted", "line", "vertical", "lateral", "corner", "unicode"],
+          ".": ["dotted", "line", "vertical", "lateral", "corner", "ascii"],
 
           // Solid lines
           "━": ["solid-bold", "line", "lateral", "unicode"],
@@ -503,28 +630,28 @@
           return lastChar;
         }
 
-        getDiagBackLine() {
-          return this.getBestChar("diag-back", "line", this.form, this.line);
+        getDiagBackLine(lineForm) {
+          return this.getBestChar("diag-back", "line", this.form, lineForm);
         }
 
-        getDiagForwardLine() {
-          return this.getBestChar("diag-forward", "line", this.form, this.line);
+        getDiagForwardLine(lineForm) {
+          return this.getBestChar("diag-forward", "line", this.form, lineForm);
         }
 
-        getVerticalLine() {
-          return this.getBestChar("vertical", "line", this.form, this.line);
+        getVerticalLine(lineForm) {
+          return this.getBestChar("vertical", "line", this.form, lineForm);
         }
 
-        getLateralLine() {
-          return this.getBestChar("lateral", "line", this.form, this.line);
+        getLateralLine(lineForm) {
+          return this.getBestChar("lateral", "line", this.form, lineForm);
         }
 
         getArrow (direction) {
           return this.getBestChar("arrow", direction, this.form);
         }
 
-        getCorner(position) {
-          return this.getBestChar("corner", position, this.form, this.line);
+        getCorner(lineForm, position) {
+          return this.getBestChar("corner", position, this.form, lineForm);
         }
 
         getFree() {
@@ -585,7 +712,6 @@
           this.layerGroups[index] = layerGroup.filter(layerId => !layers.includes(layerId));
           index ++;
         }
-
         // Tidy empty / one layer groups 
         this.layerGroups = this.layerGroups.filter(group => group.length > 1);
       }
@@ -815,7 +941,7 @@
 
       unselectAll() {
         this.layers.forEach(layer => layer.unselect());
-        modeMaster.removeLayers();
+        modeMaster.removeLayerModes();
       }
 
       switchModeCallback() {
@@ -1131,6 +1257,13 @@
         this.refresh(() => this.copyAndRenderSelectedLayers());
       }
 
+      tidyLayersEvent(event) {
+        this.tidyLayers();
+        //let activePixel = canvas.getPixelById(event.target.id);
+        //console.log(activePixel, this.getSelectPixel());
+        //if (!activePixel.is(this.getSelectPixel())) this.tidyLayers();
+      }
+
       selectMouseOverEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         for (var layer of this.layers) {
@@ -1172,6 +1305,14 @@
         }
       }
 
+      redrawLineBasedEvent(form) {
+        for (var layer of this.getSelectedLayers()) {
+          if (modeMaster.lineBasedModes.includes(layer.name)) {
+            this.refresh(() => layer.setForm(form));
+          }
+        }
+      }
+
       selectAllEvent(event) {
         event.preventDefault();
         this.layers.forEach(layer => layer.select());
@@ -1180,7 +1321,7 @@
       erasePixelEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = this.getLayerByPixelId(activePixel.id());
-        if (layer && layer.name != "free") return;
+        if (layer && layer.name != "free") return; // TODO show warning message
         if (layer) layer.erasePixel(activePixel.id());
         activePixel.clear();
       }
@@ -1205,40 +1346,60 @@
       bringForwardEvent(event) {
         let highestZindex = this.getHighestZindex();
         this.refresh(() => this.getSelectedLayers().forEach(layer =>  layer.zindex ++));
+        this.tidyLayers();
       }
 
       sendBackwardsEvent(event) {
         let lowestZindex = this.getLowestZindex();
         this.refresh(() => this.getSelectedLayers().forEach(layer => layer.zindex --));
+        this.tidyLayers();
       }
 
       bringToFrontEvent(event) {
         let highestZindex = this.getHighestZindex();
         this.refresh(() => this.getSelectedLayers().forEach(layer => layer.zindex = highestZindex + 1));
+        this.tidyLayers();
       }
 
       sendToBackEvent(event) {
         let lowestZindex = this.getLowestZindex();
         this.refresh(() => this.getSelectedLayers().forEach(layer => layer.zindex = lowestZindex - 1));
+        this.tidyLayers();
       }
     }
     
     
     class Layer {
+      
+      // TODO move these
 
-      lateralChar = charManager.getLateralLine();
-      verticalChar = charManager.getVerticalLine();
-      diagBackChar = charManager.getDiagBackLine();
-      diagForwardChar = charManager.getDiagForwardLine();
-      cornerTopLeftChar = charManager.getCorner("top-left");
-      cornerTopRightChar = charManager.getCorner("top-right");
-      cornerBottomLeftChar = charManager.getCorner("bottom-left");
-      cornerBottomRightChar = charManager.getCorner("bottom-right");
+      defaultLineForm = "solid-thin";
+      lateralChar = charManager.getLateralLine(this.defaultLineForm);
+      verticalChar = charManager.getVerticalLine(this.defaultLineForm);
+      diagBackChar = charManager.getDiagBackLine(this.defaultLineForm);
+      diagForwardChar = charManager.getDiagForwardLine(this.defaultLineForm);
+      cornerTopLeftChar = charManager.getCorner(this.defaultLineForm, "top-left");
+      cornerTopRightChar = charManager.getCorner(this.defaultLineForm, "top-right");
+      cornerBottomLeftChar = charManager.getCorner(this.defaultLineForm, "bottom-left");
+      cornerBottomRightChar = charManager.getCorner(this.defaultLineForm, "bottom-right");
       cornerGenericChar = charManager.getCorner("generic");
       arrowUpChar    = charManager.getArrow("up");
       arrowDownChar  = charManager.getArrow("down");
       arrowLeftChar  = charManager.getArrow("left");
       arrowRightChar = charManager.getArrow("right");
+
+      setForm(form) {
+        this.lateralChar = charManager.getLateralLine(form);
+        this.verticalChar = charManager.getVerticalLine(form);
+        this.diagBackChar = charManager.getDiagBackLine(form);
+        this.diagForwardChar = charManager.getDiagForwardLine(form);
+        this.cornerTopLeftChar = charManager.getCorner(form, "top-left");
+        this.cornerTopRightChar = charManager.getCorner(form, "top-right");
+        this.cornerBottomLeftChar = charManager.getCorner(form, "bottom-left");
+        this.cornerBottomRightChar = charManager.getCorner(form, "bottom-right");
+
+        this.redraw();
+      }
 
       constructor(firstPixelId) {
         this.id = this.makeId();
@@ -1267,6 +1428,7 @@
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         let selectedLayers = layerManager.getSelectedLayers();
+
         layerManager.setSelectPixel(activePixel);
         // Unselect all if...
         // 1. clicked-off (no layer selected)
@@ -1281,7 +1443,7 @@
         }
         layerManager.refresh(() => layer.select());
         modeMaster.change("select", "selected");
-        modeMaster.setLayer(layer.name);
+        modeMaster.setSelectedLayerMode(layer.name);
         modeMaster.add(
           layerManager.prepareLayerResizing(activePixel, layer)? "resizing": "moving"
         );
@@ -1331,16 +1493,19 @@
       
       redraw() {
         this.draw(this.toPixel.id());
+        layerManager.capture();
       }
 
       select() {
         this._isSelected = true;
         this.renderSelected();
+        if (layerManager.getSelectedLayers().length > 1) modeMaster.add("multi-select");
       }
 
       unselect() {
         this._isSelected = false;
         this.renderUnselected();
+        if (layerManager.getSelectedLayers().length <= 1) modeMaster.remove("multi-select");
       }
 
       setToPixel(pixel) {
@@ -1469,6 +1634,8 @@
           // repoint joints to new layers.
           layerCopy.joints = this.joints.map(joint => structuredClone(joint));
           layerCopy.id = this.id;
+          
+          layerCopy.zindex = this.zindex;
         } 
         layerCopy.setFromPixel(this.fromPixel);
         layerCopy.setToPixel(this.toPixel);
@@ -1661,6 +1828,8 @@
       
       name = "text";
 
+      starterChar = ">";
+
       constructor(firstPixelId, tableId=null) {
         super(firstPixelId);
 
@@ -1687,8 +1856,8 @@
           let layer = new TextLayer(event.target.id);
           layerManager.add(layer);
           layerManager.editingTextLayer = layer;
-          layer.fromPixel.renderFocus();
-
+          layer.setStarterChar();
+          layerManager.refresh(() => layer.draw());
           // Give an instant cursor position so it can be cleared
           // even if no writing was done.
           layer.lastCursorPixel = layer.fromPixel;
@@ -1709,6 +1878,7 @@
       }
       
       static focusedOtherTextLayer(activePixel) {
+        layerManager.tidyLayers(); // Incase an empty text layer was left behind.
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         if (layer && layer.name == "text") {
           layer.moveCursorToPixel(activePixel);
@@ -1718,9 +1888,8 @@
         return false;
       }
 
-      unselect() {
-        super.unselect();
-        if (this.lastCursorPixel) this.lastCursorPixel.renderNormal();
+      clearLastCursor() {
+        if (this.lastCursorPixel) this.lastCursorPixel.stopCursor();
       }
       
       copy(replace=false) {
@@ -1751,15 +1920,19 @@
         }
       }
 
-
       getLength() {
         return this.contents.length;
       }
 
       moveCursorToPixel(pixel) {
-        this.render();
-        this.cursor = this.getPixelIndex(pixel.id()) + 1;
-        pixel.renderFocus();
+        this.clearLastCursor();
+        let pixIndex = this.getPixelIndex(pixel.id());
+        // Work out selected line using row diff from start.
+        let line = pixel.row - this.fromPixel.row;
+        // For each line, add a cursor position to make up for \n's.
+        this.cursor = pixIndex + line + 1;
+        this.lastCursorPixel = pixel;
+        pixel.startCursor();
       }
 
       getCursorLineOffset() {
@@ -1806,6 +1979,9 @@
       }
 
       drawLayer(activePixelId) {
+        // Ensure the cursor is cleared incase pre-render clearing
+        // didn't (if the cursor isn't on the layer's pixel).
+        this.clearLastCursor();
         this.empty();
         let pixels = [];
         var line = 0;
@@ -1817,17 +1993,16 @@
           }
           let pixel = canvas.getPixelByRowCol(
             this.fromPixel.row + line,
-            this.fromPixel.col + col)
-          ;
+            this.fromPixel.col + col
+          );
           if (this.cursor == i + 1) {
             this.lastCursorPixel = pixel;
-            pixel.renderCursor();
+            pixel.startCursor();
           }
           if (!pixel || this.contents[i] == "\n") continue;
           this.add(pixel, this.contents[i]);
           col ++;
         }
-
       }
 
       getVerticalCursor(direction) {
@@ -1864,6 +2039,7 @@
             this.cursor = (this.cursor <= 0)? 0: this.cursor - 1;
           break;
           case KEYS["enter"]:
+            if (this.contents.length == 0) return;
             this.contents.splice(this.cursor, 0, "\n");
             this.cursor++;
           break;
@@ -1876,17 +2052,33 @@
             this.cursor++;
           break;
         }
-
-        // This is a quick way of not loosing a layer just because
-        // a user backspaced all characters. 
-        if (this.contents.length == 0) this.contents = [">"];
-
+        this.checkNoWrites();
         layerManager.refresh(() => {
           this.draw(null); // TextLayer's don't use toPixels, hence the null
 
           // If the text is part of a table, the table may need spacing.
           if (this.hasTable()) layerManager.getLayerById(this.tableId).refresh();
         });
+      }
+      
+      checkNoWrites() {
+        // This is a quick way of not loosing a layer just because
+        // a user backspaced all characters. 
+        let starterCharIndex = this.contents.indexOf(this.starterChar);
+        if (this.noWrites && (starterCharIndex == 0)) {
+          this.contents.splice(starterCharIndex, 1);
+          this.cursor = 1;
+          this.noWrites = false;
+        }
+        this.setStarterChar();
+      }
+
+      setStarterChar() {
+        if (this.contents.length == 0) {
+          this.contents = [this.starterChar];
+          this.cursor = 1;
+          this.noWrites = true;
+        }
       }
     }
 
@@ -1898,8 +2090,8 @@
       
       constructor(firstPixelId) {
         super(firstPixelId);
-        this.hasArrowLeft = modeMaster.has("arrow-left");
-        this.hasArrowRight = modeMaster.has("arrow-right");
+        this.hasArrowLeft = false;
+        this.hasArrowRight = false;
       }
 
       static drawMouseOver(event) {
@@ -2440,7 +2632,19 @@
 
       drawLayer(activePixelId) {
         this.setToPixel(canvas.getPixelById(activePixelId));
-        this.add(this.toPixel, this.freeChar);
+       
+        let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
+        let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
+        
+        var value = "";
+        if (verticalDiff > lateralDiff) {
+          value = this.verticalChar;
+        } else if (lateralDiff > verticalDiff) {
+          value = this.lateralChar;
+        }
+
+        this.add(this.toPixel, value);
+        this.setFromPixel(this.toPixel);
       }
     }
 
@@ -2982,8 +3186,6 @@
         this.col = col;
         this.size = size;
         this.widthDivider = widthDivider;
-        this.defaultColor = "black";
-        this.defaultBgColor = "transparent";
         this.defaultBorder = "none";
         this.cursorFlashInterval = null;
         this.selected = false;
@@ -3005,67 +3207,70 @@
         this.element.innerHTML = value;
       }
 
+      getValue() {
+        return this.element.innerHTML;
+      }
+
       renderSelected() {
         this.selected = true;
-        this.setBgColor(this.defaultBgColor);
-        this.setColor("blue");
+        this.setBgColor(theme.pixelSelectedBgColor);
+        this.setColor(theme.pixelSelectedFgColor);
       }
 
       renderUnselected() {
         this.selected = false;
-        this.setColor(this.defaultColor);
-        this.setBgColor(this.defaultBgColor);
+        this.setColor(theme.pixelNormalFgColor);
+        this.setBgColor(theme.pixelNormalBgColor);
       }
 
       renderResizable() {
-        this.setBgColor("red");
+        this.setBgColor(theme.pixelResizeBgColor);
       }
       
       renderAreaSelected() {
-        this.setBgColor("#14005e");
+        this.setBgColor(theme.areaSelectionBgColor);
       }
       
       renderJoint() {
-        this.setBgColor("pink");
+        this.setBgColor(theme.pixelJointBgColor);
       }
 
       renderJointNear() {
-        this.setBgColor("green");
+        this.setBgColor(theme.pixelJointNearBgColor);
       }
 
       renderWasSelected() {
         this.selected? this.renderSelected(): this.renderUnselected();
       }
 
-      renderNoCursor() {
-        clearInterval(this.cursorFlashInterval);
-        this.element.style.border = "none";
+      stopCursor() {
+        this.renderNoCursor();
+        if (this.cursorFlashInterval) clearInterval(this.cursorFlashInterval);
       }
 
+      renderNoCursor() {
+        this.element.style.border = this.defaultBorder; 
+      }
       renderCursor() {
-        this.renderNormal();
-        this.element.style.borderRight = "1px solid orange";
-        setTimeout((pixel) => {
-          pixel.element.style.borderRight = "none";
-        }, 500, this);
-        this.cursorFlashInterval = setInterval(
-          (pixel) => {
-            this.element.style.borderRight = "1px solid orange";
-            setTimeout(() => {
-              pixel.element.style.borderRight = "none";
-            }, 500);
-          },
-        1000, this);
+        this.element.style.borderRight = `1px solid ${theme.pixelCursorColor}`;
+      }
+
+      startCursor() {
+        this.renderCursor();
+        setTimeout(() => this.renderNoCursor(), 500);
+        this.cursorFlashInterval = setInterval((pixel) => {
+           pixel.renderCursor(); setTimeout(() => pixel.renderNoCursor(), 500);
+        }, 1000, this);
       }
 
       renderFocus() {
-        this.setBgColor("orange");
+        this.setBgColor(theme.pixelCursorColor);
       }
 
       renderNormal() {
-        this.renderNoCursor();
-        this.setColor(this.defaultColor);
-        this.setBgColor(this.defaultBgColor);
+        this.stopCursor();
+        this.setColor(theme.pixelNormalFgColor);
+        this.setBgColor(theme.pixelNormalBgColor);
       }
 
       setColor(color) {
@@ -3078,7 +3283,7 @@
 
 
       clear() {
-        this.setValue(" ");
+        this.setValue("");
         this.renderNormal();
       }
 
@@ -3129,7 +3334,7 @@
         this.element.style.marginTop = `${this.row * this.size}px`;
         this.element.style.height = `${this.size}px`;
         this.element.style.width = `${this.size * this.widthDivider}px`;
-        this.setValue(" ");
+        this.setValue("");
         parent.appendChild(this.element);
       }
     }
@@ -3144,7 +3349,7 @@
       colCount = 160;
 
       pixelSize = 14;
-      pixelWidthDivider = 0.6;
+      pixelWidthDivider = 0.5;
 
       constructor() {
         this.pixels = {};
@@ -3166,12 +3371,48 @@
         for(var pixel in this.pixels) this.pixels[pixel].clear();
       }
 
+      getCroppedRowsCols() {
+        var maxCol = -1;
+        var minCol = this.colCount;
+        var maxRow = -1;
+        var minRow = this.rowCount;
+        for (let pixelId in this.pixels) {
+          let pixel = this.pixels[pixelId];
+          if (pixel.getValue() != "") {
+            if (pixel.col > maxCol) maxCol = pixel.col;
+            if (pixel.col < minCol) minCol = pixel.col;
+            if (pixel.row > maxRow) maxRow = pixel.row;
+            if (pixel.row < minRow) minRow = pixel.row;
+          }
+        }
+        return [maxCol, minCol, maxRow, minRow];
+      }
+
+      exportToClipboard() {
+        layerManager.switchModeCallback();
+        var text = "";
+        let [maxCol, minCol, maxRow, minRow] = this.getCroppedRowsCols();
+        for (var row = minRow; row < maxRow + 1; row++) {
+          var rowText = "";
+          for (var col = minCol; col < maxCol + 1; col++) {
+            let pixel = this.getPixelByRowCol(row, col);
+            let pixelValue = pixel.getValue();
+            let value = pixelValue == ""? " ": pixelValue;
+            rowText += value;
+          }
+          if(rowText.split("").filter(v => v != " ").length == 0) continue;
+          text += `${rowText}\n`;
+        }
+        navigator.clipboard.writeText(text);
+      }
+
       render() {
         this.element = document.getElementById("canvas");
+        this.element.style.backgroundColor = theme.canvasBgColor;
         this.element.style.width  = `${this.colCount * this.pixelSize * this.pixelWidthDivider}px`;
         this.element.style.height = `${this.rowCount * this.pixelSize}px`;
         this.element.style.fontSize = `${this.pixelSize}px`;
-        this.element.style.fontFamily = `monospace`;
+        this.element.style.fontFamily = theme.canvasFont;
         for (var row = 0; row < this.rowCount; row++) {
           for (var col = 0; col < this.colCount; col++) {
             let pixel = new Pixel(this.pixelSize, this.pixelWidthDivider, row, col);
@@ -3187,8 +3428,7 @@
     //////////////
     
     class MenuButton {
-      
-      constructor (name, showCondition, setModes, activeModes, callback=()=>{}) {
+      constructor (icon, name, showCondition, setModes, activeModes, callback=()=>{}) {
         /*
         name: display name of the button
         showCondition: A ModeMaster condition that gets checked every Menu.refresh
@@ -3197,25 +3437,52 @@
         activeModes: A ModeMaster condition to choose if the button is selected.
         callback: A function callback on press.
         */
+        this.icon = icon;
         this.name = name;
+        this.isConditional = Boolean(showCondition.length);
         this.showCondition = modeMaster.makeFunc(showCondition);
         this.callback = callback;
         this.setModes = modeMaster.makeFunc(setModes);
         this.activeModes = activeModes;
-
-        this.defaultButtonColor = "black";
-        this.defaultSelectedButtonColor = "blue";
       }
       
-      onPress() {
+      onMouseDown() {
         this.callback();
         this.setModes();
+        if (!this.activeModes.length) this.element.style.backgroundColor = theme.menuButtonClickBgColor;
       }
 
+      onMouseUp() {
+        if (!this.activeModes.length) this.element.style.backgroundColor = theme.menuButtonBgColor;
+      }
+
+      onMouseOver() {
+        this.nameElement.style.display = "inline-block";
+        this.iconElement.style.display = "none";
+      }
+
+      onMouseLeave() {
+        this.iconElement.style.display = "inline-block";
+        this.nameElement.style.display = "none";
+      }
       render(parent) {
         this.element = document.createElement("button");
-        this.element.innerHTML = this.name;
-        this.element.addEventListener("mousedown", () => this.onPress());
+        this.element.style.backgroundColor = theme.menuButtonBgColor;
+        this.element.style.color = theme.menuButtonFgColor;
+        this.element.addEventListener("mousedown", () => this.onMouseDown());
+        this.element.addEventListener("mouseup", () => this.onMouseUp());
+        //this.element.addEventListener("mouseover", () => this.onMouseOver());
+        //this.element.addEventListener("mouseleave", () => this.onMouseLeave());
+
+        this.iconElement = document.createElement("span");
+        this.iconElement.className = "menuButtonIcon";
+        this.iconElement.innerHTML = this.icon;
+        this.element.appendChild(this.iconElement);
+
+        this.nameElement = document.createElement("span");
+        this.nameElement.innerHTML = ` ${this.name}`;
+        this.nameElement.className = "menuButtonLabel";
+        this.element.appendChild(this.nameElement);
         parent.appendChild(this.element);
       }
 
@@ -3228,11 +3495,11 @@
       }
 
       unselect() {
-        this.element.style.backgroundColor = this.defaultButtonColor; 
+        this.element.style.backgroundColor = theme.menuButtonBgColor; 
       }
 
       select() {
-        this.element.style.backgroundColor = this.defaultSelectedButtonColor; 
+        this.element.style.backgroundColor = theme.menuButtonSelectedBgColor; 
       }
 
       isActive() {
@@ -3242,61 +3509,67 @@
 
     class Menu {
       buttons = [
-        new MenuButton("Square",
-          [], [modeMaster.reset, "draw", "square", "dsbutton"], ["dsbutton"], () => layerManager.switchModeCallback()),
-        new MenuButton("Text",
-          [], [modeMaster.reset, "draw", "text", "dtbutton"], ["writing", "dtbutton"], () => layerManager.switchModeCallback()),
-        new MenuButton("Line",
-          [], [modeMaster.reset, "draw", "line", "free-line", "dflbutton"], ["dflbutton"], () => layerManager.switchModeCallback()),
-        new MenuButton("Step Line", 
-          [], [modeMaster.reset, "draw", "line", "step-line", "dslbutton"], ["dslbutton"], () => layerManager.switchModeCallback()),
-        new MenuButton("Switch Line", 
-          [], [modeMaster.reset, "draw", "line", "switch-line", "dswlbutton"], ["dswlbutton"], () => layerManager.switchModeCallback()),
-        new MenuButton("Diamond",
-          [], [modeMaster.reset, "draw", "diamond", "ddibutton"], ["ddibutton"], () => layerManager.switchModeCallback()),
-        new MenuButton("Table",
-          [], [modeMaster.reset, "draw", "table", "dtblbutton"], ["dtblbutton"], () => layerManager.switchModeCallback()),
-        new MenuButton("Free",
-          [], [modeMaster.reset, "draw", "free", "dfbutton"], ["dfbutton"], () => layerManager.switchModeCallback()),
-        new MenuButton("Erase",
-          [], [modeMaster.reset, "erase", "ebutton"], ["ebutton"], () => layerManager.switchModeCallback()),
-        new MenuButton("Select",
+        new MenuButton("➤", "Select",
           [], [modeMaster.reset, "select"], ["selected", "select"], () => layerManager.switchModeCallback()),
-        new MenuButton("Undo",
+        new MenuButton("◻", "Square",
+          [], [modeMaster.reset, "draw", "square", "dsbutton"], ["dsbutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("t",  "Text",
+          [], [modeMaster.reset, "draw", "text", "dtbutton"], ["writing", "dtbutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("/", " Line",
+          [], [modeMaster.reset, "draw", "line", "free-line", "dflbutton"], ["dflbutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("_|", "Step", 
+          [], [modeMaster.reset, "draw", "line", "step-line", "dslbutton"], ["dslbutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("_|‾", "Switch", 
+          [], [modeMaster.reset, "draw", "line", "switch-line", "dswlbutton"], ["dswlbutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("◇", "Diamond",
+          [], [modeMaster.reset, "draw", "diamond", "ddibutton"], ["ddibutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("᎒᎒᎒", "Table",
+          [], [modeMaster.reset, "draw", "table", "dtblbutton"], ["dtblbutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("∿", "Free",
+          [], [modeMaster.reset, "draw", "free", "dfbutton"], ["dfbutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("⌫", "Erase",
+          [], [modeMaster.reset, "erase", "ebutton"], ["ebutton"], () => layerManager.switchModeCallback()),
+        new MenuButton("↺", "Undo",
           [], [], [], (event) => layerManager.undoEvent(event)),
-        new MenuButton("Redo",
+        new MenuButton("↻", "Redo",
           [], [], [], (event) => layerManager.redoEvent(event)),
-        new MenuButton("Restart",
+        new MenuButton("x", "Restart",
           [], [], [], () => layerManager.refresh(() => layerManager.empty())),
-        new MenuButton("Copy",
+        new MenuButton("->", "Export",
+          [], [], [], () => canvas.exportToClipboard()),
+        new MenuButton("⚙", "Settings",
+          [], [], [], () => {}),
+        new MenuButton("⧉", "Copy",
           [modeMaster.has, "selected"], [], [], (event) => layerManager.copySelectedLayersEvent(event)),
-        new MenuButton("Group",
-          [modeMaster.has, "selected"], [], [], (event) => layerManager.groupSelectedLayersEvent(event)),
-        new MenuButton("Ungroup",
-          [modeMaster.has, "selected"], [], [], (event) => layerManager.ungroupSelectedLayersEvent(event)),
-        new MenuButton("Delete",
+        new MenuButton("⧓", "Group",
+          [modeMaster.has, "multi-select", "selected"], [], [], (event) => layerManager.groupSelectedLayersEvent(event)),
+        new MenuButton("⧎", "Ungroup",
+          [modeMaster.has, "multi-select", "selected"], [], [], (event) => layerManager.ungroupSelectedLayersEvent(event)),
+        new MenuButton("✕", "Delete",
           [modeMaster.has, "selected"], [modeMaster.reset, "select"], [], (event) => layerManager.deleteLayersEvent(event)),
-        new MenuButton("Bring Forward",
+        new MenuButton("⎘", "Forward",
           [modeMaster.has, "selected"], [], [], (event) => layerManager.bringForwardEvent(event)),
-        new MenuButton("Send Backwards",
+        new MenuButton("⎗", "Backwards",
           [modeMaster.has, "selected"], [], [], (event) => layerManager.sendBackwardsEvent(event)),
-        new MenuButton("Bring To Front",
+        new MenuButton("⎘", "Front",
           [modeMaster.has, "selected"], [], [], (event) => layerManager.bringToFrontEvent(event)),
-        new MenuButton("Send To Back",
+        new MenuButton("⎗", "Back",
           [modeMaster.has, "selected"], [], [], (event) => layerManager.sendToBackEvent(event)),
-        new MenuButton("<-",
-          [modeMaster.has, "draw", "line"], [modeMaster.toggle, "arrow-left"], ["arrow-left"]),
-        new MenuButton("->",
-          [modeMaster.has, "draw", "line"], [modeMaster.toggle, "arrow-right"], ["arrow-right"]),
-        new MenuButton("<-",
+        new MenuButton("⏴", "Arrow",
           [modeMaster.has, "selected", "line"], [], [], () => layerManager.redrawLinesEvent("left")),
-        new MenuButton("->",
+        new MenuButton("⏵", "Arrow",
           [modeMaster.has, "selected", "line"], [], [], () => layerManager.redrawLinesEvent("right")),
+        new MenuButton("⋮", "Dotted",
+          [modeMaster.has, "selected", "line-based"], [], [], () => layerManager.redrawLineBasedEvent("dotted")),
+        new MenuButton("--", "Dashed",
+          [modeMaster.has, "selected", "line-based"], [], [], () => layerManager.redrawLineBasedEvent("dashed")),
+        new MenuButton("―", "Solid",
+          [modeMaster.has, "selected", "line-based"], [], [], () => layerManager.redrawLineBasedEvent("solid-thin")),
       ] 
       
       constructor() {
-        this.id = "menu";
-        this.element = document.getElementById(this.id);
+        this.topMenuElement = document.getElementById("menu-top");
+        this.leftMenuElement = document.getElementById("menu-left");
         modeMaster.registerCallback(() => menu.refresh());
       }
       
@@ -3315,8 +3588,12 @@
         }
       }
 
+      getButtonParent(button) {
+        return button.isConditional? this.leftMenuElement: this.topMenuElement;
+      }
+
       render() {
-        for (var button of this.buttons) button.render(this.element);
+        for (var button of this.buttons) button.render(this.getButtonParent(button));
         this.refresh();
       }
     }
