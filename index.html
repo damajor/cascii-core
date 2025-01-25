@@ -1,4 +1,3 @@
-<body></body>
 <script>
 /*
 
@@ -49,7 +48,7 @@ var areaSelectManager;
 var modeMaster;
 var charManager;
 var themeManager;
-var componentManager;
+var bodyComponent;
 
 var canvas;
 
@@ -117,6 +116,7 @@ class Theme {
     blue     : "#0394fc",
     darkBlue : "#0069b5",
     red      : "#f52f2c",
+    darkRed  : "#9e1910",
     black    : "black",
     white    : "white",
     none     : "transparent",
@@ -159,6 +159,9 @@ class Theme {
 }
 
 class ThemeManager {
+
+  defaultTheme = "darkTheme";
+
   themes = {
     darkTheme: new Theme(
       {
@@ -188,7 +191,7 @@ class ThemeManager {
         bodyFgColor: Theme.Color.green,
         menuButtonBgColor: Theme.Color.black,
         menuButtonFgColor: Theme.Color.green,
-        menuButtonSelectedBgColor: Theme.Color.darkBlue,
+        menuButtonSelectedBgColor: Theme.Color.darkRed,
 
         pixelCursorColor: Theme.Color.green,
         pixelNormalFgColor: Theme.Color.green,
@@ -197,7 +200,7 @@ class ThemeManager {
   }
 
   constructor() {
-    this.setTheme("darkTheme");
+    this.setTheme(this.defaultTheme);
   }
   
   getTheme() {
@@ -209,15 +212,8 @@ class ThemeManager {
   }
 
   renderTheme() {
-    layerManager.unselectAll();
-    componentManager.renderTheme();
-    let theme = this.getTheme();
-    document.body.style.backgroundColor = theme.bodyBgColor;
-    document.body.style.color = theme.bodyFgColor;
-    document.body.style.fontFamily = theme.bodyFont;
-    document.body.style.overflow = "hidden";
+    layerManager.refresh(() => bodyComponent.renderTheme());
   }
-
 }
 
 //////////////////
@@ -225,6 +221,8 @@ class ThemeManager {
 //////////////////
 
 class ModeMaster {
+  
+  charModes = ["ascii", "unicode"];
 
   layerModes = [
     // Primitive
@@ -328,6 +326,15 @@ class ModeMaster {
     // Rules for dynamic layer modes
     if (name.includes("line")) this.add("line");
     if (this.lineBasedModes.includes(name)) this.add("line-based");
+  }
+
+  removeCharModes() {
+    this.charModes.forEach(mode => this.remove(mode));
+  }
+
+  setCharMode(form) {
+    this.removeCharModes();
+    this.add(form);
   }
 }
 
@@ -530,9 +537,6 @@ class EventManager {
 
 class CharManager {
     
-    charsetForm = "unicode";
-    line = "solid-thin";
-
     // Useful: https://www.w3.org/TR/xml-entity-names/025.html
     charset = {
 
@@ -598,28 +602,32 @@ class CharManager {
       return lastChar;
     }
 
+    getCharForm() {
+      return modeMaster.has("ascii")? "ascii": "unicode";
+    }
+
     getDiagBackLine(lineForm) {
-      return this.getBestChar("diag-back", "line", this.charsetForm, lineForm);
+      return this.getBestChar("diag-back", "line", lineForm, this.getCharForm());
     }
 
     getDiagForwardLine(lineForm) {
-      return this.getBestChar("diag-forward", "line", this.charsetForm, lineForm);
+      return this.getBestChar("diag-forward", "line", lineForm, this.getCharForm());
     }
 
     getVerticalLine(lineForm) {
-      return this.getBestChar("vertical", "line", this.charsetForm, lineForm);
+      return this.getBestChar("vertical", "line", lineForm, this.getCharForm());
     }
 
     getLateralLine(lineForm) {
-      return this.getBestChar("lateral", "line", this.charsetForm, lineForm);
-    }
-
-    getArrow (direction) {
-      return this.getBestChar("arrow", direction, this.charsetForm);
+      return this.getBestChar("lateral", "line", lineForm, this.getCharForm());
     }
 
     getCorner(lineForm, position) {
-      return this.getBestChar("corner", position, this.charsetForm, lineForm);
+      return this.getBestChar("corner", position, lineForm, this.getCharForm());
+    }
+
+    getArrow (direction) {
+      return this.getBestChar("arrow", direction, this.getCharForm());
     }
 
     getFree() {
@@ -1118,8 +1126,7 @@ class LayerManager {
     return true;
   }
 
-  renderCharset(charsetForm) {
-    charManager.charsetForm = charsetForm;
+  renderCharset() {
     for (let layer of this.layers) layer.setAllChars(layer.lineForm);
   }
 
@@ -3176,6 +3183,7 @@ class Component {
   _MagicPropCssPrefix = "css";
   
   value = "";
+  name = "";
   children = [];
   type = "div";
 
@@ -3216,6 +3224,7 @@ class Component {
   }
   
   renderChildren() {
+    this.children = this.defineChildren();
     for (let child of this.children) child.render(this.element);
   }
 
@@ -3229,15 +3238,19 @@ class Component {
   renderCallback() {};
   id() {return ""};
 
+
+  assignParent(parent) {
+    this.parent = parent;
+    this.parent.appendChild(this.element);
+  }
+
   render(parent) {
-    this.parent = parent? parent: document.body;
     this.create();
     this.setId();
     this.setValue(this.value);
     this.registerMagicProps();
-    this.children = this.defineChildren();
     this.renderChildren(); 
-    this.parent.appendChild(this.element);
+    this.assignParent(parent);
     this.renderTheme();
     this.renderCallback();
   }
@@ -3247,8 +3260,9 @@ class Component {
     this.element.style[style] = valueFromTheme? valueFromTheme: value;
   }
 
-  setId(id) {
-    this.element.id = this.id();
+  setId() {
+    let id = this.id();
+    if (id) this.element.id = id;
   }
 
   setValue(value) {
@@ -3504,7 +3518,7 @@ class Canvas extends Component {
   }
   
   on_mouseDown() {
-    componentManager.components.settings.hide();
+    bodyComponent.settings.hide();
   }
   
   defineChildren() {
@@ -3539,38 +3553,47 @@ class Settings extends Component {
   css_marginLeft      = "calc(50vw - 150px)";
   css_marginTop       = "20vh";
   css_userSelect      = "none";
-  
-  setCharset(form) {
-    layerManager.refresh(() => layerManager.renderCharset(form));
+ 
+  charsetButtons = [
+    new Button({charsetId: "ascii", css_width: "50%", value: "Ascii", on_click: () => this.setCharset("ascii")}),
+    new Button({charsetId: "unicode", css_width: "50%", value: "Unicode", on_click: () => this.setCharset("unicode")}),
+  ];
+
+  themeButtons = [
+    new Button({themeId: "darkTheme", css_width: "33%", value: "Dark", on_click: () => this.setTheme("darkTheme")}),
+    new Button({themeId: "lightTheme", css_width: "33%", value: "Light", on_click: () => this.setTheme("lightTheme")}),
+    new Button({themeId: "consoleTheme", css_width: "33%", value: "Console", on_click: () => this.setTheme("consoleTheme")}),
+  ]
+
+  setCharset(charsetId) {
+    for (let button of this.charsetButtons) button.charsetId == charsetId? button.select(): button.unselect();
+    modeMaster.setCharMode(charsetId);
+    layerManager.refresh(() => layerManager.renderCharset());
   }
   
-  defineTheme() {
-    this.css("background", "bodyBgColor");
+  setTheme(themeId) {
+    themeManager.setTheme(themeId);
+    themeManager.renderTheme();
+    for (let button of this.themeButtons) button.themeId == themeId? button.select(): button.unselect();
   }
 
-  setTheme(theme) {
-    themeManager.setTheme(theme);
-    themeManager.renderTheme();
+  defineTheme() {
+    this.css("background", "bodyBgColor");
   }
 
   defineChildren() {
     return [
       new Component({css_fontSize: "50px", css_width: "100%", css_height: "15%", css_textAlign: "center", value: "⚙"}),
-        new Component({css_width: "100%", css_marginTop: "30px",
+      new Component({css_width: "100%", css_marginTop: "30px",
         children: [
           new Component({css_textAlign: "center", css_marginBottom: "10px", value: "Charset"}),
-          new Button({css_width: "50%", value: "Ascii", on_click: () => this.setCharset("ascii")}),
-          new Button({css_width: "50%", value: "Unicode", on_click: () => this.setCharset("unicode")}), // TODO make buttons stay selected - use MenuButton?
-        ]
+        ].concat(this.charsetButtons)
       }),
       new Component({
         css_width: "100%", css_marginTop: "20px",
         children: [
           new Component({css_textAlign: "center", css_marginBottom: "10px", value: "Theme"}),
-          new Button({css_width: "33%", value: "Dark", on_click: () => this.setTheme("darkTheme")}),
-          new Button({css_width: "33%", value: "Light", on_click: () => this.setTheme("lightTheme")}),
-          new Button({css_width: "33%", value: "Console", on_click: () => this.setTheme("consoleTheme")}),
-        ]
+        ].concat(this.themeButtons)
       }),
     ]
   }
@@ -3595,13 +3618,16 @@ class Button extends Component {
   defineTheme() {
     this.css("backgroundColor", "menuButtonBgColor");
     this.css("color", "menuButtonFgColor");
+    this.selected? this.select(): this.unselect();
   }
 
   unselect() {
+    this.selected = false;
     this.css("backgroundColor", "menuButtonBgColor"); 
   }
 
   select() {
+    this.selected = true;
     this.css("backgroundColor", "menuButtonSelectedBgColor"); 
   }
 
@@ -3741,7 +3767,7 @@ class MainMenu extends Menu {
     new MenuButton("->", "Export",
       [], [], [], () => canvas.exportToClipboard()),
     new MenuButton("⚙", "Settings",
-      [], [], [], () => componentManager.components.settings.toggle()),
+      [], [], [], () => bodyComponent.settings.toggle()),
   ]
 }
 
@@ -3791,27 +3817,29 @@ class LeftMenu extends Menu {
 }
 
 
-class ComponentManager {
-  components = {
-    mainMenu: MainMenu,
-    leftMenu: LeftMenu,
-    canvas:   Canvas,
-    settings: Settings,
-  };
+class Body extends Component {
+  type = "body";
+  css_overflow = "hidden";
 
-  constructor() {
-    for (let comp in this.components) this.components[comp] = new this.components[comp]();
+  assignParent(parent) {
+    this.parent = document;
+    this.parent.body = this.element;
   }
 
-  renderTheme() {
-    for (let comp in this.components) this.components[comp].renderTheme();
+  defineChildren() {
+    this.settings = new Settings();
+    this.mainMenu = new MainMenu();
+    this.leftMenu = new LeftMenu();
+    this.canvas   = new Canvas();
+    return [this.settings, this.mainMenu, this.leftMenu, this.canvas];
   }
 
-  renderAll() {
-    for (let comp in this.components) this.components[comp].render();
+  defineTheme() {
+    this.css("backgroundColor", "bodyBgColor");
+    this.css("color", "bodyFgColor");
+    this.css("fontFamily", "bodyFont");
   }
 }
-
 
 
 function main() {
@@ -3821,16 +3849,15 @@ function main() {
   eventManager       = new EventManager();
   charManager        = new CharManager();
   themeManager       = new ThemeManager();
-  componentManager   = new ComponentManager();
 
-  componentManager.renderAll();
-  canvas = componentManager.components.canvas;
+  bodyComponent = new Body();
+  bodyComponent.render();
+  
+  canvas = bodyComponent.canvas;
   eventManager.assignAll(
-    {window: window, document: document, canvas:canvas.element}
+    {window: window, document: document, canvas: canvas.element}
   );
-  themeManager.renderTheme();
 }
 
 main(); // :) 
-
 </script>
