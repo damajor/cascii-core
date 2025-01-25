@@ -1393,7 +1393,7 @@ class Layer {
     this.pixels = [];
     this.values = [];
     this.joints = [];
-    this.stashed = null;
+    this.stash();
     this.zindex = layerManager.getHighestZindex() + 1;
     this._isSelected = false;
     
@@ -1882,6 +1882,16 @@ class TextLayer extends Layer {
       return true;
     }
     return false;
+  }
+  
+  isHappy() {
+    if (this.hasTable()) {
+      // If the textLayer has a parent table, it's happiness
+      // should also depend on the parent (it should rollback if the parent has
+      // become unhappy)
+      return layerManager.getLayerById(this.tableId).isHappy() && super.isHappy();
+    }
+    return super.isHappy();
   }
 
   clearLastCursor() {
@@ -2891,6 +2901,7 @@ class TableLayer extends SquareBoundLayer {
   static drawMouseDownEvent(event) {
     let layer = new TableLayer(event.target.id);
     layerManager.add(layer);
+    layerManager.refresh(() => layer.draw(event.target.id));
   }
 
   copy(replace=false) {
@@ -2920,8 +2931,8 @@ class TableLayer extends SquareBoundLayer {
   
   getKeyedJointPixels() {
     let pixels = {};
-    let corners = this.getCornerPixels();
-    if (!corners.length) return [];
+    var corners = this.getCornerPixels();
+    if (!corners.length) return {};
     let [topLeftPixel, topRightPixel, bottomRightPixel, bottomLeftPixel] = corners;
     var rowPos = topLeftPixel.row + 1;
     var index = 0;
@@ -2945,7 +2956,7 @@ class TableLayer extends SquareBoundLayer {
     }
     return pixels;
   }
-
+  
   ungroup() {
     // Ungroup all layers.
     layerManager.groupManager.ungroupLayers(this.getTextLayers().concat(this));
@@ -3001,7 +3012,11 @@ class TableLayer extends SquareBoundLayer {
       this.tblColWidths.push(colWidth);
     }
   }
-
+  
+  rollback() {
+    super.rollback();
+    this.getTextLayers().forEach(layer => layer.rollback());
+  }
 
   getTopLeftPixel() {
     return canvas.getPixelByRowCol(
@@ -3023,15 +3038,15 @@ class TableLayer extends SquareBoundLayer {
     let lateralDiff = topLeftPixel.col - bottomRightPixel.col;
     
 
-    // We deduct excess pixels so that larger cells don't count as multiple cells
+    // We deduce excess pixels so that larger cells don't count as multiple cells
     // and therefore generate more cells than expected when resizing.
     let newTblRows = roundHalf(
       (Math.abs(verticalDiff) - this.getExcessRowHeight()) / this.tblRowDefaultHeight
-    );
+    ) + 1;
     let newTblCols = roundHalf(
       (Math.abs(lateralDiff) - this.getExcessColWidth()) / this.tblColDefaultWidth
-    );
-
+    ) + 1;
+    
     if (
        (newTblRows != this.tblRows || newTblCols != this.tblCols) && 
        (newTblCols != 0 && newTblRows != 0)
@@ -3039,9 +3054,9 @@ class TableLayer extends SquareBoundLayer {
       this.tblRows = newTblRows;
       this.tblCols = newTblCols;
       this.ungroup();
+      this.drawFrame(topLeftPixel);
       this.emptyTextLayers();
       this.addTextLayers();
-      this.drawFrame(topLeftPixel);
       this.moveTextLayers(topLeftPixel);
       this.group();
     } 
@@ -3121,7 +3136,6 @@ class TableLayer extends SquareBoundLayer {
       this.tableContents[cellId] = textLayer.contents;
       textLayer.empty();
     }
-
     this.textLayers = toKeep;
   }
 
@@ -3148,7 +3162,7 @@ class TableLayer extends SquareBoundLayer {
     let contents = (existingContents)? existingContents: this.defaultCellContents.split("");
     textLayer.contents = contents; 
     layerManager.addSecond(textLayer); 
-    textLayer.drawLayer();
+    textLayer.draw();
     this.textLayers[cellId] = textLayer.id;
   }
 
