@@ -2004,6 +2004,12 @@ class TextLayer extends Layer {
         this.fromPixel.row + line,
         this.fromPixel.col + col
       );
+      if (!pixel) {
+        // Writing out of bounds. Stop the writing!
+        this.contents.splice(i, 1);
+        this.cursor --;
+        return;
+      }
       if (this.cursor == i + 1) {
         this.lastCursorPixel = pixel;
         pixel.startCursor();
@@ -2664,7 +2670,7 @@ class FreeLayer extends Layer {
 
 class SquareBoundLayer extends Layer { 
   
-  getCornerPixels() {
+  getCornerPixels() { // TODO use this / halfways for TextLayer joints (multi line is an issue otherwise)
     if (this.pixels.length == 0) {
       return [];
     }
@@ -3045,10 +3051,10 @@ class TableLayer extends SquareBoundLayer {
     // and therefore generate more cells than expected when resizing.
     let newTblRows = roundHalf(
       (Math.abs(verticalDiff) - this.getExcessRowHeight()) / this.tblRowDefaultHeight
-    );
+    ) + 1;
     let newTblCols = roundHalf(
       (Math.abs(lateralDiff) - this.getExcessColWidth()) / this.tblColDefaultWidth
-    );
+    ) + 1;
     
     if (
        (newTblRows != this.tblRows || newTblCols != this.tblCols) && 
@@ -3137,7 +3143,7 @@ class TableLayer extends SquareBoundLayer {
       // Otherwise, empty the layer but save it's contents.
       let textLayer = this.getTextLayer(cellId);
       this.tableContents[cellId] = textLayer.contents;
-      textLayer.empty();
+      if (!textLayer.commit(() => textLayer.empty())) toKeep[cellId] = this.textLayers[cellId]; // TODO comment
     }
     this.textLayers = toKeep;
   }
