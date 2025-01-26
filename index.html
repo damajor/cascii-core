@@ -1024,16 +1024,16 @@ class LayerManager {
       }
       committedLayers.push(layer);
     }
+
     // If we are here, all layers have moved, so we can now resize
     // their joiner layers.
-    for (let layer of layers) {
-      // resizeSelectedJoinerLayers is false here because moving
-      // them takes priority, and doing both is error prone. They will move
-      // with their joint layer anyway, meaning the joint is persisted.
-      // Otherwise, the joiner layer could unjoin because it's moved
-      // twice, from the main move routine and the resize joiner layer routine.  
-      layer.resizeJoinerLayers(false);
-    }
+
+    // resizeSelectedJoinerLayers is false here because moving
+    // them takes priority, and doing both is error prone. They will move
+    // with their joint layer anyway, meaning the joint is persisted.
+    // Otherwise, the joiner layer could unjoin because it's moved
+    // twice, from the main move routine and the resize joiner layer routine.  
+    for (let layer of layers) layer.resizeJoinerLayers(false);
     return true;
   }
 
@@ -1474,7 +1474,7 @@ class Layer {
   }
 
   rollback() {
-    // Uses stashed pixels/values and restores them to active state.
+    console.log("rolling back", this.constructor.name);
     [this.fromPixel, this.toPixel, this.pixels, this.values] = this.stashed;
   }
   
@@ -2903,6 +2903,15 @@ class TableLayer extends SquareBoundLayer {
     layerManager.add(layer);
     layerManager.refresh(() => layer.draw(event.target.id));
   }
+  stash() {
+    super.stash(); // TODO STATE BUCKETS for export, copy, and stash.
+    this.moreStash = [this.tblRows, this.tblCols, this.tblRowHeights, this.tblColWidths];
+  }
+
+  rollback() {
+    super.rollback();
+    [this.tblRows, this.tblCols, this.tblRowHeights, this.tblColWidths] = this.moreStash;
+  }
 
   copy(replace=false) {
     // Please read base implementation. This extension ensures 
@@ -2917,7 +2926,7 @@ class TableLayer extends SquareBoundLayer {
     layerCopy.tblColWidths = this.tblColWidths;
     return layerCopy;
   }
-  
+
   getExcessRowHeight() {
     return sum(this.tblRowHeights) - (this.tblRowDefaultHeight * this.tblRowHeights.length)
   }
@@ -3012,11 +3021,6 @@ class TableLayer extends SquareBoundLayer {
       this.tblColWidths.push(colWidth);
     }
   }
-  
-  rollback() {
-    super.rollback();
-    this.getTextLayers().forEach(layer => layer.rollback());
-  }
 
   getTopLeftPixel() {
     return canvas.getPixelByRowCol(
@@ -3037,15 +3041,14 @@ class TableLayer extends SquareBoundLayer {
     let verticalDiff = topLeftPixel.row - bottomRightPixel.row;
     let lateralDiff = topLeftPixel.col - bottomRightPixel.col;
     
-
     // We deduce excess pixels so that larger cells don't count as multiple cells
     // and therefore generate more cells than expected when resizing.
     let newTblRows = roundHalf(
       (Math.abs(verticalDiff) - this.getExcessRowHeight()) / this.tblRowDefaultHeight
-    ) + 1;
+    );
     let newTblCols = roundHalf(
       (Math.abs(lateralDiff) - this.getExcessColWidth()) / this.tblColDefaultWidth
-    ) + 1;
+    );
     
     if (
        (newTblRows != this.tblRows || newTblCols != this.tblCols) && 
@@ -3147,6 +3150,7 @@ class TableLayer extends SquareBoundLayer {
     let textLayer = this.getTextLayer(this.makeCellId(row, col)); 
     let firstPixel = textLayer.getFirstPixel();
     textLayer.commit(() => textLayer.move(absRow - firstPixel.row, absCol - firstPixel.col));
+    textLayer.redraw(); // TODO comment
   }
 
   addTextLayer(row, col) {
@@ -3628,6 +3632,7 @@ class Button extends Component {
   css_borderRadius     = "15px";
   css_height           = "40px";
   css_border           = "1px solid #212121";
+  css_userSelect       = "none";
 
   defineTheme() {
     this.css("backgroundColor", "menuButtonBgColor");
