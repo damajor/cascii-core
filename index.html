@@ -52,26 +52,7 @@ var bodyComponent;
 
 var canvas;
 
-const KEYS = {
-  "up"      : 38,
-  "right"   : 39,
-  "down"    : 40,
-  "left"    : 37,
-
-  "shift"   : 16,
-  "back"    : 8,
-  "delete"  : 46,
-  "esc"     : 27,
-  "ctrl"    : 17,
-  "enter"   : 13,
-
-  "z"       : 90,
-  "c"       : 67,
-  "g"       : 71,
-  "a"       : 65,
-}
-
-const ArrowKeyGroup = ["up", "down", "left", "right"];
+const ArrowKeyGroup = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 
 //////////////////
 ////// UTILS /////
@@ -102,8 +83,7 @@ function sum(arr) {
 }
 
 function keyGroup(...names) {
-  let keys = names.map(name => KEYS[name].toString());
-  return keys.join(",");
+  return names.join(",");
 }
 
 ///////////////////
@@ -373,25 +353,25 @@ class EventManager {
         keydown: {
           [keyGroup(...ArrowKeyGroup)]: [
             new EventDef([modeMaster.has, "selected"],
-                [], (event) => layerManager.selectedArrowKeyDownEvent(event)),
+                [], (event) => layerManager.selectedArrowKeyDownEvent(event.key)),
           ],                                                                        
-          [keyGroup("shift")]: [
+          [["Shift"]]: [
             new EventDef([], 
                 [modeMaster.add, "shift"])
           ],
-          [keyGroup("back", "delete")]: [
+          [keyGroup("Backspace", "Delete")]: [
             new EventDef([modeMaster.has, "selected"],
                 [modeMaster.reset, "select"], () => layerManager.deleteLayersEvent()),
           ],
-          [keyGroup("esc")]: [
+          [keyGroup("Escape")]: [
             new EventDef([modeMaster.hasOr, "writing", "selected"],
                 [modeMaster.reset, "select"], () => layerManager.unselectAll()),
           ],
-          [keyGroup("back", "delete", ...ArrowKeyGroup)]: [
+          [keyGroup("Backspace", "Delete", ...ArrowKeyGroup)]: [
             new EventDef([modeMaster.has, "writing", "text"],
                 [], TextLayer.keyDownEvent),
           ],
-          [keyGroup("ctrl")]: [
+          [keyGroup("Control")]: [
             new EventDef([],
                 [modeMaster.add, "ctrl"]),
           ],
@@ -415,11 +395,11 @@ class EventManager {
           ],
         },
         keyup: {
-          [keyGroup("shift")]: [
+          [keyGroup("Shift")]: [
             new EventDef([modeMaster.has, "shift"],
                 [modeMaster.remove, "shift"]),
           ],
-          [keyGroup("ctrl")]: [
+          [keyGroup("Control")]: [
             new EventDef([modeMaster.has, "ctrl"],
                 [modeMaster.remove, "ctrl"]),
           ],
@@ -505,9 +485,13 @@ class EventManager {
   assignKeyEventDefs(element, defs) {
     Object.keys(defs).forEach((eventType) => {
       element.addEventListener(eventType, (event) => {
+        
+        // This maps apple Command key to Ctrl.
+	var eventKey = event.key == "Meta"? "Control": event.key;
+
         for (var keys in defs[eventType]) {
           keys.split(",").forEach(key => {
-            if (key == event.keyCode.toString() || key == "*") {
+            if (key == eventKey || key == "*") {
               for (var def of defs[eventType][keys]) {
                 if (def.run(event)) return;
               }
@@ -1222,20 +1206,20 @@ class LayerManager {
     this.setSelectPixel(activePixel);
   }
 
-  selectedArrowKeyDownEvent(event) {
+  selectedArrowKeyDownEvent(key) {
     var verticalDiff = 0;
     var lateralDiff = 0;
-    switch (event.keyCode) {
-      case KEYS["up"]:
+    switch (key) {
+      case "ArrowUp":
         verticalDiff = -1;
         break;
-      case KEYS["right"]:
+      case "ArrowRight":
         lateralDiff = 1;
         break;
-      case KEYS["down"]:
+      case "ArrowDown":
         verticalDiff = 1;
         break;
-      case KEYS["left"]:
+      case "ArrowLeft":
         lateralDiff = -1;
         break;
     }
