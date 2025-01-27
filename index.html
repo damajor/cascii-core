@@ -927,9 +927,17 @@ class LayerManager {
   }
 
   refresh(updateFunc) {
-    this.clearAll();
+    var oldPixels = new Set();
+    for (let layer of this.layers) {
+      layer.pixels.forEach(pixel => oldPixels.add(pixel.id()));
+    }
     updateFunc();
+    var newPixels = new Set();
+    for (let layer of this.layers) {
+      layer.pixels.forEach(pixel => newPixels.add(pixel.id()));
+    }
     this.renderAll();
+    for(var pixel of oldPixels.difference(newPixels)) canvas.getPixelById(pixel).clear();
   }
   
   tidyAllJoints(layersToDelete) {
@@ -966,6 +974,7 @@ class LayerManager {
     // Ascending
     return this.layers.slice().sort((a, b) => a.zindex - b.zindex);
   }
+
   renderAll() {
     this.getLayersOrderedByZindex().forEach((layer) => layer.render());
   }
@@ -1517,15 +1526,10 @@ class Layer {
 
   add(pixel, value) {
     if (!pixel) return;
-    let existingPixelIndex = this.getPixelIndex(pixel.id());
-    if (existingPixelIndex == -1) {
-      this.pixels.push(pixel);
-      this.values.push(value);
-    } else {
-      this.values[existingPixelIndex] = value;
-    }
+    this.pixels.push(pixel);
+    this.values.push(value);
     if (this.pixels.length != this.values.length) {
-      console.log(`layer pixel/value mismatch: ${this.pixels} != ${this.values}`)
+      debugError(`layer pixel/value mismatch: ${this.pixels} != ${this.values}`)
     }
   }
   
@@ -3156,7 +3160,7 @@ class TableLayer extends SquareBoundLayer {
     let textLayer = this.getTextLayer(this.makeCellId(row, col)); 
     let firstPixel = textLayer.getFirstPixel();
     textLayer.commit(() => textLayer.move(absRow - firstPixel.row, absCol - firstPixel.col));
-    textLayer.redraw(); // TODO comment
+    if(!textLayer.pixels.length) textLayer.redraw(); // TODO comment
   }
 
   addTextLayer(row, col) {
