@@ -6,10 +6,8 @@
 FE  -
   - various todos
   - table rollback / happy doesn;t work with textlayers. override.
-  - char manager: better redraw logic all around, unicode v ascii switch, line options. 
   - consider defaulting to select mode after draw
     - resize pixels should switch to select
-  - cmd v ctrl for Mac
   - mini success messages
   - resize improvements: resize by % to avoid reverse
   - file break up?
@@ -911,6 +909,7 @@ class LayerManager {
   }
 
   refresh(updateFunc) {
+    /*
     var oldPixels = new Set();
     for (let layer of this.layers) {
       layer.pixels.forEach(pixel => oldPixels.add(pixel.id()));
@@ -922,6 +921,10 @@ class LayerManager {
     }
     this.renderAll();
     for(var pixel of oldPixels.difference(newPixels)) canvas.getPixelById(pixel).clear();
+    */
+    this.clearAll();
+    updateFunc();
+    this.renderAll();
   }
   
   tidyAllJoints(layersToDelete) {
@@ -1001,22 +1004,35 @@ class LayerManager {
   getSelectPixel() {
     return this.selectedPixel;
   }
-    
-  moveLayersAtomically(layers, verticalDiff, lateralDiff) {
-    // If multiple layers are selected, they should all move
-    // together to avoid breaking joints. If one layer hits
-    // the canvas boundary, none should move. Hence, here
-    // we ensure all moves are doable before keeping them.
+
+  atomicCommit(layers, funcs) {
+    // TODO explain
     let committedLayers = [];
+    var index = 0;
     for (let layer of layers) {
-      let committed = layer.commit(() => layer.move(verticalDiff, lateralDiff));
+      console.log(layer);
+      let committed = layer.commit(() => funcs[index](layer));
       if (!committed) {
         // If a the layer failed to move, then rollback the others that did move.
         committedLayers.forEach(layer => layer.rollback());
         return;
       }
       committedLayers.push(layer);
+      index ++;
     }
+    return true;
+  }
+    
+  moveLayersAtomically(layers, verticalDiff, lateralDiff) {
+    // If multiple layers are selected, they should all move
+    // together to avoid breaking joints. If one layer hits
+    // the canvas boundary, none should move. Hence, here
+    // we ensure all moves are doable before keeping them.
+    // TODO update comments
+    let success = this.atomicCommit(
+      layers, layers.map(_ => layer => layer.move(verticalDiff, lateralDiff))
+    );
+    if (!success) return;
 
     // If we are here, all layers have moved, so we can now resize
     // their joiner layers.
@@ -1029,6 +1045,7 @@ class LayerManager {
     for (let layer of layers) layer.resizeJoinerLayers(false);
     return true;
   }
+
 
   moveSelectedLayers(verticalDiff, lateralDiff) {
     let selectedLayers = this.getSelectedLayers();
@@ -1389,6 +1406,7 @@ class Layer {
     this.stash();
     this.zindex = layerManager.getHighestZindex() + 1;
     this._isSelected = false;
+    this.commitCount = 0;
     
     this.setToPixel(null) // This gets set when drawing begins;
     this.setFromPixel(canvas.getPixelById(firstPixelId));
@@ -1444,7 +1462,12 @@ class Layer {
     // Anything that doesn't satisfy this condition will cause a rollback.
     // Currently, it just ensures pixels are valid, but it could be anything,
     // and extending this in specific layers is welcomed.
-    return (this.pixels.every(Boolean) && this.getJointPixels().every(Boolean));
+    return Boolean(
+      this.pixels.every(Boolean)
+      && this.getJointPixels().every(Boolean)
+      && this.fromPixel
+      && this.toPixel
+    );
   }
 
   commit(updateFunc) {
@@ -1452,8 +1475,11 @@ class Layer {
     // The draw/move functions might recommend pixels that are out of bounds,
     // or in whatever way invalid. If the commited change (updateFunc)
     // results in an 'unhappy' state, we rollback to the stashed pixel related states.
+
+    if (this.commitCount == 0) this.stash(); // TODO explain
+    this.commitCount ++;
+
     this.lastKeyedJointPixels = this.getKeyedJointPixels();
-    this.stash();
     updateFunc();
     let isHappy = this.isHappy();
     if (!isHappy) this.rollback();
@@ -1467,7 +1493,7 @@ class Layer {
   }
 
   rollback() {
-    console.log("rolling back", this.constructor.name);
+    this.commitCount = 0; // TODO explain and consider commitcount logic in state bucket
     [this.fromPixel, this.toPixel, this.pixels, this.values] = this.stashed;
   }
   
@@ -1654,6 +1680,7 @@ class Layer {
   }
 
   render() {
+    this.commitCount = 0; // TODO explain
     (this.isSelected()) ? this.renderSelected(): this.renderUnselected();
     for (var i = 0; i < this.pixels.length; i++) this.pixels[i].setValue(this.values[i]);
   }
@@ -1794,6 +1821,17 @@ class Layer {
     this.pixels = [];
     this.values = [];
   }
+
+  getMinMaxRowsCols() {
+    var [maxCol, minCol, maxRow, minRow] = [-1, -1, -1, -1];
+    for (var pixel of this.pixels) {
+      if (pixel.col > maxCol) maxCol = pixel.col;
+      if (pixel.col < minCol || minCol == -1) minCol = pixel.col; 
+      if (pixel.row > maxRow) maxRow = pixel.row;
+      if (pixel.row < minRow || minRow == -1) minRow = pixel.row; 
+    }
+    return [maxCol, minCol, maxRow, minRow];
+  }
 }
 
 
@@ -1893,24 +1931,31 @@ class TextLayer extends Layer {
     return layerCopy;
   }
 
+
+  stash() {
+    super.stash();
+    this.stashedContents = this.contents;
+  }
   rollback() {
     // A little more is needed for TextLayer rollbacks, 
     // to ensure the cursor is removed if the rollback
     // caused the layer to get deleted (0 pixels).
-    this.pixels.forEach(pixel => pixel.renderNormal());
+    this.clearLastCursor();
+    console.log("rollingback");
+    this.cursor = 0;
     super.rollback();
   }
 
   getKeyedJointPixels() {
     if (this.hasTable()) return {}; // The table itself will be joinable instead.
-    let firstPixel = this.getFirstPixel();
-    let lastPixel = this.getLastPixel();
-    let middlePixel = this.getMiddlePixel();
+    let [maxCol, minCol, maxRow, minRow] = this.getMinMaxRowsCols();
+    let halfwayRow = minRow + roundHalf((maxRow - minRow) / 2);
+    let halfwayCol = minCol + roundHalf((maxCol - minCol) / 2);
     return {
-      l: canvas.getPixelByRowCol(firstPixel.row, firstPixel.col - 1), // Left
-      r: canvas.getPixelByRowCol(lastPixel.row, lastPixel.col + 1), // Right
-      mt: canvas.getPixelByRowCol(middlePixel.row - 1, middlePixel.col), // Middle top
-      mb: canvas.getPixelByRowCol(middlePixel.row + 1, middlePixel.col), // Middle bottom
+      l: canvas.getPixelByRowCol(halfwayRow, minCol - 1), // Left
+      r: canvas.getPixelByRowCol(halfwayRow, maxCol + 1), // Right
+      t: canvas.getPixelByRowCol(minRow - 1, halfwayCol), // Top
+      b: canvas.getPixelByRowCol(maxRow + 1, halfwayCol), // Bottom
     }
   }
 
@@ -2057,12 +2102,17 @@ class TextLayer extends Layer {
     }
     this.checkNoWrites();
     layerManager.refresh(() => {
-      this.draw(null); // TextLayer's don't use toPixels, hence the null
-
-      // If the text is part of a table, the table may need spacing.
-      if (this.hasTable()) layerManager.getLayerById(this.tableId).refresh();
+      if (!this.hasTable()) {
+          this.draw(null); // TextLayer's don't use toPixels, hence the null
+          return;
+      }
+      layerManager.atomicCommit(
+        [this, layerManager.getLayerById(this.tableId)],
+        [layer => layer.drawLayer(null), layeri => layeri.refresh()], // TODO remove i
+      )
     });
   }
+
   
   checkNoWrites() {
     // This is a quick way of not loosing a layer just because
@@ -2658,20 +2708,11 @@ class FreeLayer extends Layer {
 
 class SquareBoundLayer extends Layer { 
   
-  getCornerPixels() { // TODO use this / halfways for TextLayer joints (multi line is an issue otherwise)
+  getCornerPixels() {
     if (this.pixels.length == 0) {
       return [];
     }
-    var maxCol = -1;
-    var minCol = -1;
-    var maxRow = -1;
-    var minRow = -1;
-    for (var pixel of this.pixels) {
-      if (pixel.col > maxCol) maxCol = pixel.col;
-      if (pixel.col < minCol || minCol == -1) minCol = pixel.col; 
-      if (pixel.row > maxRow) maxRow = pixel.row;
-      if (pixel.row < minRow || minRow == -1) minRow = pixel.row; 
-    }
+    let [maxCol, minCol, maxRow, minRow] = this.getMinMaxRowsCols();
     return [
       canvas.getPixelByRowCol(minRow, minCol), // Top left
       canvas.getPixelByRowCol(minRow, maxCol), // Top right
@@ -2796,38 +2837,25 @@ class SquareLayer extends SquareBoundLayer {
     if (this.pixels.length < 2) {
       return {tl: fp, tr: fp, br: fp, bl: fp, l: fp, r: fp, b: fp, t: fp};
     }
-
     let corners = this.getCornerPixels();
-    let halfways = this.getHalfwayPixels(corners);
-    if (!corners.length || !halfways.length) return {};
-    return {
-      tl: corners[0], // Top left
-      tr: corners[1], // Top right
-      br: corners[2], // Bottom right
-      bl: corners[3], // Bottom left
-      l: canvas.getPixelByRowCol(halfways[0].row, halfways[0].col - 1), // Left
-      r: canvas.getPixelByRowCol(halfways[1].row, halfways[1].col + 1), // Right
-      b: canvas.getPixelByRowCol(halfways[2].row + 1, halfways[2].col), // Bottom
-      t: canvas.getPixelByRowCol(halfways[3].row - 1, halfways[3].col), // Top
-    };
-  }
-  
-  getHalfwayPixels(corners) {
-    if (this.pixels.length == 0) return [];
     let minRow = corners[0].row;
     let maxRow = corners[2].row;
     let minCol = corners[0].col;
     let maxCol = corners[2].col;
     let halfwayRow = parseInt((maxRow - minRow) / 2);
     let halfwayCol = parseInt((maxCol - minCol) / 2);
-    return [
-      canvas.getPixelByRowCol(minRow + halfwayRow, minCol), // Left
-      canvas.getPixelByRowCol(minRow + halfwayRow, maxCol), // Right
-      canvas.getPixelByRowCol(maxRow, minCol + halfwayCol), // Bottom
-      canvas.getPixelByRowCol(minRow, minCol + halfwayCol), // Top
-    ]
+    return {
+      tl: corners[0], // Top left
+      tr: corners[1], // Top right
+      br: corners[2], // Bottom right
+      bl: corners[3], // Bottom left
+      l: canvas.getPixelByRowCol(minRow + halfwayRow, minCol - 1), // Left
+      r: canvas.getPixelByRowCol(minRow + halfwayRow, maxCol + 1), // Right
+      b: canvas.getPixelByRowCol(maxRow + 1, minCol + halfwayCol), // Bottom
+      t: canvas.getPixelByRowCol(minRow - 1, minCol + halfwayCol), // Top
+    };
   }
-
+  
   drawLayer(activePixelId) {
     this.setToPixel(canvas.getPixelById(activePixelId));
     let topLeftPixel = canvas.getPixelByRowCol(
@@ -3061,10 +3089,9 @@ class TableLayer extends SquareBoundLayer {
 
   refresh() {
     let topLeftPixel = this.getTopLeftPixel();
-    if (this.commit(() => this.drawFrame(topLeftPixel))) {
-      this.moveTextLayers(topLeftPixel);
-      this.resizeJoinerLayers(true);
-    }
+    this.drawFrame(topLeftPixel);
+    this.moveTextLayers(topLeftPixel);
+    this.resizeJoinerLayers(true);
   }
 
   drawFrame(topLeftPixel) {
@@ -3131,7 +3158,11 @@ class TableLayer extends SquareBoundLayer {
       // Otherwise, empty the layer but save it's contents.
       let textLayer = this.getTextLayer(cellId);
       this.tableContents[cellId] = textLayer.contents;
-      if (!textLayer.commit(() => textLayer.empty())) toKeep[cellId] = this.textLayers[cellId]; // TODO comment
+
+      // We must keep the textLayer if the empty didn't end up happening due
+      // to an unhappy table, otherwise we loose reference to an existing
+      // textLayer.
+      if (!textLayer.commit(() => textLayer.empty())) toKeep[cellId] = this.textLayers[cellId]; 
     }
     this.textLayers = toKeep;
   }
@@ -3143,8 +3174,13 @@ class TableLayer extends SquareBoundLayer {
   moveTextLayer(row, col, absRow, absCol) {
     let textLayer = this.getTextLayer(this.makeCellId(row, col)); 
     let firstPixel = textLayer.getFirstPixel();
-    textLayer.commit(() => textLayer.move(absRow - firstPixel.row, absCol - firstPixel.col));
-    if(!textLayer.pixels.length) textLayer.redraw(); // TODO comment
+    let verticalDiff = absRow - firstPixel.row;
+    let lateralDiff = absCol - firstPixel.col;
+    textLayer.commit(() => textLayer.move(verticalDiff, lateralDiff));
+
+    // If a table rollback caused a TextLayer to empty,
+    // we must ensure it is redrawn here. 
+    if(!textLayer.pixels.length) textLayer.redraw(); 
   }
 
   addTextLayer(row, col) {
@@ -3372,7 +3408,7 @@ class Pixel extends Component {
   }
 
   renderCursor() {
-    this.css("borderRight", `1px solid ${themeManager.getTheme().pixelCursorColor}`); // TODO hide under?
+    this.css("borderRight", `1px solid ${themeManager.getTheme().pixelCursorColor}`);
   }
 
   startCursor() {
