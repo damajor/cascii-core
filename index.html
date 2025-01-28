@@ -1010,7 +1010,6 @@ class LayerManager {
     let committedLayers = [];
     var index = 0;
     for (let layer of layers) {
-      console.log(layer);
       let committed = layer.commit(() => funcs[index](layer));
       if (!committed) {
         // If a the layer failed to move, then rollback the others that did move.
@@ -1470,7 +1469,7 @@ class Layer {
     );
   }
 
-  commit(updateFunc) {
+  commit(...updateFuncs) {
     // Committing is used to trial ANY pixel/value changes of a layer.
     // The draw/move functions might recommend pixels that are out of bounds,
     // or in whatever way invalid. If the commited change (updateFunc)
@@ -1480,7 +1479,7 @@ class Layer {
     this.commitCount ++;
 
     this.lastKeyedJointPixels = this.getKeyedJointPixels();
-    updateFunc();
+    updateFuncs.forEach(func => func());
     let isHappy = this.isHappy();
     if (!isHappy) this.rollback();
     return isHappy;
@@ -1576,6 +1575,10 @@ class Layer {
 
   hasTable() {
     return Boolean(this.tableId);
+  }
+
+  getTable() {
+    return layerManager.getLayerById(this.tableId);
   }
 
   isResizable() {
@@ -1680,7 +1683,7 @@ class Layer {
   }
 
   render() {
-    this.commitCount = 0; // TODO explain
+    this.commitCount = 0; // TODO explain / tidy no need for count but commming state bool with set/gettesr
     (this.isSelected()) ? this.renderSelected(): this.renderUnselected();
     for (var i = 0; i < this.pixels.length; i++) this.pixels[i].setValue(this.values[i]);
   }
@@ -1847,14 +1850,13 @@ class TextLayer extends Layer {
 
   constructor(firstPixelId, tableId=null) {
     super(firstPixelId);
-
-    // TextLayer's don't use toPixels, but it's easier to just set it. 
-    this.setToPixel(this.fromPixel);
-
-    this.cursor = 0;
     this.contents = [];
+    this.cursor = 0;
     this.tableId = tableId;
     if (tableId) this.zindex = layerManager.getLayerById(tableId).zindex;
+    this.setToPixel(this.fromPixel);
+
+    // TextLayer's don't use toPixels, but it's easier to just set it. 
   }
   
   static selectedDoubleClickEvent(event) {
@@ -1871,7 +1873,7 @@ class TextLayer extends Layer {
       layerManager.add(layer);
       layerManager.editingTextLayer = layer;
       layer.setStarterChar();
-      layerManager.refresh(() => layer.draw());
+      layerManager.refresh(() => layer.drawLayer());
       // Give an instant cursor position so it can be cleared
       // even if no writing was done.
       layer.lastCursorPixel = layer.fromPixel;
@@ -1888,7 +1890,7 @@ class TextLayer extends Layer {
 
   static keyDownEvent(event) {
     var layer = layerManager.editingTextLayer;
-    if (layer && layer.name == "text") layer.writeChar(event.key);
+    if (layer && layer.name == "text") layerManager.refresh(() => layer.draw(event.key));
   }
   
   static focusedOtherTextLayer(activePixel) {
@@ -1934,16 +1936,15 @@ class TextLayer extends Layer {
 
   stash() {
     super.stash();
-    this.stashedContents = this.contents;
+    this.moreStash = [this.cursor, this.contents? this.contents.map(c => c): []];
   }
+
   rollback() {
     // A little more is needed for TextLayer rollbacks, 
     // to ensure the cursor is removed if the rollback
     // caused the layer to get deleted (0 pixels).
-    this.clearLastCursor();
-    console.log("rollingback");
-    this.cursor = 0;
     super.rollback();
+    [this.cursor, this.contents] = this.moreStash; 
   }
 
   getKeyedJointPixels() {
@@ -2020,39 +2021,6 @@ class TextLayer extends Layer {
     return lengths;
   }
 
-  drawLayer(activePixelId) {
-    // Ensure the cursor is cleared incase pre-render clearing
-    // didn't (if the cursor isn't on the layer's pixel).
-    this.clearLastCursor();
-    this.empty();
-    let pixels = [];
-    var line = 0;
-    var col = 0;
-    for (var i = 0; i < this.getLength(); i++) {
-      if (this.contents[i] == "\n") {
-        line ++;
-        col = 0;
-      }
-      let pixel = canvas.getPixelByRowCol(
-        this.fromPixel.row + line,
-        this.fromPixel.col + col
-      );
-      if (!pixel) {
-        // Writing out of bounds. Stop the writing!
-        this.contents.splice(i, 1);
-        this.cursor --;
-        return;
-      }
-      if (this.cursor == i + 1) {
-        this.lastCursorPixel = pixel;
-        pixel.startCursor();
-      }
-      if (!pixel || this.contents[i] == "\n") continue;
-      this.add(pixel, this.contents[i]);
-      col ++;
-    }
-  }
-
   getVerticalCursor(direction) {
     let currentLine = this.getCurrentLine();
     let lineLengths = this.getLineLengths(); 
@@ -2065,6 +2033,15 @@ class TextLayer extends Layer {
     }
     let col = (lineLengths[nextLine] > cursorLineOffset)? cursorLineOffset: lineLengths[nextLine];
     return this.getLineStart(nextLine) + col;
+  }
+
+  draw(key) {
+    let committed = this.commit(() => this.writeChar(key), () => this.drawLayer());
+    if (committed) this.resizeJoinerLayers(true);
+    if (this.hasTable()) {
+      let table = this.getTable(); 
+      table.commit(() => table.refresh());
+    }
   }
 
   writeChar(key) {
@@ -2101,17 +2078,36 @@ class TextLayer extends Layer {
       break;
     }
     this.checkNoWrites();
-    layerManager.refresh(() => {
-      if (!this.hasTable()) {
-          this.draw(null); // TextLayer's don't use toPixels, hence the null
-          return;
-      }
-      this.commit(() => this.drawLayer());
-      let table = layerManager.getLayerById(this.tableId)
-      table.commit(() => table.refresh());
-    });
   }
 
+  drawLayer() {
+    // Ensure the cursor is cleared incase pre-render clearing
+    // didn't (if the cursor isn't on the layer's pixel).
+    this.clearLastCursor();
+    this.empty();
+    let pixels = [];
+    var [line, col] = [0, 0];
+    for (var i = 0; i < this.getLength(); i++) {
+      if (this.contents[i] == "\n") {
+        line ++;
+        col = 0;
+      }
+      let pixel = canvas.getPixelByRowCol(
+        this.fromPixel.row + line,
+        this.fromPixel.col + col
+      );
+      // Writing out of bounds. Stop the writing! Let a rollback take care of it.
+      if (!pixel) return;
+      if (this.cursor == i + 1) {
+        this.lastCursorPixel = pixel;
+        pixel.startCursor();
+      }
+      if (!pixel || this.contents[i] == "\n") continue;
+      this.add(pixel, this.contents[i]);
+      col ++;
+    }
+  }
+  
   
   checkNoWrites() {
     // This is a quick way of not loosing a layer just because
@@ -2926,12 +2922,14 @@ class TableLayer extends SquareBoundLayer {
   }
   stash() {
     super.stash(); // TODO STATE BUCKETS for export, copy, and stash.
-    this.moreStash = [this.textLayers, this.tblRows, this.tblCols, this.tblRowHeights, this.tblColWidths];
+    // TODO think mutation (though safe here). Also, special reason to stash widths/cols
+    // as used by keyed joints pixels.
+    this.moreStash = [this.textLayers, this.tblRows, this.tblCols, this.tblColWidths, this.tblRowHeights];
   }
 
   rollback() {
     super.rollback();
-    [this.textLayers, this.tblRows, this.tblCols, this.tblRowHeights, this.tblColWidths] = this.moreStash;
+    [this.textLayers, this.tblRows, this.tblCols, this.tblColWidths, this.tblRowHeights] = this.moreStash;
   }
 
   copy(replace=false) {
@@ -3090,6 +3088,7 @@ class TableLayer extends SquareBoundLayer {
     let topLeftPixel = this.getTopLeftPixel();
     this.drawFrame(topLeftPixel);
     this.moveTextLayers(topLeftPixel);
+    // TODO this resize should only happen if the above was successfully committed.
     this.resizeJoinerLayers(true);
   }
 
@@ -3157,10 +3156,6 @@ class TableLayer extends SquareBoundLayer {
       // Otherwise, empty the layer but save it's contents.
       let textLayer = this.getTextLayer(cellId);
       this.tableContents[cellId] = textLayer.contents;
-
-      // We must keep the textLayer if the empty didn't end up happening due
-      // to an unhappy table, otherwise we loose reference to an existing
-      // textLayer.
       textLayer.commit(() => textLayer.empty()); 
     }
     this.textLayers = toKeep;
@@ -3176,26 +3171,28 @@ class TableLayer extends SquareBoundLayer {
     let verticalDiff = absRow - firstPixel.row;
     let lateralDiff = absCol - firstPixel.col;
     textLayer.commit(() => textLayer.move(verticalDiff, lateralDiff));
-
-    // If a table rollback caused a TextLayer to empty,
-    // we must ensure it is redrawn here. 
-    if(!textLayer.pixels.length) textLayer.redraw(); 
   }
 
   addTextLayer(row, col) {
     let cellId = this.makeCellId(row, col);
-
+    var textLayer = this.getTextLayer(cellId); 
+    // If a table rollback caused a TextLayer to empty (but it becomes visible again),
+    // we must ensure it is redrawn here.
+    if (textLayer && !textLayer.pixels.length) {
+      textLayer.commit(() => textLayer.drawLayer());
+    }
     // If the layer already exists at the given cell, don't create a new one.
-    if (this.textLayers[cellId]) return;
+    // (As long as it's visible, it'll just get moved accordingly).
+    if (textLayer) return;
   
     // Otherwise, add a new layer and fill it with any saved content from the past
     // at the same cell location.
-    let textLayer = new TextLayer(this.fromPixel.id(), this.id); 
+    textLayer = new TextLayer(this.fromPixel.id(), this.id); 
     let existingContents = this.tableContents[cellId];
     let contents = (existingContents)? existingContents: this.defaultCellContents.split("");
     textLayer.contents = contents; 
     layerManager.addSecond(textLayer); 
-    textLayer.draw();
+    textLayer.commit(() => textLayer.drawLayer());
     this.textLayers[cellId] = textLayer.id;
   }
 
@@ -3504,8 +3501,8 @@ class Canvas extends Component {
   }
 
   setRowColWindowFit() {
-    this.rowCount = roundHalf(window.innerHeight / this.pixelSize);
-    this.colCount = roundHalf(window.innerWidth / (this.pixelSize * this.pixelWidthDivider));
+    this.rowCount = roundHalf(window.innerHeight / this.pixelSize) - 1;
+    this.colCount = roundHalf(window.innerWidth / (this.pixelSize * this.pixelWidthDivider)) - 1;
   }
 
   getPixelById(id) {
