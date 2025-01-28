@@ -2106,10 +2106,9 @@ class TextLayer extends Layer {
           this.draw(null); // TextLayer's don't use toPixels, hence the null
           return;
       }
-      layerManager.atomicCommit(
-        [this, layerManager.getLayerById(this.tableId)],
-        [layer => layer.drawLayer(null), layeri => layeri.refresh()], // TODO remove i
-      )
+      this.commit(() => this.drawLayer());
+      let table = layerManager.getLayerById(this.tableId)
+      table.commit(() => table.refresh());
     });
   }
 
@@ -2927,12 +2926,12 @@ class TableLayer extends SquareBoundLayer {
   }
   stash() {
     super.stash(); // TODO STATE BUCKETS for export, copy, and stash.
-    this.moreStash = [this.tblRows, this.tblCols, this.tblRowHeights, this.tblColWidths];
+    this.moreStash = [this.textLayers, this.tblRows, this.tblCols, this.tblRowHeights, this.tblColWidths];
   }
 
   rollback() {
     super.rollback();
-    [this.tblRows, this.tblCols, this.tblRowHeights, this.tblColWidths] = this.moreStash;
+    [this.textLayers, this.tblRows, this.tblCols, this.tblRowHeights, this.tblColWidths] = this.moreStash;
   }
 
   copy(replace=false) {
@@ -3162,7 +3161,7 @@ class TableLayer extends SquareBoundLayer {
       // We must keep the textLayer if the empty didn't end up happening due
       // to an unhappy table, otherwise we loose reference to an existing
       // textLayer.
-      if (!textLayer.commit(() => textLayer.empty())) toKeep[cellId] = this.textLayers[cellId]; 
+      textLayer.commit(() => textLayer.empty()); 
     }
     this.textLayers = toKeep;
   }
