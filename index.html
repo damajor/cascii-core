@@ -65,11 +65,15 @@ function debugError(message) {
 }
 
 function roundHalf(value) {
-  return parseInt(Math.round(value / 0.5) * 0.5);
+  return parseInt(Math.round(value));
 } 
 
 function roundUp(value) {
   return parseInt(Math.ceil(value));
+} 
+
+function roundDown(value) {
+  return parseInt(Math.floor(value));
 } 
 
 function randomInt(min, max) {
@@ -2037,11 +2041,13 @@ class TextLayer extends Layer {
 
   draw(key) {
     let committed = this.commit(() => this.writeChar(key), () => this.drawLayer());
-    if (committed) this.resizeJoinerLayers(true);
-    if (this.hasTable()) {
-      let table = this.getTable(); 
-      table.commit(() => table.refresh());
-    }
+    if (!committed) return;
+    this.resizeJoinerLayers(true);
+    this.updateParentTable();
+  }
+
+  updateParentTable() {
+    if (this.hasTable()) this.getTable().drawRefreshSpacing();
   }
 
   writeChar(key) {
@@ -2910,8 +2916,8 @@ class TableLayer extends SquareBoundLayer {
     this.tblCols = 0;
     this.defaultCellContents = "text...";
     this.tblColDefaultWidth = this.defaultCellContents.length;
-    this.tblColWidths = [];
-    this.tblRowHeights = [];
+    this.tblColWidths = {};
+    this.tblRowHeights = {};
     this.tblRowDefaultHeight = 2;
   }
 
@@ -2946,12 +2952,6 @@ class TableLayer extends SquareBoundLayer {
     return layerCopy;
   }
 
-  getExcessRowHeight() {
-    return sum(this.tblRowHeights) - (this.tblRowDefaultHeight * this.tblRowHeights.length)
-  }
-  getExcessColWidth() {
-    return sum(this.tblColWidths) - (this.tblColDefaultWidth * this.tblColWidths.length)
-  }
   
   getTextLayers() {
     return Object.values(this.textLayers).map(layerId => layerManager.getLayerById(layerId));
@@ -2964,7 +2964,8 @@ class TableLayer extends SquareBoundLayer {
     let [topLeftPixel, topRightPixel, bottomRightPixel, bottomLeftPixel] = corners;
     var rowPos = topLeftPixel.row + 1;
     var index = 0;
-    for (let height of this.tblRowHeights) {
+    for (let row = 0; row < this.tblRows; row ++) {
+      let height = this.tblRowHeights[row];
       pixels[`l-${index}`] = canvas.getPixelByRowCol(rowPos, topLeftPixel.col - 1); // Left x
       pixels[`r-${index}`] = canvas.getPixelByRowCol(rowPos, topRightPixel.col + 1); // Right x
       rowPos += height;
@@ -2972,7 +2973,8 @@ class TableLayer extends SquareBoundLayer {
     }
     var colPos = topLeftPixel.col + 1;
     var index = 0;
-    for (let width of this.tblColWidths) {
+    for (let col = 0; col < this.tblCols; col ++) { // TODO cleaning 
+      let width = this.tblColWidths[col];
       colPos += width;
       pixels[`t-${index}`] = canvas.getPixelByRowCol( // Top x
         topLeftPixel.row - 1, colPos - roundHalf(width / 2)
@@ -2998,9 +3000,6 @@ class TableLayer extends SquareBoundLayer {
   }
   
   setTableSpacing() {
-    this.tblRowHeights = [];
-    this.tblColWidths = [];
-
     let allLineLengths = {};
     for (let cellId in this.textLayers) {
       let lineLengths = this.getTextLayer(cellId).getLineLengths();
@@ -3008,8 +3007,8 @@ class TableLayer extends SquareBoundLayer {
     }
 
     // Build an array of the tallest (most line breaks) counts per row
-    for (var row = 0; row < this.tblRows; row++) {
-      var rowHeight = this.tblRowDefaultHeight;
+    for (var row = 0; row <= this.tblRows; row++) {
+      var rowHeight = this.tblRowHeights[row] || this.tblRowDefaultHeight; // TODO comment
       for (let cellId in this.textLayers) {
         let [cellRow, cellCol] = this.parseCellId(cellId);
         if (cellRow == row) {
@@ -3019,13 +3018,12 @@ class TableLayer extends SquareBoundLayer {
           if (linebreaks > rowHeight) rowHeight = linebreaks;
         }
       }
-      this.tblRowHeights.push(rowHeight);
+      this.tblRowHeights[row] = rowHeight;
     }
     
     // Build an array of the lengths of the longest line per column
-    this.tblColWidths = [];
-    for (var col = 0; col < this.tblCols; col++) { 
-      var colWidth = 0;
+    for (var col = 0; col <= this.tblCols; col++) { 
+      var colWidth = this.tblColWidths[col] || this.tblColDefaultWidth; // TODO commenty
       for (let cellId in this.textLayers) {
         let [cellRow, cellCol] = this.parseCellId(cellId);
         if (cellCol == col) {
@@ -3033,11 +3031,7 @@ class TableLayer extends SquareBoundLayer {
           if (longestLine > colWidth) colWidth = longestLine;
         }
       }
-      // If the column widths result in < 2 (one char),
-      // text is about to be rendered but could not be used to measure width
-      // So we use the default width.
-      if (colWidth < 2) colWidth = this.tblColDefaultWidth + 1; 
-      this.tblColWidths.push(colWidth);
+      this.tblColWidths[col] = colWidth;
     }
   }
 
@@ -3046,6 +3040,18 @@ class TableLayer extends SquareBoundLayer {
       Math.min(this.toPixel.row, this.fromPixel.row),
       Math.min(this.toPixel.col, this.fromPixel.col),
     );
+  }
+
+  getTablePixelHeight() {
+    var height = 0;
+    for (let row = 0; row < this.tblRows; row ++) height += this.tblRowHeights[row];
+    return height;
+  }
+
+  getTablePixelWidth() {
+    var width = 0;
+    for (let col = 0; col < this.tblCols; col ++) width += this.tblColWidths[col];
+    return width;
   }
 
   drawLayer(activePixelId) {
@@ -3057,17 +3063,24 @@ class TableLayer extends SquareBoundLayer {
       Math.max(this.toPixel.col, this.fromPixel.col),
     );
 
-    let verticalDiff = topLeftPixel.row - bottomRightPixel.row;
-    let lateralDiff = topLeftPixel.col - bottomRightPixel.col;
+    let verticalDiff = bottomRightPixel.row - topLeftPixel.row;  
+    let lateralDiff = bottomRightPixel.col - topLeftPixel.col;
+
+    let relVerticalDiff = verticalDiff - this.getTablePixelHeight();
+    let relLateralDiff = lateralDiff - this.getTablePixelWidth();
+
+    if (!relLateralDiff || !relVerticalDiff) return;
     
-    // We deduce excess pixels so that larger cells don't count as multiple cells
-    // and therefore generate more cells than expected when resizing.
-    let newTblRows = roundHalf(
-      (Math.abs(verticalDiff) - this.getExcessRowHeight()) / this.tblRowDefaultHeight
-    ) + 1;
-    let newTblCols = roundHalf(
-      (Math.abs(lateralDiff) - this.getExcessColWidth()) / this.tblColDefaultWidth
-    ) + 1;
+    // TODO comment maybe illustrate
+    let nextRowHeight = this.tblRowHeights[this.tblRows] || this.tblRowDefaultHeight;
+    let prevRowHeight = this.tblRowHeights[this.tblRows - 1] || this.tblRowDefaultHeight;
+    let lastRowHeight = relVerticalDiff > 0? nextRowHeight: prevRowHeight;
+    let newTblRows    = Math.abs(this.tblRows + roundHalf(relVerticalDiff / lastRowHeight));
+
+    let nextColWidth = this.tblColWidths[this.tblCols] || this.tblColDefaultWidth;
+    let prevColWidth = this.tblColWidths[this.tblCols - 1] || this.tblColDefaultWidth;
+    let lastColWidth = relLateralDiff > 0? nextColWidth: prevColWidth;
+    let newTblCols = Math.abs(this.tblCols + roundHalf(relLateralDiff / lastColWidth));
     
     if (
        (newTblRows != this.tblRows || newTblCols != this.tblCols) && 
@@ -3076,6 +3089,7 @@ class TableLayer extends SquareBoundLayer {
       this.tblRows = newTblRows;
       this.tblCols = newTblCols;
       this.ungroup();
+      this.setTableSpacing();
       this.drawFrame(topLeftPixel);
       this.emptyTextLayers();
       this.addTextLayers();
@@ -3084,20 +3098,23 @@ class TableLayer extends SquareBoundLayer {
     } 
   }
 
-  refresh() {
+  refreshSpacing() {
     let topLeftPixel = this.getTopLeftPixel();
+    this.setTableSpacing();
     this.drawFrame(topLeftPixel);
     this.moveTextLayers(topLeftPixel);
-    // TODO this resize should only happen if the above was successfully committed.
-    this.resizeJoinerLayers(true);
+  }
+
+  drawRefreshSpacing() {
+    let commited = this.commit(() => this.refreshSpacing());
+    if (commited) this.resizeJoinerLayers(true);
   }
 
   drawFrame(topLeftPixel) {
     this.empty();
 
-    this.setTableSpacing();
-    let tblHeight = sum(this.tblRowHeights);
-    let tblWidth = sum(this.tblColWidths);
+    let tblHeight = this.getTablePixelHeight();
+    let tblWidth = this.getTablePixelWidth();
 
     let fromRow = topLeftPixel.row;
     let fromCol = topLeftPixel.col;
@@ -3115,6 +3132,7 @@ class TableLayer extends SquareBoundLayer {
     //
     // -----------------
     // -----------------
+    console.log(this.tblRowHeights)
     var row = fromRow;
     for (var tblRow = 0; tblRow <= this.tblRows; tblRow ++) {
       for (var col = fromCol + 1; col < toCol; col++) {
@@ -3540,6 +3558,8 @@ class Canvas extends Component {
 
   exportToClipboard() {
     layerManager.switchModeCallback();
+
+    // Scrape text from canvas with linebreaks
     var text = "";
     let [maxCol, minCol, maxRow, minRow] = this.getCroppedRowsCols();
     for (var row = minRow; row < maxRow + 1; row++) {
@@ -3553,7 +3573,19 @@ class Canvas extends Component {
       if(rowText.split("").filter(v => v != " ").length == 0) continue;
       text += `${rowText}\n`;
     }
-    navigator.clipboard.writeText(text);
+
+    // This is a slight hack to preserve styles if possible.
+    // It fills scraped export text into a dump div styled nicely,
+    // then copies it literally from there. 
+    // This allows same-browser exports to preserve styling.
+    bodyComponent.canvasDump.setValue(text);
+    var selection = window.getSelection()
+    var range = document.createRange()
+    range.selectNodeContents(bodyComponent.canvasDump.element)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.execCommand('copy')
+    window.getSelection().removeAllRanges()
   }
   
   defineTheme() {
@@ -3862,6 +3894,21 @@ class LeftMenu extends Menu {
 }
 
 
+class CanvasDump extends Component {
+  // We never display this, but export uses this
+  // to output before copying to preserve styling.
+  // If a user pastes an export in the same browser,
+  // the following styles can get preserved.
+  // Otherwise, good luck!
+  css_fontFamily = "monospace";
+  css_backgroundColor = "white";
+  css_color = "black";
+  css_whiteSpace = "pre-wrap";
+  // Hide far away (body overflow is hidden)
+  css_marginLeft = "500vw";
+}
+
+
 class Body extends Component {
   type = "body";
   css_overflow = "hidden";
@@ -3872,11 +3919,18 @@ class Body extends Component {
   }
 
   defineChildren() {
-    this.settings = new Settings();
-    this.mainMenu = new MainMenu();
-    this.leftMenu = new LeftMenu();
-    this.canvas   = new Canvas();
-    return [this.settings, this.mainMenu, this.leftMenu, this.canvas];
+    this.settings   = new Settings();
+    this.mainMenu   = new MainMenu();
+    this.leftMenu   = new LeftMenu();
+    this.canvas     = new Canvas();
+    this.canvasDump = new CanvasDump();
+    return [
+      this.settings,
+      this.mainMenu,
+      this.leftMenu,
+      this.canvas,
+      this.canvasDump,
+    ];
   }
 
   defineTheme() {
