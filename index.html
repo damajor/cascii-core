@@ -2915,7 +2915,7 @@ class TableLayer extends SquareBoundLayer {
     this.tblRows = 0;
     this.tblCols = 0;
     this.defaultCellContents = "text...";
-    this.tblColDefaultWidth = this.defaultCellContents.length;
+    this.tblColDefaultWidth = this.defaultCellContents.length + 1; // 1 is added to account for the col line
     this.tblColWidths = {};
     this.tblRowHeights = {};
     this.tblRowDefaultHeight = 2;
@@ -2930,7 +2930,12 @@ class TableLayer extends SquareBoundLayer {
     super.stash(); // TODO STATE BUCKETS for export, copy, and stash.
     // TODO think mutation (though safe here). Also, special reason to stash widths/cols
     // as used by keyed joints pixels.
-    this.moreStash = [this.textLayers, this.tblRows, this.tblCols, this.tblColWidths, this.tblRowHeights];
+    this.moreStash = [
+      structuredClone(this.textLayers),
+      this.tblRows,
+      this.tblCols,
+      structuredClone(this.tblColWidths), structuredClone(this.tblRowHeights)
+    ];
   }
 
   rollback() {
@@ -3000,41 +3005,23 @@ class TableLayer extends SquareBoundLayer {
   }
   
   setTableSpacing() {
-    let allLineLengths = {};
+    for (var col = 0; col < this.tblCols; col++) this.tblColWidths[col] = this.tblColWidths[col]? this.tblColWidths[col]: this.tblColDefaultWidth; 
+    for (var row = 0; row < this.tblRows; row++) this.tblRowHeights[row] = this.tblRowHeights[row]? this.tblRowHeights[row]: this.tblRowDefaultHeight; 
     for (let cellId in this.textLayers) {
+      let [cellRow, cellCol] = this.parseCellId(cellId);
+      this.tblRowHeights[cellRow] = 0;
+      this.tblColWidths[cellCol] = 0;
+    }
+    for (let cellId in this.textLayers) {
+      let [cellRow, cellCol] = this.parseCellId(cellId);
       let lineLengths = this.getTextLayer(cellId).getLineLengths();
-      allLineLengths[cellId] = {breaks: lineLengths.length, longest: Math.max(...lineLengths)};
+      let lineHeight = lineLengths.length + 1;
+      let lineWidth  = Math.max(...lineLengths) + 1;
+      if (lineHeight > this.tblRowHeights[cellRow]) this.tblRowHeights[cellRow] = lineHeight;
+      if (lineWidth  > this.tblColWidths[cellCol]) this.tblColWidths[cellCol] = lineWidth;
     }
-
-    // Build an array of the tallest (most line breaks) counts per row
-    for (var row = 0; row <= this.tblRows; row++) {
-      var rowHeight = this.tblRowHeights[row] || this.tblRowDefaultHeight; // TODO comment
-      for (let cellId in this.textLayers) {
-        let [cellRow, cellCol] = this.parseCellId(cellId);
-        if (cellRow == row) {
-          // Add one here so that breaks fairly match with row heights.
-          // One line is actually two rows (the line and the text below).
-          let linebreaks = allLineLengths[cellId].breaks + 1;
-          if (linebreaks > rowHeight) rowHeight = linebreaks;
-        }
-      }
-      this.tblRowHeights[row] = rowHeight;
-    }
-    
-    // Build an array of the lengths of the longest line per column
-    for (var col = 0; col <= this.tblCols; col++) { 
-      var colWidth = this.tblColWidths[col] || this.tblColDefaultWidth; // TODO commenty
-      for (let cellId in this.textLayers) {
-        let [cellRow, cellCol] = this.parseCellId(cellId);
-        if (cellCol == col) {
-          let longestLine = allLineLengths[cellId].longest + 1;
-          if (longestLine > colWidth) colWidth = longestLine;
-        }
-      }
-      this.tblColWidths[col] = colWidth;
-    }
+    console.log(this.tblRowHeights);
   }
-
   getTopLeftPixel() {
     return canvas.getPixelByRowCol(
       Math.min(this.toPixel.row, this.fromPixel.row),
@@ -3070,7 +3057,6 @@ class TableLayer extends SquareBoundLayer {
     let relLateralDiff = lateralDiff - this.getTablePixelWidth();
 
     if (!relLateralDiff || !relVerticalDiff) return;
-    
     // TODO comment maybe illustrate
     let nextRowHeight = this.tblRowHeights[this.tblRows] || this.tblRowDefaultHeight;
     let prevRowHeight = this.tblRowHeights[this.tblRows - 1] || this.tblRowDefaultHeight;
@@ -3090,9 +3076,9 @@ class TableLayer extends SquareBoundLayer {
       this.tblCols = newTblCols;
       this.ungroup();
       this.setTableSpacing();
-      this.drawFrame(topLeftPixel);
       this.emptyTextLayers();
       this.addTextLayers();
+      this.drawFrame(topLeftPixel);
       this.moveTextLayers(topLeftPixel);
       this.group();
     } 
@@ -3132,7 +3118,6 @@ class TableLayer extends SquareBoundLayer {
     //
     // -----------------
     // -----------------
-    console.log(this.tblRowHeights)
     var row = fromRow;
     for (var tblRow = 0; tblRow <= this.tblRows; tblRow ++) {
       for (var col = fromCol + 1; col < toCol; col++) {
