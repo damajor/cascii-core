@@ -1009,19 +1009,16 @@ class LayerManager {
     return this.selectedPixel;
   }
 
-  atomicCommit(layers, funcs) {
-    // TODO explain
+  atomicCommit(...jobs) {
     let committedLayers = [];
-    var index = 0;
-    for (let layer of layers) {
-      let committed = layer.commit(() => funcs[index](layer));
+    for (let [layer, func] of jobs) {
+      let committed = layer.commit(() => func(layer));
       if (!committed) {
         // If a the layer failed to move, then rollback the others that did move.
         committedLayers.forEach(layer => layer.rollback());
         return;
       }
       committedLayers.push(layer);
-      index ++;
     }
     return true;
   }
@@ -1033,7 +1030,7 @@ class LayerManager {
     // we ensure all moves are doable before keeping them.
     // TODO update comments
     let success = this.atomicCommit(
-      layers, layers.map(_ => layer => layer.move(verticalDiff, lateralDiff))
+      ...layers.map(layer => [layer, () => layer.move(verticalDiff, lateralDiff)])
     );
     if (!success) return;
 
@@ -2047,7 +2044,7 @@ class TextLayer extends Layer {
   }
 
   updateParentTable() {
-    if (this.hasTable()) this.getTable().drawRefreshSpacing();
+    if (this.hasTable()) this.getTable().drawRefreshSpacing(this.id);
   }
 
   writeChar(key) {
@@ -2911,7 +2908,7 @@ class TableLayer extends SquareBoundLayer {
   constructor(firstPixelId) {
     super(firstPixelId);
     this.textLayers = {};
-    this.tableContents = {};
+    this.cellTextArchive = {};
     this.tblRows = 0;
     this.tblCols = 0;
     this.defaultCellContents = "text...";
@@ -2957,11 +2954,6 @@ class TableLayer extends SquareBoundLayer {
     return layerCopy;
   }
 
-  
-  getTextLayers() {
-    return Object.values(this.textLayers).map(layerId => layerManager.getLayerById(layerId));
-  }
-  
   getKeyedJointPixels() {
     let pixels = {};
     var corners = this.getCornerPixels();
@@ -2970,143 +2962,101 @@ class TableLayer extends SquareBoundLayer {
     var rowPos = topLeftPixel.row + 1;
     var index = 0;
     for (let row = 0; row < this.tblRows; row ++) {
-      let height = this.tblRowHeights[row];
-      pixels[`l-${index}`] = canvas.getPixelByRowCol(rowPos, topLeftPixel.col - 1); // Left x
-      pixels[`r-${index}`] = canvas.getPixelByRowCol(rowPos, topRightPixel.col + 1); // Right x
+      let height = this.getRowHeight(row);
       rowPos += height;
+      pixels[`l-${index}`] = canvas.getPixelByRowCol(
+        rowPos - roundHalf(height / 2), topLeftPixel.col - 1
+      ); // Left
+      pixels[`r-${index}`] = canvas.getPixelByRowCol(
+        rowPos - roundHalf(height / 2), topRightPixel.col + 1
+      ); // Right
       index ++;
     }
     var colPos = topLeftPixel.col + 1;
     var index = 0;
-    for (let col = 0; col < this.tblCols; col ++) { // TODO cleaning 
-      let width = this.tblColWidths[col];
+    for (let col = 0; col < this.tblCols; col ++) { 
+      let width = this.getColWidth(col);
       colPos += width;
-      pixels[`t-${index}`] = canvas.getPixelByRowCol( // Top x
+      pixels[`t-${index}`] = canvas.getPixelByRowCol(
         topLeftPixel.row - 1, colPos - roundHalf(width / 2)
-      );
-      pixels[`b-${index}`] = canvas.getPixelByRowCol( // Bottom x
+      ); // Top
+      pixels[`b-${index}`] = canvas.getPixelByRowCol(
         bottomLeftPixel.row + 1, colPos - roundHalf(width / 2)
-      );
+      ); // Bottom
       index ++;
     }
     return pixels;
   }
   
-  ungroup() {
-    // Ungroup all layers.
-    layerManager.groupManager.ungroupLayers(this.getTextLayers().concat(this));
+  getNewTblRows(verticalDiff) {
+    // Showing/hiding a row depends on it's height, the direction of the mouse,
+    // and the mouse travelling enough to justify show/hiding based on the row's height.
+    // E.g, to hide a row, the mouse moves back by half it's height (or forward to show).
+    let relVerticalDiff = verticalDiff - this.getTablePixelHeight();
+    let belowRowHeight = this.getRowHeight(this.tblRows);
+    let aboveRowHeight = this.getRowHeight(this.tblRows - 1);
+    let nextRowHeight = relVerticalDiff > 0? belowRowHeight: aboveRowHeight;
+    return Math.abs(this.tblRows + roundHalf(relVerticalDiff / nextRowHeight));
   }
 
-  group() {
-    // Group all existing visible layers, and ensure the table is always selected together.
-    let textLayers = this.getTextLayers();
-    if (this.isSelected()) textLayers.forEach(layer => layer.select());
-    layerManager.groupManager.groupLayers(textLayers.concat(this));
-  }
-  
-  setTableSpacing() {
-    for (var col = 0; col < this.tblCols; col++) this.tblColWidths[col] = this.tblColWidths[col]? this.tblColWidths[col]: this.tblColDefaultWidth; 
-    for (var row = 0; row < this.tblRows; row++) this.tblRowHeights[row] = this.tblRowHeights[row]? this.tblRowHeights[row]: this.tblRowDefaultHeight; 
-    for (let cellId in this.textLayers) {
-      let [cellRow, cellCol] = this.parseCellId(cellId);
-      this.tblRowHeights[cellRow] = 0;
-      this.tblColWidths[cellCol] = 0;
-    }
-    for (let cellId in this.textLayers) {
-      let [cellRow, cellCol] = this.parseCellId(cellId);
-      let lineLengths = this.getTextLayer(cellId).getLineLengths();
-      let lineHeight = lineLengths.length + 1;
-      let lineWidth  = Math.max(...lineLengths) + 1;
-      if (lineHeight > this.tblRowHeights[cellRow]) this.tblRowHeights[cellRow] = lineHeight;
-      if (lineWidth  > this.tblColWidths[cellCol]) this.tblColWidths[cellCol] = lineWidth;
-    }
-    console.log(this.tblRowHeights);
-  }
-  getTopLeftPixel() {
-    return canvas.getPixelByRowCol(
-      Math.min(this.toPixel.row, this.fromPixel.row),
-      Math.min(this.toPixel.col, this.fromPixel.col),
-    );
-  }
-
-  getTablePixelHeight() {
-    var height = 0;
-    for (let row = 0; row < this.tblRows; row ++) height += this.tblRowHeights[row];
-    return height;
-  }
-
-  getTablePixelWidth() {
-    var width = 0;
-    for (let col = 0; col < this.tblCols; col ++) width += this.tblColWidths[col];
-    return width;
+  getNewTblCols(lateralDiff) {
+    // Showing/hiding a column depends on it's height, the direction of the mouse,
+    // and the mouse travelling enough to justify show/hiding based on the col's width.
+    // E.g, to hide a column, the mouse moves back by half it's width (or forward to show).
+    let relLateralDiff = lateralDiff - this.getTablePixelWidth();
+    let belowColWidth = this.getColWidth(this.tblCols);
+    let aboveColWidth = this.getColWidth(this.tblCols - 1);
+    let nextColWidth = relLateralDiff > 0? belowColWidth: aboveColWidth;
+    return Math.abs(this.tblCols + roundHalf(relLateralDiff / nextColWidth));
   }
 
   drawLayer(activePixelId) {
     this.setToPixel(canvas.getPixelById(activePixelId));
-    
     let topLeftPixel = this.getTopLeftPixel();
-    let bottomRightPixel = canvas.getPixelByRowCol(
-      Math.max(this.toPixel.row, this.fromPixel.row),
-      Math.max(this.toPixel.col, this.fromPixel.col),
-    );
+    let bottomRightPixel = this.getBottomRightPixel();
+    let newTblRows = this.getNewTblRows(bottomRightPixel.row - topLeftPixel.row);
+    let newTblCols = this.getNewTblCols(bottomRightPixel.col - topLeftPixel.col);
 
-    let verticalDiff = bottomRightPixel.row - topLeftPixel.row;  
-    let lateralDiff = bottomRightPixel.col - topLeftPixel.col;
+    // Don't bother updating the table if no proper changes have been calculated.
+    if (newTblRows == this.tblRows && newTblCols == this.tblCols) return; 
+    if (newTblCols == 0 || newTblRows == 0) return;
 
-    let relVerticalDiff = verticalDiff - this.getTablePixelHeight();
-    let relLateralDiff = lateralDiff - this.getTablePixelWidth();
+    // This sequence does one draw of the whole table.
+    // We start by setting new row/col properties,
+    // which represent how many rows/cols are visible.
+    this.tblRows = newTblRows;
+    this.tblCols = newTblCols;
 
-    if (!relLateralDiff || !relVerticalDiff) return;
-    // TODO comment maybe illustrate
-    let nextRowHeight = this.tblRowHeights[this.tblRows] || this.tblRowDefaultHeight;
-    let prevRowHeight = this.tblRowHeights[this.tblRows - 1] || this.tblRowDefaultHeight;
-    let lastRowHeight = relVerticalDiff > 0? nextRowHeight: prevRowHeight;
-    let newTblRows    = Math.abs(this.tblRows + roundHalf(relVerticalDiff / lastRowHeight));
+    // We ungroup the existing layers as a new group will be
+    // needed since layers might get removed/added.
+    this.ungroup();
 
-    let nextColWidth = this.tblColWidths[this.tblCols] || this.tblColDefaultWidth;
-    let prevColWidth = this.tblColWidths[this.tblCols - 1] || this.tblColDefaultWidth;
-    let lastColWidth = relLateralDiff > 0? nextColWidth: prevColWidth;
-    let newTblCols = Math.abs(this.tblCols + roundHalf(relLateralDiff / lastColWidth));
-    
-    if (
-       (newTblRows != this.tblRows || newTblCols != this.tblCols) && 
-       (newTblCols != 0 && newTblRows != 0)
-    ) {
-      this.tblRows = newTblRows;
-      this.tblCols = newTblCols;
-      this.ungroup();
-      this.setTableSpacing();
-      this.emptyTextLayers();
-      this.addTextLayers();
-      this.drawFrame(topLeftPixel);
-      this.moveTextLayers(topLeftPixel);
-      this.group();
-    } 
-  }
-
-  refreshSpacing() {
-    let topLeftPixel = this.getTopLeftPixel();
-    this.setTableSpacing();
+    // The table layer itself get's drawn.
     this.drawFrame(topLeftPixel);
-    this.moveTextLayers(topLeftPixel);
-  }
 
-  drawRefreshSpacing() {
-    let commited = this.commit(() => this.refreshSpacing());
-    if (commited) this.resizeJoinerLayers(true);
+    // All layers that should no longer be visible are removed,
+    // though their contents preserved.
+    this.emptyTextLayers();
+
+    // New rows/cols get their new layers added.
+    this.addTextLayers(topLeftPixel);
+
+    // Depending on the new location of rows/cols, we must
+    // shuffle around layers so they stick to the correct cell.
+    this.moveTextLayers(topLeftPixel);
+
+    // Finally, group the updated set of layers.
+    this.group();
   }
 
   drawFrame(topLeftPixel) {
     this.empty();
-
     let tblHeight = this.getTablePixelHeight();
     let tblWidth = this.getTablePixelWidth();
-
     let fromRow = topLeftPixel.row;
     let fromCol = topLeftPixel.col;
     let toRow = fromRow + tblHeight;
     let toCol = fromCol + tblWidth;
-
     // Draw corners...
     this.add(canvas.getPixelByRowCol(fromRow, fromCol), this.cornerTopLeftChar);
     this.add(canvas.getPixelByRowCol(fromRow, toCol), this.cornerTopRightChar);
@@ -3123,9 +3073,8 @@ class TableLayer extends SquareBoundLayer {
       for (var col = fromCol + 1; col < toCol; col++) {
         this.add(canvas.getPixelByRowCol(row,  col), this.lateralChar);
       }
-      row += this.tblRowHeights[tblRow];
+      row += this.getRowHeight(tblRow);
     }
-
     // Draw col lines with spacing based on text..
     // |      |   |    |
     // |      |   |    |
@@ -3135,10 +3084,28 @@ class TableLayer extends SquareBoundLayer {
       for (var row = fromRow + 1; row < toRow; row ++) {
         this.add(canvas.getPixelByRowCol(row,  col), this.verticalChar);
       }
-      col += this.tblColWidths[tblCol];
+      col += this.getColWidth(tblCol);
     }
   } 
   
+  refreshSpacing(textLayerId) {
+    let topLeftPixel = this.getTopLeftPixel();
+    this.setNewTextSpacing(textLayerId);
+    this.drawFrame(topLeftPixel);
+    this.moveTextLayers(topLeftPixel);
+    
+    // The textLayer that has changed needs another chance to rollback
+    // in case it's parent table has since become unhappy. Hence,
+    // we carry out an empty commit.
+    let textLayer = layerManager.getLayerById(textLayerId);
+    textLayer.commit(() => {});
+  }
+
+  drawRefreshSpacing(textLayerId) {
+    let committed = this.commit(() => this.refreshSpacing(textLayerId));
+    if (committed) this.resizeJoinerLayers(true);
+  }
+
   makeCellId(row, col) {
     return `${row},${col}`;
   }
@@ -3146,78 +3113,167 @@ class TableLayer extends SquareBoundLayer {
   parseCellId(cellId) {
     return cellId.split(",")
   }
+
+  ungroup() {
+    // Ungroup all layers.
+    layerManager.groupManager.ungroupLayers(this.getTextLayers().concat(this));
+  }
+
+  group() {
+    // Group all existing visible layers, and ensure the table is always selected together.
+    let textLayers = this.getTextLayers();
+    if (this.isSelected()) textLayers.forEach(layer => layer.select());
+    layerManager.groupManager.groupLayers(textLayers.concat(this));
+  }
   
-  emptyTextLayers() {
-    let toKeep = {};
+  getBottomRightPixel() {
+    return canvas.getPixelByRowCol(
+      Math.max(this.toPixel.row, this.fromPixel.row),
+      Math.max(this.toPixel.col, this.fromPixel.col),
+    );
+  }
+
+  getTopLeftPixel() {
+    return canvas.getPixelByRowCol(
+      Math.min(this.toPixel.row, this.fromPixel.row),
+      Math.min(this.toPixel.col, this.fromPixel.col),
+    );
+  }
+  
+  getTextLayers() {
+    return Object.values(this.textLayers).map(layerId => layerManager.getLayerById(layerId));
+  }
+  
+  
+  getCellFromTextLayerId(textLayerId) {
+    for (let cellId in this.textLayers) {
+      if (this.textLayers[cellId] == textLayerId) return this.parseCellId(cellId);
+    } 
+  }
+
+  getTablePixelHeight() {
+    var height = 0;
+    for (let row = 0; row < this.tblRows; row ++) height += this.getRowHeight(row);
+    return height;
+  }
+
+  getTablePixelWidth() {
+    var width = 0;
+    for (let col = 0; col < this.tblCols; col ++) width += this.getColWidth(col);
+    return width;
+  }
+
+  getRowHeight(row) {
+    return this.tblRowHeights[row] || this.tblRowDefaultHeight;
+  }
+
+  getColWidth(col) {
+    return this.tblColWidths[col] || this.tblColDefaultWidth;
+  }
+
+  setRowHeight(row, height) {
+    this.tblRowHeights[row] = height;
+  }
+
+  setColWidth(col, width) {
+    this.tblColWidths[col] = width;
+  }
+  
+
+  setNewTextSpacing(textLayerId) {
+    let [cellRow, cellCol] = this.getCellFromTextLayerId(textLayerId);
+    // For the row and column that has a change, reset the height/widths for a fresh count.
+    this.setRowHeight(cellRow, 0);
+    this.setColWidth(cellCol, 0);
     for (let cellId in this.textLayers) {
       let [row, col] = this.parseCellId(cellId);
-      // If the textLayer is still visible, then keep it.
-      if (row < this.tblRows && col < this.tblCols) {
-        toKeep[cellId] = this.textLayers[cellId];
-        continue;
-      }
-      // Otherwise, empty the layer but save it's contents.
-      let textLayer = this.getTextLayer(cellId);
-      this.tableContents[cellId] = textLayer.contents;
-      textLayer.commit(() => textLayer.empty()); 
+      // If the edited text is not on the same row or column as this text,
+      // we don't need to consider it.
+      if (row != cellRow && col != cellCol) continue;
+      let lineLengths = this.getTextLayer(cellId).getLineLengths();
+      let [textHeight, textWidth] = [lineLengths.length + 1, Math.max(...lineLengths) + 1];
+      // If the row is on the edited text's row, consider it's height as the new tallest.
+      if (row == cellRow && textHeight > this.tblRowHeights[row]) this.setRowHeight(row, textHeight)
+      // If the col is on the edited text's col, consider it's width as the new longest.
+      if (col == cellCol && textWidth > this.tblColWidths[col]) this.setColWidth(col, textWidth);
     }
-    this.textLayers = toKeep;
+  }
+
+  emptyTextLayers() {
+    for (let cellId in this.textLayers) {
+      if(!this.cellIsVisible(cellId)) this.archiveCell(cellId);
+    }
+  }
+
+  cellIsVisible(cellId) {
+    let [row, col] = this.parseCellId(cellId);
+    return (row < this.tblRows && col < this.tblCols); 
+  }
+  
+  archiveCell(cellId) {
+    let textLayer = this.getTextLayer(cellId);
+    this.cellTextArchive[cellId] = textLayer.contents;
+    textLayer.commit(() => textLayer.empty()); 
+    delete this.textLayers[cellId];
+  }
+
+  reviveCell(cellId, absRow, absCol) {
+    let textLayer = new TextLayer(
+        canvas.getPixelByRowCol(absRow, absCol).id(), this.id
+    );
+    console.log(absRow, absCol, "added");
+    textLayer.contents = this.cellTextArchive[cellId] || this.defaultCellContents.split(""); 
+    layerManager.addSecond(textLayer); 
+    this.textLayers[cellId] = textLayer.id;
+    textLayer.commit(() => textLayer.drawLayer());
   }
 
   getTextLayer(cellId) {
     return layerManager.getLayerById(this.textLayers[cellId]);
   }
 
-  moveTextLayer(row, col, absRow, absCol) {
-    let textLayer = this.getTextLayer(this.makeCellId(row, col)); 
-    let firstPixel = textLayer.getFirstPixel();
-    let verticalDiff = absRow - firstPixel.row;
-    let lateralDiff = absCol - firstPixel.col;
-    textLayer.commit(() => textLayer.move(verticalDiff, lateralDiff));
-  }
-
-  addTextLayer(row, col) {
-    let cellId = this.makeCellId(row, col);
-    var textLayer = this.getTextLayer(cellId); 
-    // If a table rollback caused a TextLayer to empty (but it becomes visible again),
-    // we must ensure it is redrawn here.
-    if (textLayer && !textLayer.pixels.length) {
-      textLayer.commit(() => textLayer.drawLayer());
-    }
-    // If the layer already exists at the given cell, don't create a new one.
-    // (As long as it's visible, it'll just get moved accordingly).
-    if (textLayer) return;
-  
-    // Otherwise, add a new layer and fill it with any saved content from the past
-    // at the same cell location.
-    textLayer = new TextLayer(this.fromPixel.id(), this.id); 
-    let existingContents = this.tableContents[cellId];
-    let contents = (existingContents)? existingContents: this.defaultCellContents.split("");
-    textLayer.contents = contents; 
-    layerManager.addSecond(textLayer); 
-    textLayer.commit(() => textLayer.drawLayer());
-    this.textLayers[cellId] = textLayer.id;
-  }
-
-  addTextLayers() {
+  addTextLayers(topLeftPixel) {
+    var absRow = topLeftPixel.row;
+    var absCol = topLeftPixel.col;
+    console.log(absRow, absCol, "toplefts");
     for(var tblRow = 0; tblRow < this.tblRows; tblRow ++) {
+      console.log("row", tblRow);
       for (var tblCol = 0; tblCol < this.tblCols; tblCol ++) {
-        this.addTextLayer(tblRow, tblCol);
+        console.log("col", tblCol);
+        let cellId = this.makeCellId(tblRow, tblCol);
+        var textLayer = this.getTextLayer(cellId); 
+        // If a table rollback caused a TextLayer to empty (but it becomes visible again),
+        // we must ensure it is redrawn here.
+        if (textLayer && !textLayer.pixels.length) {
+          textLayer.commit(() => textLayer.drawLayer());
+        }
+        // If the layer doesn't exist, add a new layer and fill it with any
+        // saved content from the past at the same cell location.
+        if (!textLayer) this.reviveCell(cellId, 1 + absRow, 1 + absCol);
+        absCol += this.getColWidth(tblCol);
       }
+      absCol = topLeftPixel.col;
+      absRow += this.getRowHeight(tblRow);
     }
   }
 
   moveTextLayers(topLeftPixel) {
-    var rowPos = topLeftPixel.row;
-    var colPos = topLeftPixel.col;
+    var absRow = topLeftPixel.row;
+    var absCol = topLeftPixel.col;
     for(var tblRow = 0; tblRow < this.tblRows; tblRow ++) {
       for (var tblCol = 0; tblCol < this.tblCols; tblCol ++) {
+        let textLayer = this.getTextLayer(this.makeCellId(tblRow, tblCol)); 
         // Add 1s here to locate the text within the cell.
-        this.moveTextLayer(tblRow, tblCol, rowPos + 1, colPos + 1);
-        colPos += this.tblColWidths[tblCol];
+        let verticalDiff = 1 + absRow - textLayer.fromPixel.row;
+        let lateralDiff = 1 + absCol - textLayer.fromPixel.col;
+        // If the cell has changed position, then move the layer.
+        if (verticalDiff || lateralDiff) {
+          textLayer.commit(() => textLayer.move(verticalDiff, lateralDiff));
+        }
+        absCol += this.getColWidth(tblCol);
       }
-      colPos = topLeftPixel.col;
-      rowPos += this.tblRowHeights[tblRow];
+      absCol = topLeftPixel.col;
+      absRow += this.getRowHeight(tblRow);
     }
   }
 }
