@@ -378,10 +378,12 @@ class EventManager {
                 [modeMaster.add, "ctrl"]),
           ],
           [keyGroup("z")]: [
-            new EventDef([modeMaster.has, "shift", "ctrl"],
-                [], () => layerManager.redoEvent()),
             new EventDef([modeMaster.has, "ctrl"], 
                 [], () => layerManager.undoEvent()),
+          ],
+          [keyGroup("Z")]: [
+            new EventDef([modeMaster.has, "shift", "ctrl"], 
+                [], () => layerManager.redoEvent()),
           ],
           [keyGroup("c")]: [
             new EventDef([modeMaster.has, "ctrl", "selected"],
@@ -630,6 +632,15 @@ class CharManager {
 class GroupManager {
   constructor() {
     this.layerGroups = [];
+    this.layerGroupHistory = [];
+  }
+  
+  capture() {
+    this.layerGroupHistory.unshift(structuredClone(this.layerGroups));
+  }
+
+  jumpHistory(cursor) {
+    this.layerGroups = this.layerGroupHistory[cursor];
   }
 
   findGroupsFromLayers(layers) {
@@ -803,6 +814,7 @@ class LayerManager {
     // Copy historic layers to avoid mutating them now that they're current.
     // Past will otherwise show as present...
     this.layers = this.copyReplaceLayers(this.layerHistory[this.historyCursor]); 
+    this.groupManager.jumpHistory(this.historyCursor);
   }
 
   redo() {
@@ -810,6 +822,7 @@ class LayerManager {
     // Copy historic layers to avoid mutating them now that they're current.
     // Past will otherwise show as present...
     this.layers = this.copyReplaceLayers(this.layerHistory[this.historyCursor]);
+    this.groupManager.jumpHistory(this.historyCursor);
   }
 
   copyReplaceLayers(layers) {
@@ -999,6 +1012,7 @@ class LayerManager {
   capture() {
     this.historyCursor = 0;
     this.layerHistory.unshift(this.copyReplaceLayers(this.layers));
+    this.groupManager.capture();
   }
   
   setSelectPixel(selectedPixel) {
@@ -3180,25 +3194,6 @@ class TableLayer extends SquareBoundLayer {
   }
   
 
-  setNewTextSpacing(textLayerId) {
-    let [cellRow, cellCol] = this.getCellFromTextLayerId(textLayerId);
-    // For the row and column that has a change, reset the height/widths for a fresh count.
-    this.setRowHeight(cellRow, 0);
-    this.setColWidth(cellCol, 0);
-    for (let cellId in this.textLayers) {
-      let [row, col] = this.parseCellId(cellId);
-      // If the edited text is not on the same row or column as this text,
-      // we don't need to consider it.
-      if (row != cellRow && col != cellCol) continue;
-      let lineLengths = this.getTextLayer(cellId).getLineLengths();
-      let [textHeight, textWidth] = [lineLengths.length + 1, Math.max(...lineLengths) + 1];
-      // If the row is on the edited text's row, consider it's height as the new tallest.
-      if (row == cellRow && textHeight > this.tblRowHeights[row]) this.setRowHeight(row, textHeight)
-      // If the col is on the edited text's col, consider it's width as the new longest.
-      if (col == cellCol && textWidth > this.tblColWidths[col]) this.setColWidth(col, textWidth);
-    }
-  }
-
   emptyTextLayers() {
     for (let cellId in this.textLayers) {
       if(!this.cellIsVisible(cellId)) this.archiveCell(cellId);
@@ -3221,7 +3216,6 @@ class TableLayer extends SquareBoundLayer {
     let textLayer = new TextLayer(
         canvas.getPixelByRowCol(absRow, absCol).id(), this.id
     );
-    console.log(absRow, absCol, "added");
     textLayer.contents = this.cellTextArchive[cellId] || this.defaultCellContents.split(""); 
     layerManager.addSecond(textLayer); 
     this.textLayers[cellId] = textLayer.id;
@@ -3232,14 +3226,30 @@ class TableLayer extends SquareBoundLayer {
     return layerManager.getLayerById(this.textLayers[cellId]);
   }
 
+  setNewTextSpacing(textLayerId) {
+    let [cellRow, cellCol] = this.getCellFromTextLayerId(textLayerId);
+    // For the row and column that has a change, reset the height/widths for a fresh count.
+    this.setRowHeight(cellRow, 0);
+    this.setColWidth(cellCol, 0);
+    for (let cellId in this.textLayers) {
+      let [row, col] = this.parseCellId(cellId);
+      // If the edited text is not on the same row or column as this text,
+      // we don't need to consider it.
+      if (row != cellRow && col != cellCol) continue;
+      let lineLengths = this.getTextLayer(cellId).getLineLengths();
+      let [textHeight, textWidth] = [lineLengths.length + 1, Math.max(...lineLengths) + 1];
+      // If the row is on the edited text's row, consider it's height as the new tallest.
+      if (row == cellRow && textHeight > this.tblRowHeights[row]) this.setRowHeight(row, textHeight)
+      // If the col is on the edited text's col, consider it's width as the new longest.
+      if (col == cellCol && textWidth > this.tblColWidths[col]) this.setColWidth(col, textWidth);
+    }
+  }
+
   addTextLayers(topLeftPixel) {
     var absRow = topLeftPixel.row;
     var absCol = topLeftPixel.col;
-    console.log(absRow, absCol, "toplefts");
     for(var tblRow = 0; tblRow < this.tblRows; tblRow ++) {
-      console.log("row", tblRow);
       for (var tblCol = 0; tblCol < this.tblCols; tblCol ++) {
-        console.log("col", tblCol);
         let cellId = this.makeCellId(tblRow, tblCol);
         var textLayer = this.getTextLayer(cellId); 
         // If a table rollback caused a TextLayer to empty (but it becomes visible again),
