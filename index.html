@@ -105,7 +105,7 @@ class Theme {
     white        : "white",
     none         : "transparent",
     pink         : "#ff78db",
-    green        : "#02bf34",
+    green        : "#49d65c",
     lightGreen   : "#bdffdb",
     orange       : "orange",
   }
@@ -665,6 +665,10 @@ class GroupManager {
       layers = [1, 2, 3, 4]
         => [[1, 2, 3], [1, 2]]
     */
+
+    // This means, somehow, we are looking for groups with layers
+    // that have been removed.
+    if (!layers.every(Boolean)) return [];
 
     var foundGroups = [];
     let layerIds = layers.map(layer => layer.id);
@@ -2962,6 +2966,7 @@ class TableLayer extends SquareBoundLayer {
 
   constructor(firstPixelId) {
     super(firstPixelId);
+    this.tblSizeLimit = 20; // TODO show warning message when hit limit
     this.textLayers = {};
     this.cellTextArchive = {};
     this.tblRows = 0;
@@ -3075,6 +3080,8 @@ class TableLayer extends SquareBoundLayer {
     // Don't bother updating the table if no proper changes have been calculated.
     if (newTblRows == this.tblRows && newTblCols == this.tblCols) return;
     if (newTblCols == 0 || newTblRows == 0) return;
+    // ...or if the size limit is hit...
+    if (newTblRows >= this.tblSizeLimit || newTblCols >= this.tblSizeLimit) return;
 
     // This sequence does one draw of the whole table.
     // We start by setting new row/col properties,
@@ -3176,7 +3183,12 @@ class TableLayer extends SquareBoundLayer {
 
   ungroup() {
     // Ungroup all layers.
-    layerManager.groupManager.ungroupLayers(this.getTextLayers().concat(this));
+    let layers = this.getTextLayers().concat(this);
+    // TODO explain how a table could loose a layer.
+    // In fact, handle this case:
+    // E.g ungroup table -> delete tlayers -> redraw
+    if (!layers.every(Boolean)) return;
+    layerManager.groupManager.ungroupLayers(layers);
   }
 
   group() {
