@@ -95,16 +95,17 @@ function keyGroup(...names) {
 class Theme {
 
   static Color = {
-    blue     : "#0394fc",
-    darkBlue : "#0069b5",
-    red      : "#f52f2c",
-    darkRed  : "#9e1910",
-    black    : "black",
-    white    : "white",
-    none     : "transparent",
-    pink     : "pink",
-    green    : "#02bf34",
-    orange   : "orange",
+    blue         : "#0394fc",
+    darkBlue     : "#0069b5",
+    red          : "#f52f2c",
+    darkRed      : "#9e1910",
+    black        : "black",
+    white        : "white",
+    none         : "transparent",
+    pink         : "pink",
+    green        : "#02bf34",
+    lightgreen   : "#69ffa0",
+    orange       : "orange",
   }
 
   config = {
@@ -175,8 +176,11 @@ class ThemeManager {
         menuButtonFgColor: Theme.Color.green,
         menuButtonSelectedBgColor: Theme.Color.darkRed,
 
+        pixelSelectedFgColor: Theme.Color.lightgreen,
         pixelCursorColor: Theme.Color.green,
         pixelNormalFgColor: Theme.Color.green,
+
+        areaSelectionBgColor: Theme.Color.darkRed,
       }
     ),
   }
@@ -366,13 +370,13 @@ class EventManager {
             new EventDef([],
                 [modeMaster.add, "ctrl"]),
           ],
+          [keyGroup("Z", "z")]: [
+            new EventDef([modeMaster.has, "shift", "ctrl"],
+                [], (event) => layerManager.redoEvent(event)),
+          ],
           [keyGroup("z")]: [
             new EventDef([modeMaster.has, "ctrl"],
-                [], () => layerManager.undoEvent()),
-          ],
-          [keyGroup("Z")]: [
-            new EventDef([modeMaster.has, "shift", "ctrl"],
-                [], () => layerManager.redoEvent()),
+                [], (event) => layerManager.undoEvent(event)),
           ],
           [keyGroup("c")]: [
             new EventDef([modeMaster.has, "ctrl", "selected"],
@@ -478,18 +482,16 @@ class EventManager {
   assignKeyEventDefs(element, defs) {
     Object.keys(defs).forEach((eventType) => {
       element.addEventListener(eventType, (event) => {
-
         // This maps apple Command key to Ctrl.
-	var eventKey = event.key == "Meta"? "Control": event.key;
-
+        var eventKey = event.key == "Meta"? "Control": event.key;
         for (var keys in defs[eventType]) {
-          keys.split(",").forEach(key => {
+          for (let key of keys.split(",")) {
             if (key == eventKey || key == "*") {
               for (var def of defs[eventType][keys]) {
                 if (def.run(event)) return;
               }
             }
-          });
+          };
         }
       });
     });
@@ -1284,10 +1286,12 @@ class LayerManager {
   }
 
   undoEvent(event) {
+    console.log("undo");
     this.refresh(() => this.undo());
   }
 
   redoEvent(event) {
+    console.log("REDO!!");
     this.refresh(() => this.redo());
   }
 
