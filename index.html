@@ -240,7 +240,7 @@ class ModeMaster {
   ];
 
   lineBasedModes = [
-    "table", //TODO: Table not working here (why but unwanted.)
+    "table",
     "square",
     "free-line",
     "step-line",
@@ -945,19 +945,6 @@ class LayerManager {
   }
 
   refresh(updateFunc) {
-    /*
-    var oldPixels = new Set();
-    for (let layer of this.layers) {
-      layer.pixels.forEach(pixel => oldPixels.add(pixel.id()));
-    }
-    updateFunc();
-    var newPixels = new Set();
-    for (let layer of this.layers) {
-      layer.pixels.forEach(pixel => newPixels.add(pixel.id()));
-    }
-    this.renderAll();
-    for(var pixel of oldPixels.difference(newPixels)) canvas.getPixelById(pixel).clear();
-    */
     this.clearAll();
     updateFunc();
     this.renderAll();
@@ -982,6 +969,18 @@ class LayerManager {
 
     // Delete references to empty layers in layer joints
     this.tidyAllJoints(layersToDelete);
+
+    // Delete references to empty layers in tables (this really shouldn't be needed),
+    // But a user could ungroup a table manually and delete layers.
+    this.tidyAllTables(layersToDelete);
+  }
+
+  tidyAllTables(layersToDelete) {
+    for (let layer of this.layers.filter(layer => layer.name == "table")) {
+      for (let key in layer.textLayers) {
+        if (layersToDelete.includes(layer.textLayers[key])) delete layer.textLayers[key]
+      }
+    }
   }
 
   tidyLayers() {
@@ -1169,7 +1168,7 @@ class LayerManager {
   }
 
   renderCharset() {
-    for (let layer of this.layers) layer.setAllChars(layer.lineForm);
+    for (let layer of this.layers) layer.redrawChars(layer.lineForm);
   }
 
   // Generic multi-layer based events...
@@ -1334,7 +1333,7 @@ class LayerManager {
   redrawLineBasedEvent(lineForm) {
     for (var layer of this.getSelectedLayers()) {
       if (modeMaster.lineBasedModes.includes(layer.name)) {
-        this.refresh(() => layer.setAllChars(lineForm));
+        this.refresh(() => layer.redrawChars(lineForm));
       }
     }
   }
@@ -1397,24 +1396,21 @@ class LayerManager {
 
 class Layer {
 
-  // TODO move these
-
-  lineForm = "solid-thin";
-  lateralChar = charManager.getLateralLine(this.lineForm);
-  verticalChar = charManager.getVerticalLine(this.lineForm);
-  diagBackChar = charManager.getDiagBackLine(this.lineForm);
-  diagForwardChar = charManager.getDiagForwardLine(this.lineForm);
-  cornerTopLeftChar = charManager.getCorner(this.lineForm, "top-left");
-  cornerTopRightChar = charManager.getCorner(this.lineForm, "top-right");
-  cornerBottomLeftChar = charManager.getCorner(this.lineForm, "bottom-left");
-  cornerBottomRightChar = charManager.getCorner(this.lineForm, "bottom-right");
-  cornerGenericChar = charManager.getCorner("generic");
-  arrowUpChar    = charManager.getArrow("up");
-  arrowDownChar  = charManager.getArrow("down");
-  arrowLeftChar  = charManager.getArrow("left");
-  arrowRightChar = charManager.getArrow("right");
+  constructor(firstPixelId) {
+    this.setAllChars("solid-thin");
+    this.id = this.makeId();
+    this.pixels = [];
+    this.values = [];
+    this.joints = [];
+    this.stash();
+    this.zindex = layerManager.getHighestZindex() + 1;
+    this._isSelected = false;
+    this.commitMutex = false;
+    this.setFromPixel(canvas.getPixelById(firstPixelId));
+  }
 
   setAllChars(lineForm) {
+    // TODO consider these for import
     this.lineForm = lineForm;
     this.lateralChar = charManager.getLateralLine(this.lineForm);
     this.verticalChar = charManager.getVerticalLine(this.lineForm);
@@ -1428,22 +1424,11 @@ class Layer {
     this.arrowDownChar  = charManager.getArrow("down");
     this.arrowLeftChar  = charManager.getArrow("left");
     this.arrowRightChar = charManager.getArrow("right");
-
-    this.redraw();
   }
 
-  constructor(firstPixelId) {
-    this.id = this.makeId();
-    this.pixels = [];
-    this.values = [];
-    this.joints = [];
-    this.stash();
-    this.zindex = layerManager.getHighestZindex() + 1;
-    this._isSelected = false;
-    this.commitCount = 0;
-
-    this.setToPixel(null) // This gets set when drawing begins;
-    this.setFromPixel(canvas.getPixelById(firstPixelId));
+  redrawChars(lineForm) {
+    this.setAllChars(lineForm);
+    this.redraw();
   }
 
   makeId() {
@@ -3025,12 +3010,9 @@ class TableLayer extends SquareBoundLayer {
     for (let row = 0; row < this.tblRows; row ++) {
       let height = this.getRowHeight(row);
       rowPos += height;
-      pixels[`l-${index}`] = canvas.getPixelByRowCol(
-        rowPos - roundHalf(height / 2), topLeftPixel.col - 1
-      ); // Left
-      pixels[`r-${index}`] = canvas.getPixelByRowCol(
-        rowPos - roundHalf(height / 2), topRightPixel.col + 1
-      ); // Right
+      let jointPos = rowPos - roundHalf(height / 2) - 1;
+      pixels[`l-${index}`] = canvas.getPixelByRowCol(jointPos, topLeftPixel.col - 1); // Left
+      pixels[`r-${index}`] = canvas.getPixelByRowCol(jointPos, topRightPixel.col + 1); // Right
       index ++;
     }
     var colPos = topLeftPixel.col + 1;
@@ -3038,12 +3020,9 @@ class TableLayer extends SquareBoundLayer {
     for (let col = 0; col < this.tblCols; col ++) {
       let width = this.getColWidth(col);
       colPos += width;
-      pixels[`t-${index}`] = canvas.getPixelByRowCol(
-        topLeftPixel.row - 1, colPos - roundHalf(width / 2)
-      ); // Top
-      pixels[`b-${index}`] = canvas.getPixelByRowCol(
-        bottomLeftPixel.row + 1, colPos - roundHalf(width / 2)
-      ); // Bottom
+      let jointPos = colPos - roundHalf(width / 2);
+      pixels[`t-${index}`] = canvas.getPixelByRowCol(topLeftPixel.row - 1, jointPos); // Top
+      pixels[`b-${index}`] = canvas.getPixelByRowCol(bottomLeftPixel.row + 1, jointPos); // Bottom
       index ++;
     }
     return pixels;
@@ -3185,9 +3164,6 @@ class TableLayer extends SquareBoundLayer {
   ungroup() {
     // Ungroup all layers.
     let layers = this.getTextLayers().concat(this);
-    // TODO explain how a table could loose a layer.
-    // In fact, handle this case:
-    // E.g ungroup table -> delete tlayers -> redraw
     if (!layers.every(Boolean)) return;
     layerManager.groupManager.ungroupLayers(layers);
   }
@@ -3504,6 +3480,7 @@ class Pixel extends Component {
 
   renderResizable() {
     this.css("backgroundColor", "pixelResizeBgColor");
+    this.css("borderRadius", "10px");
   }
 
   renderAreaSelected() {
@@ -3512,10 +3489,12 @@ class Pixel extends Component {
 
   renderJoint() {
     this.css("backgroundColor", "pixelJointBgColor");
+    this.css("borderRadius", "10px");
   }
 
   renderJointNear() {
     this.css("backgroundColor", "pixelJointNearBgColor");
+    this.css("borderRadius", "10px");
   }
 
   renderWasSelected() {
@@ -3551,6 +3530,7 @@ class Pixel extends Component {
     this.stopCursor();
     this.css("color", "pixelNormalFgColor");
     this.css("backgroundColor", "pixelNormalBgColor");
+    this.css("borderRadius", "0px");
   }
 
 
