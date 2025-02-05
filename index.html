@@ -1402,11 +1402,11 @@ class Layer {
     this.pixels = [];
     this.values = [];
     this.joints = [];
-    this.stash();
     this.zindex = layerManager.getHighestZindex() + 1;
     this._isSelected = false;
     this.commitMutex = false;
     this.setFromPixel(canvas.getPixelById(firstPixelId));
+    this.stashed = {};
   }
 
   setAllChars(lineForm) {
@@ -1531,14 +1531,26 @@ class Layer {
   }
 
   stash() {
-    // This is used to store / remember a layer's state
-    // in case a layer becomes unhappy.
-    this.stashed = [this.fromPixel, this.toPixel, this.pixels.map(p => p), this.values.map(v => v)];
+    // This is used to store / remember a layer's state in case a layer becomes unhappy.
+    this.stashed = {};
+    this.stashed.fromPixel = this.fromPixel;
+    this.stashed.toPixel   = this.toPixel;
+    this.stashed.pixels    = this.pixels.map(p => p);
+    this.stashed.values    = this.values.map(v => v);
   }
 
   rollback() {
+    // This puts a layer back into it's last working state.
+
+    // We can therefore lift the commit mutex, so that future commits
+    // stash happy states again. 
     this.releaseCommit();
-    [this.fromPixel, this.toPixel, this.pixels, this.values] = this.stashed;
+    
+    // The actual rollback...
+    this.fromPixel = this.stashed.fromPixel;
+    this.toPixel   = this.stashed.toPixel;
+    this.pixels    = this.stashed.pixels;
+    this.values    = this.stashed.values;
   }
 
   redraw() {
@@ -1674,9 +1686,9 @@ class Layer {
     }
   }
 
-  copy(replace=false) {
+  copy(identical=false) {
     let layerCopy = new this.constructor(this.fromPixel.id());
-    if (replace) {
+    if (identical) {
       // This is an exact copy, mainly used for capturing snapshots,
       // reverting history.
       // We only copy joints here, as other use cases need to manually
@@ -1971,25 +1983,24 @@ class TextLayer extends Layer {
     if (this.lastCursorPixel) this.lastCursorPixel.stopCursor();
   }
 
-  copy(replace=false) {
-    let layerCopy = super.copy(replace);
+  copy(identical=false) {
+    let layerCopy = super.copy(identical);
     layerCopy.contents = structuredClone(this.contents);
-    if (replace) layerCopy.tableId = this.tableId;
+    if (identical) layerCopy.tableId = this.tableId;
     return layerCopy;
   }
 
 
   stash() {
     super.stash();
-    this.moreStash = [this.cursor, this.contents? this.contents.map(c => c): []];
+    this.stashed.cursor   = this.cursor;
+    this.stashed.contents = this.contents.map(c => c);
   }
 
   rollback() {
-    // A little more is needed for TextLayer rollbacks,
-    // to ensure the cursor is removed if the rollback
-    // caused the layer to get deleted (0 pixels).
     super.rollback();
-    [this.cursor, this.contents] = this.moreStash;
+    this.cursor   = this.stashed.cursor;
+    this.contents = this.stashed.contents;
   }
 
   getKeyedJointPixels() {
@@ -2202,8 +2213,8 @@ class BaseLineLayer extends Layer {
     }
   }
 
-  copy(replace=false) {
-    let layerCopy = super.copy(replace);
+  copy(identical=false) {
+    let layerCopy = super.copy(identical);
     layerCopy.hasArrowLeft = this.hasArrowLeft;
     layerCopy.hasArrowRight = this.hasArrowRight;
     return layerCopy;
@@ -2969,34 +2980,36 @@ class TableLayer extends SquareBoundLayer {
     layerManager.add(layer);
     layerManager.refresh(() => layer.draw(event.target.id));
   }
+
   stash() {
-    super.stash(); // TODO STATE BUCKETS for export, copy, and stash.
-    // TODO think mutation (though safe here). Also, special reason to stash widths/cols
-    // as used by keyed joints pixels.
-    this.moreStash = [
-      structuredClone(this.textLayers),
-      this.tblRows,
-      this.tblCols,
-      structuredClone(this.tblColWidths), structuredClone(this.tblRowHeights)
-    ];
+    super.stash(); 
+    // This layer is more complex. we need to stash more stuff.
+    this.stashed.textLayers    = structuredClone(this.textLayers);
+    this.stashed.tblColWidths  = structuredClone(this.tblColWidths);
+    this.stashed.tblRowHeights = structuredClone(this.tblRowHeights);
+    this.stashed.tblRows       = this.tblRows;
+    this.stashed.tblCols       = this.tblCols;
   }
 
   rollback() {
     super.rollback();
-    [this.textLayers, this.tblRows, this.tblCols, this.tblColWidths, this.tblRowHeights] = this.moreStash;
+    this.textLayers     = this.stashed.textLayers;
+    this.tblColWidths   = this.stashed.tblColWidths;
+    this.tblRowHeights  = this.stashed.tblRowHeights;
+    this.tblRows        = this.stashed.tblRows;
+    this.tblCols        = this.stashed.tblCols;
   }
 
-  copy(replace=false) {
-    // Please read base implementation. This extension ensures
-    // we also copy textLayers if it's a full replace copy.
-    let layerCopy = super.copy(replace);
-    if (replace) layerCopy.textLayers = structuredClone(this.textLayers);
+  copy(identical=false) {
+    // We also copy textLayers if it's a full identical copy.
+    let layerCopy = super.copy(identical);
+    if (identical) layerCopy.textLayers = structuredClone(this.textLayers);
 
     // Copy row and col counts so that refresh() works immediately for copied tables.
-    layerCopy.tblRows = this.tblRows;
-    layerCopy.tblCols = this.tblCols;
+    layerCopy.tblRows       = this.tblRows;
+    layerCopy.tblCols       = this.tblCols;
     layerCopy.tblRowHeights = this.tblRowHeights;
-    layerCopy.tblColWidths = this.tblColWidths;
+    layerCopy.tblColWidths  = this.tblColWidths;
     return layerCopy;
   }
 
