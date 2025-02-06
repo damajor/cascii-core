@@ -223,34 +223,10 @@ class ThemeManager {
 
 class ModeMaster {
 
-  layerModes = [
-    // Primitive
-    "square",
-    "free",
-    "free-line",
-    "step-line",
-    "switch-line",
-    "text",
-    "table",
-    "diamond",
-
-    // Dynamic
-    "line",
-    "line-based",
-  ];
-
-  lineBasedModes = [
-    "table",
-    "square",
-    "free-line",
-    "step-line",
-    "switch-line",
-    "diamond",
-  ];
-
   constructor() {
     this._modes = [];
     this.callbacks = [];
+    this.setlayerModes
   }
 
   registerCallback(func) {
@@ -315,16 +291,16 @@ class ModeMaster {
   }
 
   removeLayerModes() {
-    this.layerModes.forEach(mode => this.remove(mode));
+    layerManager.getLayerTypes().forEach(name => this.remove(name));
   }
 
-  setSelectedLayerMode(name) {
+  setSelectedLayerMode(layer) {
     this.removeLayerModes();
-    this.add(name);
+    this.add(layer.getType());
 
     // Rules for dynamic layer modes
-    if (name.includes("line")) this.add("line");
-    if (this.lineBasedModes.includes(name)) this.add("line-based");
+    if (layer.isLine()) this.add("line");
+    if (layer.isLineBased()) this.add("line-based");
   }
 }
 
@@ -535,8 +511,8 @@ class CharManager {
     charset = {
 
       // Dotted lines
-      "•": ["dotted", "line", "vertical", "lateral", "corner", "unicode"],
-      ".": ["dotted", "line", "vertical", "lateral", "corner", "ascii"],
+      "•": ["dotted", "line", "vertical", "lateral", "corner", "generic", "unicode"],
+      ".": ["dotted", "line", "vertical", "lateral", "corner", "generic", "ascii"],
 
       // Solid lines
       "━": ["solid-bold", "line", "lateral", "unicode"],
@@ -774,6 +750,18 @@ class AreaSelectManager {
 }
 
 class LayerManager {
+
+  LayerRegister = [
+    FreeLineLayer,
+    FreeLayer,
+    StepLineLayer,
+    SwitchLineLayer,
+    SquareLayer,
+    TextLayer,
+    TableLayer,
+    DiamondLayer,
+  ]
+
   constructor() {
     this.layers = [];
     this.selectedPixel = null;
@@ -781,6 +769,20 @@ class LayerManager {
     this.historyCursor = 0;
     this.editingTextLayer = null;
     this.groupManager = new GroupManager();
+  }
+
+  getLayerTypes() {
+    return this.LayerRegister.map(cls => cls.type);
+  }
+
+  getLineBasedLayerTypes() {
+    return this.LayerRegister.filter(cls => cls.lineBased).map(cls => cls.type);
+  }
+
+  getLayerClassByType(type) {
+    for (let cls of this.LayerRegister) {
+      if (type == cls.type) return cls;
+    }
   }
 
   add(layer) {
@@ -810,6 +812,24 @@ class LayerManager {
     for (var layer of this.getLayersOrderedByZindex().reverse()) {
       if (layer.hasPixel(id)) return layer;
     }
+  }
+  
+  encodeAllLayers() {
+    let encodedLayers = this.layers.map(layer => layer.encode());
+    return JSON.stringify(encodedLayers);
+  }
+
+  decodeLayers(layersDump) {
+    let layersData = JSON.parse(layersDump);
+    return layersData.map(layer => this.getLayerClassByType(layer.ty).decode(layer));
+
+  }
+
+  import(layersDump) {
+    this.layers = this.decodeLayers(layersDump);
+    this.refresh(() => {
+      this.layers.forEach(layer => layer.redraw());
+    });
   }
 
   getSelectedLayers() {
@@ -920,13 +940,13 @@ class LayerManager {
     /*
     This counts how many pixels from other layers are near
     or overlapping the subjectLayer. withNames can also
-    be provided to only worry about specific layer types
+    be provided to only worry about specific layer.getType()s
     being near/overlapping. This is mainly used to make decisions
     based on how busy a space is.
     */
     var count = 0;
     for (let layer of this.layers) {
-      if (withNames && withNames.includes(layer.name)) {
+      if (withNames && withNames.includes(layer.getType())) {
         count += layer.getNearOverlappingCount(subjectLayer);
       }
     }
@@ -976,7 +996,7 @@ class LayerManager {
   }
 
   tidyAllTables(layersToDelete) {
-    for (let layer of this.layers.filter(layer => layer.name == "table")) {
+    for (let layer of this.layers.filter(layer => layer.getType() == "table")) {
       for (let key in layer.textLayers) {
         if (layersToDelete.includes(layer.textLayers[key])) delete layer.textLayers[key]
       }
@@ -1324,7 +1344,7 @@ class LayerManager {
 
   redrawLinesEvent(direction) {
     for (var layer of this.getSelectedLayers()) {
-      if (layer.name.includes("line")) {
+      if (layer.getType().includes("line")) {
         this.refresh(() => layer.toggleArrows(direction));
       }
     }
@@ -1332,9 +1352,7 @@ class LayerManager {
 
   redrawLineBasedEvent(lineForm) {
     for (var layer of this.getSelectedLayers()) {
-      if (modeMaster.lineBasedModes.includes(layer.name)) {
-        this.refresh(() => layer.redrawChars(lineForm));
-      }
+      if (layer.isLineBased()) this.refresh(() => layer.redrawChars(lineForm));
     }
   }
 
@@ -1346,7 +1364,7 @@ class LayerManager {
   erasePixelEvent(event) {
     let activePixel = canvas.getPixelById(event.target.id);
     let layer = this.getLayerByPixelId(activePixel.id());
-    if (layer && layer.name != "free") return; // TODO show warning message
+    if (layer && layer.getType() != "free") return; // TODO show warning message
     if (layer) layer.erasePixel(activePixel.id());
     activePixel.clear();
   }
@@ -1395,6 +1413,21 @@ class LayerManager {
 
 
 class Layer {
+  static type = "base";
+  static lineBased = false;
+  static line = false;
+
+  getType() {
+    return this.constructor.type;
+  }
+
+  isLineBased() {
+    return this.constructor.lineBased;
+  }
+
+  isLine() {
+    return this.constructor.line;
+  }
 
   constructor(firstPixelId) {
     this.setAllChars("solid-thin");
@@ -1406,8 +1439,10 @@ class Layer {
     this._isSelected = false;
     this.commitMutex = false;
     this.setFromPixel(canvas.getPixelById(firstPixelId));
+    this.setToPixel(null);
     this.stashed = {};
   }
+
 
   setAllChars(lineForm) {
     // TODO consider these for import
@@ -1420,10 +1455,34 @@ class Layer {
     this.cornerTopRightChar = charManager.getCorner(this.lineForm, "top-right");
     this.cornerBottomLeftChar = charManager.getCorner(this.lineForm, "bottom-left");
     this.cornerBottomRightChar = charManager.getCorner(this.lineForm, "bottom-right");
+    this.cornerGenericChar = charManager.getCorner(this.lineForm, "generic");
     this.arrowUpChar    = charManager.getArrow("up");
     this.arrowDownChar  = charManager.getArrow("down");
     this.arrowLeftChar  = charManager.getArrow("left");
     this.arrowRightChar = charManager.getArrow("right");
+  }
+  
+  static decode(encodedLayer) {
+    let layerClass = layerManager.getLayerClassByType(encodedLayer.ty);
+    let layer = new layerClass(encodedLayer.fp);
+    layer.id = encodedLayer.id;
+    layer.setToPixel(canvas.getPixelById(encodedLayer.tp));
+    layer.zindex = encodedLayer.zindex;
+    layer.setAllChars(encodedLayer.lf);
+    return layer;
+  }
+
+  encode() {
+    // TODO: arrow heads, joints, tables...
+    return {
+      ty: this.getType(),
+      id: this.id,
+      fp: this.fromPixel.id(),
+      tp: this.toPixel.id(), // TODO when importing, canvas size will need to use these
+      zi: this.zindex,
+      lf: this.lineForm,
+      jts: [], 
+    };
   }
 
   redrawChars(lineForm) {
@@ -1432,7 +1491,7 @@ class Layer {
   }
 
   makeId() {
-    return randomInt(1, 100000).toString() + Date.now().toString();
+    return randomInt(1, 10000000).toString(); // TODO: Improve this. Use fromPixel as seed?
   }
 
   static drawingMouseOverEvent(event) {
@@ -1460,11 +1519,11 @@ class Layer {
     }
     layerManager.refresh(() => layer.select());
     modeMaster.change("select", "selected");
-    modeMaster.setSelectedLayerMode(layer.name);
+    modeMaster.setSelectedLayerMode(layer);
     modeMaster.add(
       layerManager.prepareLayerResizing(activePixel, layer)? "resizing": "moving"
     );
-    if (!modeMaster.has("ctrl") || layer.name == "table" || layer.hasTable()) {
+    if (!modeMaster.has("ctrl") || layer.getType() == "table" || layer.hasTable()) {
       // Select all members of a group if not bypassed by ctrl to select a grouped
       // layer.
       // This bypass shouldn't work for tables / table children to avoid undefined behaviour.
@@ -1554,7 +1613,7 @@ class Layer {
   }
 
   redraw() {
-    this.drawLayer(this.toPixel.id());
+    this.drawLayer(this.toPixel.id(), true);
     layerManager.capture();
   }
 
@@ -1901,7 +1960,7 @@ class Layer {
 
 class TextLayer extends Layer {
 
-  name = "text";
+  static type = "text";
 
   starterChar = ">";
 
@@ -1914,6 +1973,20 @@ class TextLayer extends Layer {
     this.setToPixel(this.fromPixel);
 
     // TextLayer's don't use toPixels, but it's easier to just set it.
+  }
+ 
+  static decode(encodedLayer) {
+    let layer = Layer.decode(encodedLayer);
+    layer.contents = encodedLayer.cts.split("");
+    if (encodedLayer.tbl) layer.tableId = encodedLayer.tbl;
+    return layer;
+  }
+
+  encode() {
+    let encoded = super.encode();
+    encoded.cts = this.contents.join("");
+    if (this.tableId) encoded.tbl = this.tableId;
+    return encoded;
   }
 
   static selectedDoubleClickEvent(event) {
@@ -1947,7 +2020,7 @@ class TextLayer extends Layer {
 
   static keyDownEvent(event) {
     var layer = layerManager.editingTextLayer;
-    if (layer && layer.name == "text") layerManager.refresh(() => layer.draw(event.key));
+    if (layer && layer.getType() == "text") layerManager.refresh(() => layer.draw(event.key));
   }
 
   static focusedOtherTextLayer(activePixel) {
@@ -1961,7 +2034,7 @@ class TextLayer extends Layer {
     }
 
     // Setup the newly selected layer (might be the same).
-    if (layer && layer.name == "text") {
+    if (layer && layer.getType() == "text") {
       layer.moveCursorToPixel(activePixel);
       layerManager.editingTextLayer = layer;
       return true;
@@ -2194,6 +2267,9 @@ class TextLayer extends Layer {
 
 class BaseLineLayer extends Layer {
 
+  static lineBased = true;
+  static line = true;
+
   constructor(firstPixelId) {
     super(firstPixelId);
     this.hasArrowLeft = false;
@@ -2251,14 +2327,14 @@ class BaseLineLayer extends Layer {
 
 class FreeLineLayer extends BaseLineLayer {
 
-  name = "free-line"
+  static type = "free-line"
 
   static drawMouseDownEvent(event) {
     let layer = new FreeLineLayer(event.target.id);
     layerManager.add(layer);
   }
 
-  drawLayer(activePixelId) {
+  drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
     let fromPixel = this.fromPixel;
     let toPixel = this.toPixel;
@@ -2323,7 +2399,7 @@ class FreeLineLayer extends BaseLineLayer {
 
 class StepLineLayer extends BaseLineLayer {
 
-  name = "step-line";
+  static type = "step-line";
 
   static drawMouseDownEvent(event) {
     let layer = new StepLineLayer(event.target.id);
@@ -2342,7 +2418,7 @@ class StepLineLayer extends BaseLineLayer {
     return {m: this.getLastPixel()}; // Middle
   }
 
-  drawLayer(activePixelId) {
+  drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
 
     /* Try and draw the step line both ways e.g
@@ -2440,7 +2516,7 @@ class StepLineLayer extends BaseLineLayer {
 
 class SwitchLineLayer extends BaseLineLayer {
 
-  name = "switch-line";
+  static type = "switch-line";
 
   static drawMouseDownEvent(event) {
     let layer = new SwitchLineLayer(event.target.id);
@@ -2483,7 +2559,7 @@ class SwitchLineLayer extends BaseLineLayer {
     return keyedJoints;
   }
 
-  drawLayer(activePixelId) {
+  drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
     let fromPixel = this.fromPixel;
     let toPixel = this.toPixel;
@@ -2725,7 +2801,7 @@ class SwitchLineLayer extends BaseLineLayer {
 
 class FreeLayer extends Layer {
 
-  name = "free";
+  static type = "free";
 
 
   freeChar = charManager.getFree();
@@ -2736,7 +2812,7 @@ class FreeLayer extends Layer {
     layerManager.refresh(() => layer.draw(event.target.id));
   }
 
-  drawLayer(activePixelId) {
+  drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
 
     let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
@@ -2760,6 +2836,7 @@ class FreeLayer extends Layer {
 //////////////////////
 
 class SquareBoundLayer extends Layer {
+  static lineBased = true;
 
   getCornerPixels() {
     if (this.pixels.length == 0) {
@@ -2790,7 +2867,8 @@ class SquareBoundLayer extends Layer {
 
 class DiamondLayer extends Layer {
 
-  name = "diamond"
+  static type = "diamond";
+  static lineBased = true;
 
   static drawMouseDownEvent(event) {
     let layer = new DiamondLayer(event.target.id);
@@ -2835,7 +2913,7 @@ class DiamondLayer extends Layer {
     )
   }
 
-  drawLayer(activePixelId) {
+  drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
     let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
     let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
@@ -2878,7 +2956,7 @@ class DiamondLayer extends Layer {
 
 class SquareLayer extends SquareBoundLayer {
 
-  name = "square"
+  static type = "square";
 
   static drawMouseDownEvent(event) {
     let layer = new SquareLayer(event.target.id);
@@ -2909,7 +2987,7 @@ class SquareLayer extends SquareBoundLayer {
     };
   }
 
-  drawLayer(activePixelId) {
+  drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
     let topLeftPixel = canvas.getPixelByRowCol(
       Math.min(this.toPixel.row, this.fromPixel.row),
@@ -2959,32 +3037,52 @@ class SquareLayer extends SquareBoundLayer {
 
 
 class TableLayer extends SquareBoundLayer {
-  name = "table"
+  static type = "table";
 
   constructor(firstPixelId) {
     super(firstPixelId);
     this.tblSizeLimit = 20; // TODO show warning message when hit limit
-    this.textLayers = {};
-    this.cellTextArchive = {};
-    this.tblRows = 0;
-    this.tblCols = 0;
     this.defaultCellContents = "text...";
     this.tblColDefaultWidth = this.defaultCellContents.length + 1; // 1 is added to account for the col line
+    this.cellTextArchive = {};
+    this.textLayers = {};
+    this.tblRows = 0;
+    this.tblCols = 0;
     this.tblColWidths = {};
     this.tblRowHeights = {};
     this.tblRowDefaultHeight = 2;
   }
+  
+  // The next few methods all persist layer data for different reasons,
+  // (Copying, commit stashing, and export encoding). Perhaps it could be
+  // combined into a 'persist' object, but explicitness is good, right?
+  // As this stuff grows, separation should be a blessing.
 
-  static drawMouseDownEvent(event) {
-    let layer = new TableLayer(event.target.id);
-    layerManager.add(layer);
-    layerManager.refresh(() => layer.draw(event.target.id));
+  static decode(encodedLayer) {
+    let layer = Layer.decode(encodedLayer);
+    layer.tblCols       = encodedLayer.tblc;
+    layer.tblRows       = encodedLayer.tblr;
+    layer.tblColWidths  = encodedLayer.tblws;
+    layer.tblRowHeights = encodedLayer.tblhs;
+    layer.textLayers    = encodedLayer.tbltx;
+    return layer;
+  }
+
+  encode() {
+    let encoded = super.encode();
+    // This layer is more complex. we need to encode more stuff.
+    encoded.tblc  = this.tblCols;
+    encoded.tblr  = this.tblRows;
+    encoded.tblws = this.tblColWidths;
+    encoded.tblhs = this.tblRowHeights;
+    encoded.tbltx = this.textLayers;
+    return encoded;
   }
 
   stash() {
     super.stash(); 
     // This layer is more complex. we need to stash more stuff.
-    this.stashed.textLayers    = structuredClone(this.textLayers);
+    this.stashed.textLayers    = structuredClone(this.textLayers); // We watch out for mutation here.
     this.stashed.tblColWidths  = structuredClone(this.tblColWidths);
     this.stashed.tblRowHeights = structuredClone(this.tblRowHeights);
     this.stashed.tblRows       = this.tblRows;
@@ -3011,6 +3109,12 @@ class TableLayer extends SquareBoundLayer {
     layerCopy.tblRowHeights = this.tblRowHeights;
     layerCopy.tblColWidths  = this.tblColWidths;
     return layerCopy;
+  }
+
+  static drawMouseDownEvent(event) { // TODO these can be moved to a parent class now.
+    let layer = new TableLayer(event.target.id);
+    layerManager.add(layer);
+    layerManager.refresh(() => layer.draw(event.target.id));
   }
 
   getKeyedJointPixels() {
@@ -3063,18 +3167,20 @@ class TableLayer extends SquareBoundLayer {
     return Math.abs(this.tblCols + roundHalf(relLateralDiff / nextColWidth));
   }
 
-  drawLayer(activePixelId) {
+  drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
     let topLeftPixel = this.getTopLeftPixel();
     let bottomRightPixel = this.getBottomRightPixel();
     let newTblRows = this.getNewTblRows(bottomRightPixel.row - topLeftPixel.row);
     let newTblCols = this.getNewTblCols(bottomRightPixel.col - topLeftPixel.col);
 
-    // Don't bother updating the table if no proper changes have been calculated.
-    if (newTblRows == this.tblRows && newTblCols == this.tblCols) return;
-    if (newTblCols == 0 || newTblRows == 0) return;
-    // ...or if the size limit is hit...
-    if (newTblRows >= this.tblSizeLimit || newTblCols >= this.tblSizeLimit) return;
+    if (!force) {
+      // Don't bother updating the table if no proper changes have been calculated.
+      if (newTblRows == this.tblRows && newTblCols == this.tblCols) return;
+      if (newTblCols == 0 || newTblRows == 0) return;
+      // ...or if the size limit is hit...
+      if (newTblRows >= this.tblSizeLimit || newTblCols >= this.tblSizeLimit) return;
+    }
 
     // This sequence does one draw of the whole table.
     // We start by setting new row/col properties,
@@ -3102,11 +3208,6 @@ class TableLayer extends SquareBoundLayer {
 
     // Finally, group the updated set of layers.
     this.group();
-  }
-
-  redraw() {
-    let topLeftPixel = this.getTopLeftPixel();
-    this.drawFrame(topLeftPixel);
   }
 
   drawFrame(topLeftPixel) {
@@ -3344,7 +3445,7 @@ class Component {
   _MagicPropCssPrefix = "css";
 
   value = "";
-  name = "";
+  type = "";
   children = [];
   type = "div";
 
@@ -3476,7 +3577,7 @@ class Pixel extends Component {
   }
 
   static makeId(row, col) {
-    return `pixel-${row},${col}`
+    return `px@${row}/${col}`
   }
 
   renderSelected() {
@@ -4082,8 +4183,8 @@ class Body extends Component {
 
 
 function main() {
-  modeMaster         = new ModeMaster();
   layerManager       = new LayerManager();
+  modeMaster         = new ModeMaster();
   areaSelectManager  = new AreaSelectManager();
   eventManager       = new EventManager();
   charManager        = new CharManager();
