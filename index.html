@@ -819,7 +819,7 @@ class LayerManager {
       if (layer.hasPixel(id)) return layer;
     }
   }
-  
+
   encodeAll() {
     let encodedLayers = this.layers.map(layer => layer.encode());
     let data = {layers: encodedLayers, groups: this.groupManager.layerGroups};
@@ -1467,7 +1467,7 @@ class Layer {
     this.arrowLeftChar  = charManager.getArrow("left");
     this.arrowRightChar = charManager.getArrow("right");
   }
-  
+
   static decode(encodedLayer) {
     let layerClass = layerManager.getLayerClassByType(encodedLayer.ty);
     let layer = new layerClass(encodedLayer.fp);
@@ -1488,7 +1488,7 @@ class Layer {
       tp: this.toPixel.id(), // TODO when importing, canvas size will need to use these
       zi: this.zindex,
       lf: this.lineForm,
-      jts: this.joints, 
+      jts: this.joints,
     };
   }
 
@@ -1609,9 +1609,9 @@ class Layer {
     // This puts a layer back into it's last working state.
 
     // We can therefore lift the commit mutex, so that future commits
-    // stash happy states again. 
+    // stash happy states again.
     this.releaseCommit();
-    
+
     // The actual rollback...
     this.fromPixel = this.stashed.fromPixel;
     this.toPixel   = this.stashed.toPixel;
@@ -1732,8 +1732,8 @@ class Layer {
       if (layer) {
         let jointPixel = keyedJoints[joint.jointKey];
         if (jointPixel) {
-          let state = layer.probeJoint(this, joint.jointKey, jointPixel);
-          if (state == 2) {
+          // If the joint of this.layer matches the joiner pixels of the joiner layer (if connected)
+          if (layer.getJoinerPixels().map(pixel => pixel.id()).includes(jointPixel.id())) {
             continue;
           } else {
             // This should not happen.
@@ -1746,7 +1746,7 @@ class Layer {
         }
       } else {
         // This should not happen because joints get deleted when layers do.
-        alert("had to unjoin dangling join: join layer gone");
+        alert("had to unjoin dangling join: joiner layer gone");
       }
       this.unjoin(joint.layerId, joint.jointKey);
     }
@@ -1981,7 +1981,7 @@ class TextLayer extends Layer {
 
     // TextLayer's don't use toPixels, but it's easier to just set it.
   }
- 
+
   static decode(encodedLayer) {
     let layer = Layer.decode(encodedLayer);
     layer.contents = encodedLayer.cts.split("");
@@ -3073,7 +3073,7 @@ class TableLayer extends SquareBoundLayer {
     this.tblRowHeights = {};
     this.tblRowDefaultHeight = 2;
   }
-  
+
   // The next few methods all persist layer data for different reasons,
   // (Copying, commit stashing, and export encoding). Perhaps it could be
   // combined into a 'persist' object, but explicitness is good, right?
@@ -3101,7 +3101,7 @@ class TableLayer extends SquareBoundLayer {
   }
 
   stash() {
-    super.stash(); 
+    super.stash();
     // This layer is more complex. we need to stash more stuff.
     this.stashed.textLayers    = structuredClone(this.textLayers); // We watch out for mutation here.
     this.stashed.tblColWidths  = structuredClone(this.tblColWidths);
@@ -3275,12 +3275,12 @@ class TableLayer extends SquareBoundLayer {
     this.setNewTextSpacing(textLayerId);
     this.drawFrame(topLeftPixel);
     this.moveTextLayers(topLeftPixel);
-    
+
     // Here, we update the from/to pixels so that redraws
     // draw from the correct places (given the table size has changed).
     let corners = this.getCornerPixels();
     this.setFromPixel(corners[0]);
-    this.setToPixel(corners[2]); 
+    this.setToPixel(corners[2]);
 
     // TODO also, work out why sleecting text in table allows for line based
 
