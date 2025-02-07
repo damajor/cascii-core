@@ -226,7 +226,6 @@ class ModeMaster {
   constructor() {
     this._modes = [];
     this.callbacks = [];
-    this.setlayerModes
   }
 
   registerCallback(func) {
@@ -292,6 +291,8 @@ class ModeMaster {
 
   removeLayerModes() {
     layerManager.getLayerTypes().forEach(name => this.remove(name));
+    this.remove("line");
+    this.remove("line-based");
   }
 
   setSelectedLayerMode(layer) {
@@ -626,6 +627,11 @@ class GroupManager {
     this.layerGroupHistory = [];
   }
 
+  empty() {
+    this.layerGroups = [];
+    this.layerGroupHistory = [];
+  }
+
   capture() {
     this.layerGroupHistory.unshift(structuredClone(this.layerGroups));
   }
@@ -814,19 +820,21 @@ class LayerManager {
     }
   }
   
-  encodeAllLayers() {
+  encodeAll() {
     let encodedLayers = this.layers.map(layer => layer.encode());
-    return JSON.stringify(encodedLayers);
+    let data = {layers: encodedLayers, groups: this.groupManager.layerGroups};
+    return JSON.stringify(data);
   }
 
-  decodeLayers(layersDump) {
-    let layersData = JSON.parse(layersDump);
-    return layersData.map(layer => this.getLayerClassByType(layer.ty).decode(layer));
-
+  decodeLayers(layers) {
+    return layers.map(layer => this.getLayerClassByType(layer.ty).decode(layer));
   }
 
-  import(layersDump) {
-    this.layers = this.decodeLayers(layersDump);
+  import(encodedData) {
+    this.empty();
+    let data = JSON.parse(encodedData);
+    this.layers = this.decodeLayers(data.layers);
+    this.groupManager.layerGroups = data.groups;
     this.refresh(() => {
       this.layers.forEach(layer => layer.redraw());
     });
@@ -1045,6 +1053,7 @@ class LayerManager {
   empty() {
     this.layers = [];
     this.layerHistory = [];
+    this.groupManager.empty();
   }
 
   capture() {
@@ -1161,7 +1170,7 @@ class LayerManager {
         // If the selected layer is the lead / currently selected layer
         // Then we already know the activePixel is the resize pixel.
         resizePixel = activePixel;
-      } else if (resizeLayer.name == leadLayer.name && !leadLayer.name.includes("line")) {
+      } else if (resizeLayer.name == leadLayer.name && !leadLayer.isLine()) {
         // If the lead layer is the same type as a selected layer,
         // we can use the same resize pixel position and resize the layer
         // in the same way for the best experience.
@@ -1174,7 +1183,6 @@ class LayerManager {
         // resize from there.
         resizePixel = resizeLayer.getNearestResizePixel(activePixel);
       }
-
       // The "to" pixel has been determined above depending on various rules.
       resizeLayer.setToPixel(resizePixel);
 
@@ -1324,12 +1332,10 @@ class LayerManager {
   }
 
   undoEvent(event) {
-    console.log("undo");
     this.refresh(() => this.undo());
   }
 
   redoEvent(event) {
-    console.log("REDO!!");
     this.refresh(() => this.redo());
   }
 
@@ -1469,6 +1475,7 @@ class Layer {
     layer.setToPixel(canvas.getPixelById(encodedLayer.tp));
     layer.zindex = encodedLayer.zindex;
     layer.setAllChars(encodedLayer.lf);
+    layer.joints = encodedLayer.jts;
     return layer;
   }
 
@@ -1481,7 +1488,7 @@ class Layer {
       tp: this.toPixel.id(), // TODO when importing, canvas size will need to use these
       zi: this.zindex,
       lf: this.lineForm,
-      jts: [], 
+      jts: this.joints, 
     };
   }
 
@@ -1856,7 +1863,7 @@ class Layer {
       // The resize pixel may not get found if the main layer has
       // somehow moved without the jointed layer.
       if (!fromPixel) {
-        alert("resize pixel not found");
+        debugError("resize pixel not found");
         return;
       }
       layer.setFromPixel(fromPixel);
@@ -2275,6 +2282,21 @@ class BaseLineLayer extends Layer {
     this.hasArrowLeft = false;
     this.hasArrowRight = false;
   }
+
+  static decode(encodedLayer) {
+    let layer = Layer.decode(encodedLayer);
+    layer.hasArrowLeft  = encodedLayer.al;
+    layer.hasArrowRight = encodedLayer.ar;
+    return layer;
+  }
+
+  encode() {
+    let encoded = super.encode();
+    encoded.al  = this.hasArrowLeft;
+    encoded.ar  = this.hasArrowRight;
+    return encoded;
+  }
+
 
   static drawMouseOver(event) {
     let activePixel = canvas.getPixelById(event.target.id);
@@ -3012,7 +3034,6 @@ class SquareLayer extends SquareBoundLayer {
 
     // Draw corners
     this.add(canvas.getPixelByRowCol(rowPos, colPos), this.cornerTopLeftChar);
-    console.log(this.cornerTopLeftChar);
     this.add(canvas.getPixelByRowCol(rowPos, bottomRightPixel.col), this.cornerTopRightChar);
     this.add(canvas.getPixelByRowCol(bottomRightPixel.row, colPos), this.cornerBottomLeftChar);
     this.add(canvas.getPixelByRowCol(bottomRightPixel.row, bottomRightPixel.col), this.cornerBottomRightChar);
@@ -3254,6 +3275,14 @@ class TableLayer extends SquareBoundLayer {
     this.setNewTextSpacing(textLayerId);
     this.drawFrame(topLeftPixel);
     this.moveTextLayers(topLeftPixel);
+    
+    // Here, we update the from/to pixels so that redraws
+    // draw from the correct places (given the table size has changed).
+    let corners = this.getCornerPixels();
+    this.setFromPixel(corners[0]);
+    this.setToPixel(corners[2]); 
+
+    // TODO also, work out why sleecting text in table allows for line based
 
     // The textLayer that has changed needs another chance to rollback
     // in case it's parent table has since become unhappy. Hence,
