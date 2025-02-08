@@ -4,28 +4,18 @@
 *** TODO ***
 
 FE  -
-  - joints for tables shifted off a little
   - various todos
-  - table rollback / happy doesn;t work with textlayers. override.
   - consider defaulting to select mode after draw
     - resize pixels should switch to select
-  - mini success messages
-  - resize improvements: resize by % to avoid reverse
-  - file break up?
-  - import - focus on DL base64 import/export
-  - proper UI / config
-    - dotted/lined/dashed
-    - menu splitting
-    - free layer options
-    - themes
-    - settings: unicode v ascii
-  - export
+  - copy / PASTE layers
+  - settings: free layer options, corner options
   - intro / why ascii
   - manual page. shortcuts, etc.
 
 BE -
   - save, share, manage, user, login google + github,  CRUD
   - guest auto save (refresh keeps)
+  - import / shorturl
   - plain text request / curl
 
 BIG IDEAS:
@@ -100,15 +90,19 @@ class Theme {
     darkBlue     : "#0069b5",
     darkestBlue  : "#1a3540",
     lightestBlue : "#baebff",
+    lightRed     : "#ff9494",
     red          : "#f52f2c",
     darkRed      : "#9e1910",
+    darkestRed   : "#381111",
     black        : "black",
     white        : "white",
     none         : "transparent",
     pink         : "#ff78db",
     green        : "#49d65c",
+    darkGreen    : "#11381b",
     lightGreen   : "#bdffdb",
     orange       : "orange",
+    grey         : "#525252",
   }
 
   config = {
@@ -118,6 +112,7 @@ class Theme {
 
     menuButtonBgColor: Theme.Color.black,
     menuButtonFgColor: Theme.Color.white,
+    menuButtonBorderColor: Theme.Color.black,
     menuButtonSelectedBgColor: Theme.Color.blue,
     menuButtonClickBgColor: Theme.Color.blue,
 
@@ -133,6 +128,10 @@ class Theme {
     pixelCursorColor: Theme.Color.orange,
 
     areaSelectionBgColor: Theme.Color.blue,
+
+    informerDefaultBgColor: Theme.Color.blue,
+    informerGoodBgColor: Theme.Color.lightGreen,
+    informerBadBgColor: Theme.Color.lightRed,
 
     canvasFont: "monospace",
   }
@@ -155,6 +154,7 @@ class ThemeManager {
         bodyFgColor: Theme.Color.white,
         menuButtonBgColor: Theme.Color.black,
         menuButtonFgColor: Theme.Color.white,
+        menuButtonBorderColor: Theme.Color.grey,
 
         pixelCursorColor: Theme.Color.white,
         pixelNormalFgColor: Theme.Color.white,
@@ -162,6 +162,10 @@ class ThemeManager {
         pixelJointNearBgColor: Theme.Color.pink,
         pixelJointBgColor: Theme.Color.green,
         areaSelectionBgColor: Theme.Color.darkestBlue,
+
+        informerDefaultBgColor: Theme.Color.blue,
+        informerGoodBgColor: Theme.Color.green,
+        informerBadBgColor: Theme.Color.red,
       }
     ),
     lightTheme: new Theme(
@@ -170,12 +174,17 @@ class ThemeManager {
         bodyFgColor: Theme.Color.black,
         menuButtonBgColor: Theme.Color.white,
         menuButtonFgColor: Theme.Color.black,
+        menuButtonBorderColor: Theme.Color.black,
 
         pixelCursorColor: Theme.Color.black,
         pixelNormalFgColor: Theme.Color.black,
         pixelResizeBgColor: Theme.Color.blue,
         pixelJointNearBgColor: Theme.Color.pink,
         pixelJointBgColor: Theme.Color.green,
+
+        informerDefaultBgColor: Theme.Color.blue,
+        informerGoodBgColor: Theme.Color.lightGreen,
+        informerBadBgColor: Theme.Color.lightRed,
 
         areaSelectionBgColor: Theme.Color.lightestBlue,
       }
@@ -186,6 +195,7 @@ class ThemeManager {
         bodyFgColor: Theme.Color.green,
         menuButtonBgColor: Theme.Color.black,
         menuButtonFgColor: Theme.Color.green,
+        menuButtonBorderColor: Theme.Color.green,
         menuButtonSelectedBgColor: Theme.Color.darkRed,
 
         pixelSelectedFgColor: Theme.Color.lightGreen,
@@ -194,6 +204,10 @@ class ThemeManager {
         pixelNormalFgColor: Theme.Color.green,
         pixelJointNearBgColor: Theme.Color.lightGreen,
         pixelJointBgColor: Theme.Color.red,
+
+        informerDefaultBgColor: Theme.Color.blue,
+        informerGoodBgColor: Theme.Color.lightGreen,
+        informerBadBgColor: Theme.Color.red,
 
         areaSelectionBgColor: Theme.Color.darkRed,
       }
@@ -295,6 +309,11 @@ class ModeMaster {
     this.remove("line-based");
   }
 
+  getLayerType() {
+    for (let type of layerManager.getLayerTypes()) {
+      if (this.has(type)) return type;
+    }
+  }
   setSelectedLayerMode(layer) {
     this.removeLayerModes();
     this.add(layer.getType());
@@ -416,20 +435,8 @@ class EventManager {
         mousedown: [
           new EventDef([modeMaster.has, "draw", "text"],
               [modeMaster.change, "draw", "writing"], TextLayer.drawMouseDownEvent),
-          new EventDef([modeMaster.has, "draw", "free-line"],
-              [modeMaster.change, "draw", "drawing"], FreeLineLayer.drawMouseDownEvent),
-          new EventDef([modeMaster.has, "draw", "step-line"],
-              [modeMaster.change, "draw", "drawing"], StepLineLayer.drawMouseDownEvent),
-          new EventDef([modeMaster.has, "draw", "switch-line"],
-              [modeMaster.change, "draw", "drawing"], SwitchLineLayer.drawMouseDownEvent),
-          new EventDef([modeMaster.has, "draw", "free"],
-              [modeMaster.change, "draw", "drawing"], FreeLayer.drawMouseDownEvent),
-          new EventDef([modeMaster.has, "draw", "square"],
-              [modeMaster.change, "draw", "drawing"], SquareLayer.drawMouseDownEvent),
-          new EventDef([modeMaster.has, "draw", "diamond"],
-              [modeMaster.change, "draw", "drawing"], DiamondLayer.drawMouseDownEvent),
-          new EventDef([modeMaster.has, "draw", "table"],
-              [modeMaster.change, "draw", "drawing"], TableLayer.drawMouseDownEvent),
+          new EventDef([modeMaster.has, "draw"],
+              [modeMaster.change, "draw", "drawing"], Layer.drawMouseDownEvent),
           new EventDef([modeMaster.has, "writing", "text"],
               [], TextLayer.writingMouseDownEvent),
           new EventDef([modeMaster.has, "erase"],
@@ -525,9 +532,10 @@ class CharManager {
       "/": ["solid-thin", "solid-bold", "diag-forward", "line", "unicode", "ascii"],
 
       // Dashed lines
-      "¦": ["dashed", "line", "vertical", "unicode"],
       "'": ["dashed", "line", "vertical", "ascii"],
-      "-": ["dashed", "solid-bold", "solid-thin", "line", "lateral", "ascii", "unicode"],
+      "╸": ["dashed", "line", "lateral", "unicode"],
+      "╻": ["dashed", "line", "vertical", "unicode"],
+      "-": ["dashed", "solid-bold", "solid-thin", "line", "lateral", "ascii"],
 
       // Arrows
       "^": ["arrow", "up", "ascii"],
@@ -896,7 +904,7 @@ class LayerManager {
     for (let oldLayerId in layerLookup) {
       let oldLayer = layerLookup[oldLayerId].old;
       let newLayer = layerLookup[oldLayerId].new;
-      if (oldLayer.name == "table") {
+      if (oldLayer.is("table")) {
         for (let cellId in oldLayer.textLayers) {
           let oldTextLayerId = oldLayer.textLayers[cellId];
 
@@ -1004,7 +1012,7 @@ class LayerManager {
   }
 
   tidyAllTables(layersToDelete) {
-    for (let layer of this.layers.filter(layer => layer.getType() == "table")) {
+    for (let layer of this.layers.filter(layer => layer.is("table"))) {
       for (let key in layer.textLayers) {
         if (layersToDelete.includes(layer.textLayers[key])) delete layer.textLayers[key]
       }
@@ -1029,23 +1037,45 @@ class LayerManager {
     this.getLayersOrderedByZindex().forEach((layer) => layer.render());
   }
 
-  layerPixelIsVisible(targetLayer, pixel, potentialJoinerLayers=[]) {
+  layerPixelIsVisible(targetLayer, targetPixel) {
     // This checks if the value of a layer at a specific pixel is actually showing.
     // Otherwise, another layer using the same pixel is showing it's value in front.
+    // Note, joint pixels make this method annoyingly complicated...
 
-    // For each layer, we also check it isn't a joiner to the targetLayer,
-    // as that means it's probably only covering the joint pixel, which
-    // we still want to show for other joiners. The edge case that it's a
-    // joiner and doesn't properly hide other overlapped pixels is fine.
-
-    // We also consider potential joiners, as they'd never actually join
-    // if when attempting to connected (pixels match), the joiner layer was
-    //  hiding the joint layer.
-    let joinerLayers = this.getJoinersFromLayers([targetLayer]).concat(potentialJoinerLayers);
+    let targetIsJoinerPixel = targetLayer.getJoinerPixels().map(pixel => pixel.id()).includes(targetPixel.id());
+    let targetIsJointPixel = targetLayer.getJointPixels().map(pixel => pixel.id()).includes(targetPixel.id());
 
     // Descending
     for (let layer of this.getLayersOrderedByZindex().reverse()) {
-      if (layer.hasPixel(pixel.id()) && !joinerLayers.includes(layer.id)) return layer.id == targetLayer.id;
+      // If the pixel is either part of the layer, or used as a joint pixel by the layer.
+      let isUsingPixel = layer.usesPixel(targetPixel.id());
+
+      // We need to determine if layer and targetLayer are 'connected' at the target pixel,
+      // regardless of if a joint has been created yet.
+      let isJoinerToTargetLayerAtTargetPixel = (
+        layer.getJoinerPixels().map(pixel => pixel.id()).includes(targetPixel.id())
+        && targetIsJointPixel
+      )
+      let targetLayerIsJoinerToAtTargetPixel = (
+        layer.getJointPixels().map(pixel => pixel.id()).includes(targetPixel.id())
+        && targetIsJoinerPixel
+      )
+      let isConnectedToTargetLayer = isJoinerToTargetLayerAtTargetPixel || targetLayerIsJoinerToAtTargetPixel;
+      let isTargetLayer = layer.id == targetLayer.id;
+
+      // If the first layer to have the target pixel is the target layer, it's visible.
+      if (isTargetLayer && isUsingPixel) return true;
+
+      // If the first layer to have the target pixel is another layer,
+      // and that layer isn't connected to the target layer, it's not visible.
+      // If they are connected, we don't want them to hide each other because:
+      //  - Other layers may want to see and probe the joint pixel
+      //    (joiner pixel should not hide the joint pixel).
+      //  - A joint will never actually be possible.
+      //    (joiner pixel should not hide the joint pixel, otherwise it'll never make a joint!).
+      //  - Joint pixels aren't always on the layer, and are therefore 'transparent'
+      //    (joint pixels alone shouldn't hide joiner pixels).
+      if (!isTargetLayer && isUsingPixel && !isConnectedToTargetLayer) return false;
     }
     return false;
   }
@@ -1110,7 +1140,9 @@ class LayerManager {
   moveSelectedLayers(verticalDiff, lateralDiff) {
     let selectedLayers = this.getSelectedLayers();
     this.refresh(() => this.moveLayersAtomically(selectedLayers, verticalDiff, lateralDiff));
+    console.time("m");
     this.findJoints(selectedLayers);
+    console.timeEnd("m");
   }
 
   moveLayersToAvailableSpace(layers) {
@@ -1170,7 +1202,7 @@ class LayerManager {
         // If the selected layer is the lead / currently selected layer
         // Then we already know the activePixel is the resize pixel.
         resizePixel = activePixel;
-      } else if (resizeLayer.name == leadLayer.name && !leadLayer.isLine()) {
+      } else if (resizeLayer.getType() == leadLayer.getType() && !leadLayer.isLine()) {
         // If the lead layer is the same type as a selected layer,
         // we can use the same resize pixel position and resize the layer
         // in the same way for the best experience.
@@ -1225,7 +1257,6 @@ class LayerManager {
       // as resizing tables is used to add/remove columns, not move child
       // layers around.
       if (layer.hasTable()) continue;
-
       if (!layer.isResizable()) {
         // If the layer is not resizable, the best thing we can do is move it.
         if (layer.commit(() => layer.move(verticalDiff, lateralDiff))) layer.resizeJoinerLayers(true);
@@ -1341,11 +1372,13 @@ class LayerManager {
 
   groupSelectedLayersEvent(event) {
     this.groupManager.groupLayers(this.getSelectedLayers());
+    bodyComponent.informer.report("Successfully grouped", "good");
   }
 
   ungroupSelectedLayersEvent(event) {
     this.groupManager.ungroupLayers(this.getSelectedLayers());
     layerManager.unselectAll();
+    bodyComponent.informer.report("Successfully ungrouped", "good");
   }
 
   redrawLinesEvent(direction) {
@@ -1370,7 +1403,10 @@ class LayerManager {
   erasePixelEvent(event) {
     let activePixel = canvas.getPixelById(event.target.id);
     let layer = this.getLayerByPixelId(activePixel.id());
-    if (layer && layer.getType() != "free") return; // TODO show warning message
+    if (layer && layer.getType() != "free") {
+      bodyComponent.informer.report("Can only erase free drawings!", "bad");
+      return;
+    }
     if (layer) layer.erasePixel(activePixel.id());
     activePixel.clear();
   }
@@ -1435,6 +1471,10 @@ class Layer {
     return this.constructor.line;
   }
 
+  is(layerType) {
+    return this.getType() == layerType;
+  }
+
   constructor(firstPixelId) {
     this.setAllChars("solid-thin");
     this.id = this.makeId();
@@ -1451,7 +1491,6 @@ class Layer {
 
 
   setAllChars(lineForm) {
-    // TODO consider these for import
     this.lineForm = lineForm;
     this.lateralChar = charManager.getLateralLine(this.lineForm);
     this.verticalChar = charManager.getVerticalLine(this.lineForm);
@@ -1480,7 +1519,6 @@ class Layer {
   }
 
   encode() {
-    // TODO: arrow heads, joints, tables...
     return {
       ty: this.getType(),
       id: this.id,
@@ -1499,6 +1537,14 @@ class Layer {
 
   makeId() {
     return randomInt(1, 10000000).toString(); // TODO: Improve this. Use fromPixel as seed?
+  }
+
+  static drawMouseDownEvent(event) {
+    let layerType = modeMaster.getLayerType();
+    let layerClass = layerManager.getLayerClassByType(layerType);
+    let layer = new layerClass(event.target.id);
+    layerManager.add(layer);
+    layerManager.refresh(() => layer.draw(event.target.id));
   }
 
   static drawingMouseOverEvent(event) {
@@ -1530,7 +1576,7 @@ class Layer {
     modeMaster.add(
       layerManager.prepareLayerResizing(activePixel, layer)? "resizing": "moving"
     );
-    if (!modeMaster.has("ctrl") || layer.getType() == "table" || layer.hasTable()) {
+    if (!modeMaster.has("ctrl") || layer.is("table") || layer.hasTable()) {
       // Select all members of a group if not bypassed by ctrl to select a grouped
       // layer.
       // This bypass shouldn't work for tables / table children to avoid undefined behaviour.
@@ -1569,7 +1615,8 @@ class Layer {
 
     this.beginCommit();
 
-    // TODO move this to state bucket
+    // Take note of current joint pixels before a change
+    // so that joiner layers can be found before they are potentially changed.
     this.lastKeyedJointPixels = this.getKeyedJointPixels();
 
     // Attempted  the requested changes
@@ -1710,6 +1757,10 @@ class Layer {
 
   isJoinable() {
     return Boolean(this.getJointPixels().length);
+  }
+
+  isJoiner() {
+    return Boolean(this.getJoinerPixels().length);
   }
 
   getNearestResizePixel(pixel) {
@@ -1872,24 +1923,25 @@ class Layer {
   }
 
   probeJoint(layer, jointKey, jointPixel) {
-      var state = 0;
-      for (var probePixel of this.getJoinerPixels()) {
-        if(!layerManager.layerPixelIsVisible(layer, jointPixel, [this.id])) continue;
-        if (probePixel.isNear(jointPixel)) {
-          state = 1;
-          if (probePixel.is(jointPixel)) {
-            state = 2;
-            layer.join(this.id, jointKey);
-            // Break to avoid unjoining in the following iteration.
-            // Only one joiner/probe pixel of the same layer can join to the same jointPixel.
-            break;
-          }
+    let joinerPixels = this.getJoinerPixels();
+    if (!joinerPixels.length) return;
+    let visible = layerManager.layerPixelIsVisible(layer, jointPixel);
+    var state = 0;
+    for (var probePixel of joinerPixels) {
+      if (visible && probePixel.isNear(jointPixel)) {
+        state = 1;
+        if (probePixel.is(jointPixel)) {
+          state = 2;
+          layer.join(this.id, jointKey);
+          // Break to avoid unjoining in the following iteration.
+          // Only one joiner/probe pixel of the same layer can join to the same jointPixel.
+          break;
         }
+      }
       layer.unjoin(this.id, jointKey);
     }
-    return state
+    return state;
   }
-
 
   join(layerId, jointKey) {
     for (var joint of this.joints) {
@@ -1912,12 +1964,11 @@ class Layer {
   }
 
   hasPixel(id) {
-    // We include joint pixels so that z-index visibility works nicely.
-    // There is yet to be a reason not to do this.
-    return (
-      this.getPixelIndex(id) > -1 ||
-      this.getJointPixels().map(pixel => pixel.id()).includes(id)
-    );
+    return this.getPixelIndex(id) > -1;
+  }
+
+  usesPixel(id) {
+    return this.hasPixel(id) || this.getJointPixels().map(pixel => pixel.id()).includes(id);
   }
 
   getPixelIndex(id) {
@@ -2027,7 +2078,7 @@ class TextLayer extends Layer {
 
   static keyDownEvent(event) {
     var layer = layerManager.editingTextLayer;
-    if (layer && layer.getType() == "text") layerManager.refresh(() => layer.draw(event.key));
+    if (layer && layer.is("text")) layerManager.refresh(() => layer.draw(event.key));
   }
 
   static focusedOtherTextLayer(activePixel) {
@@ -2041,7 +2092,7 @@ class TextLayer extends Layer {
     }
 
     // Setup the newly selected layer (might be the same).
-    if (layer && layer.getType() == "text") {
+    if (layer && layer.is("text")) {
       layer.moveCursorToPixel(activePixel);
       layerManager.editingTextLayer = layer;
       return true;
@@ -2351,11 +2402,6 @@ class FreeLineLayer extends BaseLineLayer {
 
   static type = "free-line"
 
-  static drawMouseDownEvent(event) {
-    let layer = new FreeLineLayer(event.target.id);
-    layerManager.add(layer);
-  }
-
   drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
     let fromPixel = this.fromPixel;
@@ -2422,11 +2468,6 @@ class FreeLineLayer extends BaseLineLayer {
 class StepLineLayer extends BaseLineLayer {
 
   static type = "step-line";
-
-  static drawMouseDownEvent(event) {
-    let layer = new StepLineLayer(event.target.id);
-    layerManager.add(layer);
-  }
 
   getKeyedJointPixels() {
     var lastRow = this.getFirstPixel().row;
@@ -2539,11 +2580,6 @@ class StepLineLayer extends BaseLineLayer {
 class SwitchLineLayer extends BaseLineLayer {
 
   static type = "switch-line";
-
-  static drawMouseDownEvent(event) {
-    let layer = new SwitchLineLayer(event.target.id);
-    layerManager.add(layer);
-  }
 
   getKeyedJointPixels() {
     // This finds the two corners of a switch line.
@@ -2824,15 +2860,7 @@ class SwitchLineLayer extends BaseLineLayer {
 class FreeLayer extends Layer {
 
   static type = "free";
-
-
   freeChar = charManager.getFree();
-
-  static drawMouseDownEvent(event) {
-    let layer = new FreeLayer(event.target.id);
-    layerManager.add(layer);
-    layerManager.refresh(() => layer.draw(event.target.id));
-  }
 
   drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
@@ -2891,11 +2919,6 @@ class DiamondLayer extends Layer {
 
   static type = "diamond";
   static lineBased = true;
-
-  static drawMouseDownEvent(event) {
-    let layer = new DiamondLayer(event.target.id);
-    layerManager.add(layer);
-  }
 
   getKeyedJointPixels() {
     let firstPixel = this.getFirstPixel();
@@ -2980,11 +3003,6 @@ class SquareLayer extends SquareBoundLayer {
 
   static type = "square";
 
-  static drawMouseDownEvent(event) {
-    let layer = new SquareLayer(event.target.id);
-    layerManager.add(layer);
-  }
-
   getKeyedJointPixels() {
     let fp = this.getFirstPixel();
     if (this.pixels.length < 2) {
@@ -3062,7 +3080,7 @@ class TableLayer extends SquareBoundLayer {
 
   constructor(firstPixelId) {
     super(firstPixelId);
-    this.tblSizeLimit = 20; // TODO show warning message when hit limit
+    this.tblSizeLimit = 20;
     this.defaultCellContents = "text...";
     this.tblColDefaultWidth = this.defaultCellContents.length + 1; // 1 is added to account for the col line
     this.cellTextArchive = {};
@@ -3127,15 +3145,9 @@ class TableLayer extends SquareBoundLayer {
     // Copy row and col counts so that refresh() works immediately for copied tables.
     layerCopy.tblRows       = this.tblRows;
     layerCopy.tblCols       = this.tblCols;
-    layerCopy.tblRowHeights = this.tblRowHeights;
-    layerCopy.tblColWidths  = this.tblColWidths;
+    layerCopy.tblRowHeights = structuredClone(this.tblRowHeights);
+    layerCopy.tblColWidths  = structuredClone(this.tblColWidths);
     return layerCopy;
-  }
-
-  static drawMouseDownEvent(event) { // TODO these can be moved to a parent class now.
-    let layer = new TableLayer(event.target.id);
-    layerManager.add(layer);
-    layerManager.refresh(() => layer.draw(event.target.id));
   }
 
   getKeyedJointPixels() {
@@ -3200,7 +3212,10 @@ class TableLayer extends SquareBoundLayer {
       if (newTblRows == this.tblRows && newTblCols == this.tblCols) return;
       if (newTblCols == 0 || newTblRows == 0) return;
       // ...or if the size limit is hit...
-      if (newTblRows >= this.tblSizeLimit || newTblCols >= this.tblSizeLimit) return;
+      if (newTblRows >= this.tblSizeLimit || newTblCols >= this.tblSizeLimit) {
+        bodyComponent.informer.report("Table getting too big", "bad");
+        return;
+      };
     }
 
     // This sequence does one draw of the whole table.
@@ -3281,8 +3296,6 @@ class TableLayer extends SquareBoundLayer {
     let corners = this.getCornerPixels();
     this.setFromPixel(corners[0]);
     this.setToPixel(corners[2]);
-
-    // TODO also, work out why sleecting text in table allows for line based
 
     // The textLayer that has changed needs another chance to rollback
     // in case it's parent table has since become unhappy. Hence,
@@ -3819,6 +3832,7 @@ class Canvas extends Component {
     selection.addRange(range)
     document.execCommand('copy')
     window.getSelection().removeAllRanges()
+    bodyComponent.informer.report("Successfully copied work to clipboard!", "good");
   }
 
   defineTheme() {
@@ -3847,9 +3861,9 @@ class Canvas extends Component {
   }
 }
 
+
 class Settings extends Component {
 
-  css_border          = "1px solid #212121"; // TODO These can be based classed with buttons / mixin
   css_boxShadow       = "0px 0px 20px #403f3f";
   css_borderRadius    = "15px";
   css_padding         = "15px";
@@ -3925,17 +3939,30 @@ class Settings extends Component {
 
   defineChildren() {
     return [
-      new Component({css_fontSize: "50px", css_width: "100%", css_height: "15%", css_textAlign: "center", value: "⚙"}),
-      new Component({css_width: "100%", css_marginTop: "30px",
-        children: [
-          new Component({css_textAlign: "center", css_marginBottom: "10px", value: "Charset"}),
-        ].concat(this.charsetButtons)
-      }),
       new Component({
-        css_width: "100%", css_marginTop: "20px",
-        children: [
-          new Component({css_textAlign: "center", css_marginBottom: "10px", value: "Theme"}),
-        ].concat(this.themeButtons)
+        css_fontSize: "50px",
+        css_width: "100%",
+        css_height: "15%",
+        css_textAlign: "center",
+        value: "⚙",
+      }),
+      new Component({css_textAlign: "center", css_marginTop: "20px", value: "Charset"}),
+      new Component({
+        css_display: "flex",
+        css_columnGap: "3px",
+        css_justifyContent: "space-between",
+        css_width: "100%",
+        css_marginTop: "5px",
+        children: this.charsetButtons,
+      }),
+      new Component({css_textAlign: "center", css_marginTop: "20px", value: "Theme"}),
+      new Component({
+        css_display: "flex",
+        css_columnGap: "3px",
+        css_justifyContent: "space-between",
+        css_width: "100%",
+        css_marginTop: "5px",
+        children: this.themeButtons,
       }),
     ]
   }
@@ -3955,11 +3982,12 @@ class Button extends Component {
   css_paddingBottom    = "3px";
   css_borderRadius     = "15px";
   css_height           = "40px";
-  css_border           = "1px solid #212121";
+  css_border           = "1px solid";
   css_userSelect       = "none";
 
   defineTheme() {
     this.css("backgroundColor", "menuButtonBgColor");
+    this.css("borderColor", "menuButtonBorderColor");
     this.css("color", "menuButtonFgColor");
     this.selected? this.select(): this.unselect();
   }
@@ -3987,17 +4015,14 @@ class Button extends Component {
   }
 }
 
-class MenuButton extends Button {
 
+class MenuButton extends Button {
 
   css_marginLeft       = "5px";
   css_marginTop        = "10px";
-  css_height           = "40px";
   css_border           = "1px solid #212121";
   css_boxShadow        = "0px 0px 20px #403f3f";
-  css_borderRadius     = "15px";
   css_float            = "left";
-
 
   constructor (icon, name, showCondition, setModes, activeModes, callback=()=>{}) {
     super();
@@ -4032,7 +4057,7 @@ class MenuButton extends Button {
   defineChildren() {
     return [
       new Component({css_display: "inline-block", css_fontSize: "18px", value: this.icon}),
-      new Component({css_marginLeft: "5px", css_display: "inline-block", value: this.name}),
+      new Component({css_display: "inline-block", css_marginLeft: "5px", value: this.name}),
     ]
   }
 
@@ -4074,13 +4099,13 @@ class Menu extends Component {
 }
 
 class MainMenu extends Menu {
-  css_position       = "absolute";
   css_top            = "0";
   css_left           = "0";
   css_right          = "0";
   css_bottom         = "0";
-  css_margin         = "0 auto";
+  css_margin         = "15px auto";
   css_width          = "fit-content";
+  css_position       = "absolute";
   css_zIndex         = "100";
   css_height         = "7vh";
 
@@ -4170,12 +4195,61 @@ class CanvasDump extends Component {
   // If a user pastes an export in the same browser,
   // the following styles can get preserved.
   // Otherwise, good luck!
-  css_fontFamily = "monospace";
+  css_fontFamily      = "monospace";
   css_backgroundColor = "white";
-  css_color = "black";
-  css_whiteSpace = "pre-wrap";
+  css_color           = "black";
+  css_whiteSpace      = "pre-wrap";
   // Hide far away (body overflow is hidden)
-  css_marginLeft = "500vw";
+  css_marginLeft      = "500vw";
+}
+
+
+class Informer extends Component {
+  css_width            = "30%";
+  css_marginLeft       = "35%";
+  css_position         = "absolute";
+  css_marginTop        = "94vh";
+  css_borderRadius     = "15px";
+  css_boxShadow        = "0px 0px 20px grey";
+  css_fontSize         = "13px";
+  css_padding          = "5px";
+  css_textAlign        = "center";
+  css_zIndex           = "100";
+
+  moodCharComponent = new Component({css_fontSize: "20px", type: "span", css_verticalAlign: "middle"});
+  messageComponent = new Component({css_marginLeft: "10px", type: "span", css_verticalAlign: "middle"});
+
+  defineTheme() {
+    this.css("color", "bodyFgColor");
+  }
+
+  defineChildren() {
+    return [this.moodCharComponent, this.messageComponent];
+  }
+
+  report(message, mood) {
+    let moodChar = "";
+    switch (mood) {
+      case "good":
+        this.css("backgroundColor", "informerGoodBgColor");
+        moodChar = "✓";
+      break;
+      case "bad":
+        this.css("backgroundColor", "informerBadBgColor");
+        moodChar = "✕";
+      break;
+      default:
+        this.css("backgroundColor", "informerDefaultBgColor");
+    }
+    this.messageComponent.setValue(message);
+    this.moodCharComponent.setValue(moodChar);
+    this.show();
+    setTimeout(() => this.hide(), message.length * 150);
+  }
+
+  renderCallback() {
+    this.hide();
+  }
 }
 
 
@@ -4189,12 +4263,14 @@ class Body extends Component {
   }
 
   defineChildren() {
+    this.informer   = new Informer();
     this.settings   = new Settings();
     this.mainMenu   = new MainMenu();
     this.leftMenu   = new LeftMenu();
     this.canvas     = new Canvas();
     this.canvasDump = new CanvasDump();
     return [
+      this.informer,
       this.settings,
       this.mainMenu,
       this.leftMenu,
