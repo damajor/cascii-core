@@ -5,7 +5,6 @@
 
 FE  -
   - various todos
-  - paste text
   - intro / why ascii
   - manual page. shortcuts, etc.
   - BIG TEST
@@ -520,6 +519,7 @@ class EventManager {
 class CharManager {
 
     // Useful: https://www.w3.org/TR/xml-entity-names/025.html
+    // And: https://www.amp-what.com/unicode/search/dot
     charset = {
 
       // Dotted lines
@@ -529,9 +529,9 @@ class CharManager {
       // Solid lines
       "━": ["solid-bold", "line", "lateral", "unicode"],
       "┃": ["solid-bold", "line", "vertical", "unicode"],
+      "|": ["solid-thin", "solid-bold", "line", "vertical", "ascii"],
       "─": ["solid-thin", "line", "lateral", "unicode"],
       "│": ["solid-thin", "line", "vertical", "unicode"],
-      "|": ["solid-thin", "solid-bold", "line", "vertical", "ascii"],
       "\\": ["solid-thin", "solid-bold", "diag-back", "line", "unicode", "ascii"],
       "/": ["solid-thin", "solid-bold", "diag-forward", "line", "unicode", "ascii"],
 
@@ -562,9 +562,12 @@ class CharManager {
       "└": ["corner", "solid-thin", "bottom-left", "unicode"],
       "┘": ["corner", "solid-thin", "bottom-right", "unicode"],
 
+      "·": ["diamond-corner", "solid-thin", "solid-bold", "vertical", "lateral", "unicode"],
+
       "+": [
-        "corner", "solid-bold", "solid-thin", "dashed",
-        "ascii", "unicode", "top-left", "top-right",
+        "corner", "diamond-corner", "lateral", "vertical",
+        "solid-bold", "solid-thin", "dashed",
+        "ascii", "top-left", "top-right",
         "bottom-left", "bottom-right", "generic"
       ],
 
@@ -616,6 +619,10 @@ class CharManager {
 
     getCorner(lineForm, position) {
       return this.getBestChar("corner", position, lineForm, this.getCharset());
+    }
+
+    getDiamondCorner(lineForm, position) {
+      return this.getBestChar("diamond-corner", position, lineForm, this.getCharset());
     }
 
     getArrow (direction) {
@@ -1405,11 +1412,11 @@ class LayerManager {
   erasePixelEvent(event) {
     let activePixel = canvas.getPixelById(event.target.id);
     let layer = this.getLayerByPixelId(activePixel.id());
-    if (layer && layer.getType() != "free") {
+    if (layer && !layer.is("free")) {
       bodyComponent.informer.report("Can only erase free drawings!", "bad");
       return;
     }
-    if (layer) layer.erasePixel(activePixel.id());
+    if (layer) this.refresh(() => layer.erasePixel(activePixel.id()));
     activePixel.clear();
   }
 
@@ -1514,6 +1521,8 @@ class Layer {
     this.cornerTopRightChar = charManager.getCorner(this.lineForm, "top-right");
     this.cornerBottomLeftChar = charManager.getCorner(this.lineForm, "bottom-left");
     this.cornerBottomRightChar = charManager.getCorner(this.lineForm, "bottom-right");
+    this.cornerDiamondVerticalChar = charManager.getDiamondCorner(this.lineForm, "vertical");
+    this.cornerDiamondLateralChar = charManager.getDiamondCorner(this.lineForm, "lateral");
     this.cornerGenericChar = charManager.getCorner(this.lineForm, "generic");
     this.arrowUpChar    = charManager.getArrow("up");
     this.arrowDownChar  = charManager.getArrow("down");
@@ -2987,6 +2996,12 @@ class DiamondLayer extends Layer {
     if (this.pixels.length < 4) return {t: firstPixel, r: firstPixel, b: firstPixel, l: firstPixel};
     let [leftPixel, rightPixel, topPixel, bottomPixel] = this.getCornerPixels();
     return {
+      t: topPixel,
+      r: rightPixel,
+      b: bottomPixel,
+      l: leftPixel,
+    };
+    return {
       t: canvas.getPixelByRowCol(topPixel.row - 1, topPixel.col),
       r: canvas.getPixelByRowCol(rightPixel.row, rightPixel.col + 1),
       b: canvas.getPixelByRowCol(bottomPixel.row + 1, topPixel.col),
@@ -3037,7 +3052,10 @@ class DiamondLayer extends Layer {
     if (!corners.every(Boolean)) return;
 
     this.empty();
-    corners.forEach(pixel => this.add(pixel, this.cornerGenericChar));
+    this.add(corners[0], this.cornerDiamondLateralChar);
+    this.add(corners[1], this.cornerDiamondVerticalChar);
+    this.add(corners[2], this.cornerDiamondVerticalChar);
+    this.add(corners[3], this.cornerDiamondLateralChar);
     for (var backCount = 1; backCount < diff; backCount ++) {
       this.add(
         canvas.getPixelByRowCol(rightPixel.row - backCount, rightPixel.col - (backCount * 2)),
@@ -3904,6 +3922,7 @@ class Canvas extends Component {
 
   on_mouseDown() {
     bodyComponent.settings.hide();
+    bodyComponent.help.hide();
   }
 
   defineChildren() {
@@ -3923,6 +3942,36 @@ class Canvas extends Component {
   }
 }
 
+
+class Help extends Component {
+
+  css_boxShadow       = "0px 0px 20px #403f3f";
+  css_borderRadius    = "15px";
+  css_padding         = "15px";
+
+  css_width           = "500px";
+  css_height          = "500px";
+  css_backgroundColor = "bodyBgColor";
+  css_position        = "absolute";
+  css_zIndex          = "100";
+  css_marginLeft      = "calc(50vw - 250px)";
+  css_marginTop       = "20vh";
+  css_userSelect      = "none";
+  css_overflow        = "scroll";
+
+  defineTheme() {
+    this.css("background", "bodyBgColor");
+  }
+
+  defineChildren() {
+    return [];
+  }
+
+  renderCallback() {
+    this.hide();
+  }
+
+}
 
 class Settings extends Component {
 
@@ -4040,7 +4089,7 @@ class Button extends Component {
 
   type = "button"
   css_fontFamily       = "monospace";
-  css_fontSize         = "13px";
+  css_fontSize         = "11px";
   css_paddingBottom    = "3px";
   css_borderRadius     = "15px";
   css_height           = "40px";
@@ -4118,7 +4167,7 @@ class MenuButton extends Button {
 
   defineChildren() {
     return [
-      new Component({css_display: "inline-block", css_fontSize: "18px", value: this.icon}),
+      new Component({css_display: "inline-block", css_fontSize: "16px", value: this.icon}),
       new Component({css_display: "inline-block", css_marginLeft: "5px", value: this.name}),
     ]
   }
@@ -4202,6 +4251,8 @@ class MainMenu extends Menu {
       [], [], [], () => canvas.exportToClipboard()),
     new MenuButton("⚙", "Settings",
       [], [], [], () => bodyComponent.settings.toggle()),
+    new MenuButton("?", "Help",
+      [], [], [], () => bodyComponent.help.toggle()),
   ]
 }
 
@@ -4211,7 +4262,7 @@ class LeftMenu extends Menu {
   css_float     = "left";
   css_position  = "relative";
   css_zIndex    = "100";
-  css_marginTop = "7vh";
+  css_marginTop = "120px";
 
   buttons = [
     new MenuButtonLeft("-|", "lines",
@@ -4345,6 +4396,7 @@ class Body extends Component {
   defineChildren() {
     this.informer   = new Informer();
     this.settings   = new Settings();
+    this.help       = new Help();
     this.mainMenu   = new MainMenu();
     this.leftMenu   = new LeftMenu();
     this.canvas     = new Canvas();
@@ -4352,6 +4404,7 @@ class Body extends Component {
     return [
       this.informer,
       this.settings,
+      this.help,
       this.mainMenu,
       this.leftMenu,
       this.canvas,
