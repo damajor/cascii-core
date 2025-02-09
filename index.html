@@ -416,6 +416,10 @@ class EventManager {
     },
     window: {
       mouseEvents: {
+        paste: [
+          new EventDef([modeMaster.has, "writing", "text"],
+          [], (event) => layerManager.pasteToTextLayerEvent(event))
+        ],
         mouseup: [
           new EventDef([modeMaster.has, "drawing"],
               [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayersEvent(event)),
@@ -1449,6 +1453,18 @@ class LayerManager {
     this.refresh(() => this.getSelectedLayers().forEach(layer => layer.zindex = lowestZindex - 1));
     this.tidyLayers();
   }
+
+  pasteToTextLayerEvent(event) {
+    event.stopPropagation();
+    event.preventDefault();
+    let clipboardData = event.clipboardData || window.clipboardData;
+    let text = clipboardData.getData('Text').substring(0, 100);
+    this.refresh(
+      () => this.editingTextLayer.commit(
+        () => this.editingTextLayer.paste(text)
+      )
+    );
+  }
 }
 
 
@@ -2306,12 +2322,11 @@ class TextLayer extends Layer {
     }
   }
 
-
   checkNoWrites() {
     // This is a quick way of not loosing a layer just because
     // a user backspaced all characters.
     let starterCharIndex = this.contents.indexOf(this.starterChar);
-    if (this.noWrites && (starterCharIndex == 0)) {
+    if (this.noWrites && starterCharIndex == 0) {
       this.contents.splice(starterCharIndex, 1);
       this.cursor = 1;
       this.noWrites = false;
@@ -2325,6 +2340,13 @@ class TextLayer extends Layer {
       this.cursor = 1;
       this.noWrites = true;
     }
+  }
+
+  paste(text) {
+    this.contents.splice(this.cursor, 0, ...text.split(""));
+    this.checkNoWrites();
+    this.cursor += text.length - 1;
+    this.drawLayer();
   }
 }
 
