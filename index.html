@@ -1042,9 +1042,6 @@ class LayerManager {
     // Otherwise, another layer using the same pixel is showing it's value in front.
     // Note, joint pixels make this method annoyingly complicated...
 
-    let targetIsJoinerPixel = targetLayer.getJoinerPixels().map(pixel => pixel.id()).includes(targetPixel.id());
-    let targetIsJointPixel = targetLayer.getJointPixels().map(pixel => pixel.id()).includes(targetPixel.id());
-
     // Descending
     for (let layer of this.getLayersOrderedByZindex().reverse()) {
       // If the pixel is either part of the layer, or used as a joint pixel by the layer.
@@ -1054,16 +1051,16 @@ class LayerManager {
       // regardless of if a joint has been created yet.
       let isJoinerToTargetLayerAtTargetPixel = (
         layer.getJoinerPixels().map(pixel => pixel.id()).includes(targetPixel.id())
-        && targetIsJointPixel
       )
       let targetLayerIsJoinerToAtTargetPixel = (
         layer.getJointPixels().map(pixel => pixel.id()).includes(targetPixel.id())
-        && targetIsJoinerPixel
       )
       let isConnectedToTargetLayer = isJoinerToTargetLayerAtTargetPixel || targetLayerIsJoinerToAtTargetPixel;
       let isTargetLayer = layer.id == targetLayer.id;
 
       // If the first layer to have the target pixel is the target layer, it's visible.
+      // IsUsingPixel check here isn't really needed as targetLayer should always use targetPixel,
+      // nonetheless it makes more sense in case the provided target layer/pixel is wrong.
       if (isTargetLayer && isUsingPixel) return true;
 
       // If the first layer to have the target pixel is another layer,
@@ -1077,6 +1074,9 @@ class LayerManager {
       //    (joint pixels alone shouldn't hide joiner pixels).
       if (!isTargetLayer && isUsingPixel && !isConnectedToTargetLayer) return false;
     }
+
+    // There is no obvious case we should arrive here, unless the targetLayer somehow
+    // doesn't use the targetPixel.
     return false;
   }
 
