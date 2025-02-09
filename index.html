@@ -1540,6 +1540,17 @@ class Layer {
   }
 
   static drawMouseDownEvent(event) {
+    let activePixel = canvas.getPixelById(event.target.id);
+
+    // Just a little side hussle to auto-switch to selecting
+    // if drawing but an existing layer was touched.
+    if (layerManager.getLayerByPixelId(activePixel.id())) {
+      modeMaster.reset("select");
+      Layer.selectMouseDownEvent(event);
+      return;
+    }
+
+    // Otherwise we go ahead and create a new layer.
     let layerType = modeMaster.getLayerType();
     let layerClass = layerManager.getLayerClassByType(layerType);
     let layer = new layerClass(event.target.id);
