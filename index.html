@@ -5,12 +5,11 @@
 
 FE  -
   - various todos
-  - consider defaulting to select mode after draw
-    - resize pixels should switch to select
-  - copy / PASTE layers
-  - settings: free layer options, corner options
   - intro / why ascii
   - manual page. shortcuts, etc.
+  - BIG TEST
+  - merge main
+  - consider intergration testing
 
 BE -
   - save, share, manage, user, login google + github,  CRUD
@@ -1140,9 +1139,7 @@ class LayerManager {
   moveSelectedLayers(verticalDiff, lateralDiff) {
     let selectedLayers = this.getSelectedLayers();
     this.refresh(() => this.moveLayersAtomically(selectedLayers, verticalDiff, lateralDiff));
-    console.time("m");
     this.findJoints(selectedLayers);
-    console.timeEnd("m");
   }
 
   moveLayersToAvailableSpace(layers) {
@@ -1536,7 +1533,7 @@ class Layer {
   }
 
   makeId() {
-    return randomInt(1, 10000000).toString(); // TODO: Improve this. Use fromPixel as seed?
+    return randomInt(1, 10000000).toString();
   }
 
   static drawMouseDownEvent(event) {
@@ -2871,21 +2868,52 @@ class SwitchLineLayer extends BaseLineLayer {
 class FreeLayer extends Layer {
 
   static type = "free";
-  freeChar = charManager.getFree();
+  static freeChar = "_lines";
+
+  warningUnicodeChars = ["█", "•"];
+
+  static setFreeChar(char) {
+    FreeLayer.freeChar = char;
+  }
+
+  static decode(encodedLayer) {
+    let layer = Layer.decode(encodedLayer);
+    layer.pixels = encodedLayer.pxs.map(pixelId => canvas.getPixelById(pixelId));
+    layer.values = encodedLayer.vls;
+    return layer;
+  }
+
+  encode() {
+    let encoded = super.encode();
+    encoded.pxs  = this.pixels.map(pixel => pixel.id());
+    encoded.vls  = this.values;
+    return encoded;
+  }
+
+  redraw() {} // FreeLayers are static and should not be redrawable
+
+  characterWarning(value) {
+    if (this.warningUnicodeChars.includes(value) && charManager.charsetForm != "unicode") {
+      bodyComponent.informer.report("Warning: using unicode character in non-unicode mode");
+    }
+  }
 
   drawLayer(activePixelId, force=false) {
     this.setToPixel(canvas.getPixelById(activePixelId));
-
-    let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
-    let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
-
     var value = "";
-    if (verticalDiff > lateralDiff) {
-      value = this.verticalChar;
-    } else if (lateralDiff > verticalDiff) {
-      value = this.lateralChar;
-    }
+    if (FreeLayer.freeChar == "_lines") {
+      let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
+      let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
 
+      if (verticalDiff > lateralDiff) {
+        value = this.verticalChar;
+      } else if (lateralDiff > verticalDiff) {
+        value = this.lateralChar;
+      }
+    } else {
+      value = FreeLayer.freeChar;
+    }
+    this.characterWarning(value);
     this.add(this.toPixel, value);
     this.setFromPixel(this.toPixel);
   }
@@ -4163,6 +4191,24 @@ class LeftMenu extends Menu {
   css_marginTop = "7vh";
 
   buttons = [
+    new MenuButtonLeft("-|", "lines",
+      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("_lines")),
+    new MenuButtonLeft("█", " fill",
+      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("█")),
+    new MenuButtonLeft("x", "character",
+      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("x")),
+    new MenuButtonLeft("*", "character",
+      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("*")),
+    new MenuButtonLeft(".", "character",
+      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar(".")),
+    new MenuButtonLeft("+", "character",
+      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("+")),
+    new MenuButtonLeft("•", "character",
+      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("•")),
+    new MenuButtonLeft(">", "character",
+      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar(">")),
+    new MenuButtonLeft("<", "character",
+      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("<")),
     new MenuButtonLeft("⧉", "Copy",
       [modeMaster.has, "selected"], [], [], (event) => layerManager.copySelectedLayersEvent(event)),
     new MenuButtonLeft("⧓", "Group",
