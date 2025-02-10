@@ -4,6 +4,9 @@
 *** TODO ***
 
 FE  -
+  - zindex copy bug?
+  - auto-switch select on joint pixels :(
+  - redraw -> unicode -> cursors show everywgere
   - various todos
   - intro / why ascii
   - manual page. shortcuts, etc.
@@ -780,6 +783,7 @@ class LayerManager {
     FreeLineLayer,
     FreeLayer,
     StepLineLayer,
+    CircleLayer,
     SwitchLineLayer,
     SquareLayer,
     TextLayer,
@@ -983,7 +987,6 @@ class LayerManager {
   unselectAll() {
     this.layers.forEach(layer => layer.unselect());
     if (this.editingTextLayer) this.editingTextLayer.clearLastCursor();
-    modeMaster.removeLayerModes();
   }
 
   switchModeCallback() {
@@ -1387,6 +1390,7 @@ class LayerManager {
   ungroupSelectedLayersEvent(event) {
     this.groupManager.ungroupLayers(this.getSelectedLayers());
     layerManager.unselectAll();
+    modeMaster.reset("select");
     bodyComponent.informer.report("Successfully ungrouped", "good");
   }
 
@@ -2893,19 +2897,21 @@ class SwitchLineLayer extends BaseLineLayer {
 
 }
 
-/////////////////////////
-////// FREE LAYER ///////
-/////////////////////////
 
 class FreeLayer extends Layer {
 
   static type = "free";
-  static freeChar = "_lines";
+  static freeChar = "█";
 
   warningUnicodeChars = ["█", "•"];
 
   static setFreeChar(char) {
     FreeLayer.freeChar = char;
+  }
+
+  static startFreeDraw() {
+    layerManager.switchModeCallback();
+    modeMaster.add(FreeLayer.freeChar);
   }
 
   static decode(encodedLayer) {
@@ -2986,6 +2992,82 @@ class SquareBoundLayer extends Layer {
   }
 }
 
+class CircleLayer extends Layer {
+
+  static type = "circle";
+  static lineBased = true; // TODO decide how works with CharManager
+
+  getKeyedJointPixels() {
+    let firstPixel = this.getFirstPixel();
+    if (this.pixels.length < 4) return {t: firstPixel, r: firstPixel, b: firstPixel, l: firstPixel};
+    let [leftPixel, rightPixel, topPixel, bottomPixel] = this.getCornerPixels();
+    return {
+      t: canvas.getPixelByRowCol(topPixel.row - 1, topPixel.col),
+      r: canvas.getPixelByRowCol(rightPixel.row, rightPixel.col + 1),
+      b: canvas.getPixelByRowCol(bottomPixel.row + 1, topPixel.col),
+      l: canvas.getPixelByRowCol(leftPixel.row, leftPixel.col - 1),
+    };
+  }
+
+  getCornerPixels() {
+    var minCol;
+    var maxCol;
+    var minRow;
+    var maxRow;
+    for (let pixel of this.pixels) {
+      if (!minCol || pixel.col < minCol.col) minCol = pixel;
+      if (!maxCol || pixel.col > maxCol.col) maxCol = pixel;
+      if (!minRow || pixel.row < minRow.row) minRow = pixel;
+      if (!maxRow || pixel.row > maxRow.row) maxRow = pixel;
+    }
+    return [minCol, maxCol, minRow, maxRow];
+  }
+
+  getResizePixels() {
+    return this.getCornerPixels();
+  }
+
+  getResizeOppositePixel(targetPixel) {
+    let [minCol, maxCol, minRow, maxRow] = this.getCornerPixels();
+    return canvas.getPixelByRowCol(
+      minRow.row + roundHalf((maxRow.row - minRow.row) / 2),
+      minCol.col + roundHalf((maxCol.col - minCol.col) / 2),
+    )
+  }
+
+
+  drawLayer(activePixelId, force=false) {
+    this.empty();
+    this.setToPixel(canvas.getPixelById(activePixelId));
+    let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
+    let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
+    var diff = verticalDiff > lateralDiff? verticalDiff: roundHalf(lateralDiff / 2);
+    var radius = diff;
+    var [col, row] = [0, radius];
+    var p = 1 - radius;
+    while (col <= row) {
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col + col * 2), "/");
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col - col * 2), "\\");
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col + col * 2), "\\");
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col - col * 2), "/");
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col + row * 2), "/");
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col - row * 2), "\\");
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col + row * 2), "\\");
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col - row * 2), "/");
+      // A clever algorithm I found online that I don't really understand...
+      // https://en.wikipedia.org/wiki/Midpoint_circle_algorithm 
+      col += 1;
+      if (p < 0) {
+        p += 2 * col + 1;
+      } else {
+        row -= 1;
+        p += 2 * (col - row) + 1;
+      }
+    }
+  }
+}
+
+
 class DiamondLayer extends Layer {
 
   static type = "diamond";
@@ -3000,12 +3082,6 @@ class DiamondLayer extends Layer {
       r: rightPixel,
       b: bottomPixel,
       l: leftPixel,
-    };
-    return {
-      t: canvas.getPixelByRowCol(topPixel.row - 1, topPixel.col),
-      r: canvas.getPixelByRowCol(rightPixel.row, rightPixel.col + 1),
-      b: canvas.getPixelByRowCol(bottomPixel.row + 1, topPixel.col),
-      l: canvas.getPixelByRowCol(leftPixel.row, leftPixel.col - 1),
     };
   }
 
@@ -3958,6 +4034,16 @@ class Help extends Component {
   css_marginTop       = "20vh";
   css_userSelect      = "none";
   css_overflow        = "scroll";
+  css_scrollbarWidth  = "none";
+  css_textAlign       = "center";
+  value               = `
+    <h1>?</h1>
+    thi is a test 
+    <h2>FAQ</h2>
+    thi is a test 
+    <h2>Shortcuts</h2>
+    this inweg
+  `;
 
   defineTheme() {
     this.css("background", "bodyBgColor");
@@ -4155,8 +4241,8 @@ class MenuButton extends Button {
   }
 
   on_mouseDown() {
-    this.callback();
     this.setModes();
+    this.callback();
     if (!this.activeModes.length) super.on_mouseDown();
   }
 
@@ -4225,6 +4311,8 @@ class MainMenu extends Menu {
       [], [modeMaster.reset, "select"], ["selected", "select"], () => layerManager.switchModeCallback()),
     new MenuButton("◻", "Square",
       [], [modeMaster.reset, "draw", "square", "dsbutton"], ["dsbutton"], () => layerManager.switchModeCallback()),
+    new MenuButton("◯", "Circle",
+      [], [modeMaster.reset, "draw", "circle", "cbutton"], ["cbutton"], () => layerManager.switchModeCallback()),
     new MenuButton("t",  "Text",
       [], [modeMaster.reset, "draw", "text", "dtbutton"], ["writing", "dtbutton"], () => layerManager.switchModeCallback()),
     new MenuButton("/", " Line",
@@ -4238,7 +4326,7 @@ class MainMenu extends Menu {
     new MenuButton("᎒᎒᎒", "Table",
       [], [modeMaster.reset, "draw", "table", "dtblbutton"], ["dtblbutton"], () => layerManager.switchModeCallback()),
     new MenuButton("∿", "Free",
-      [], [modeMaster.reset, "draw", "free", "dfbutton"], ["dfbutton"], () => layerManager.switchModeCallback()),
+      [], [modeMaster.reset, "draw", "free", "dfbutton"], ["dfbutton"], () => FreeLayer.startFreeDraw()),
     new MenuButton("⌫", "Erase",
       [], [modeMaster.reset, "erase", "ebutton"], ["ebutton"], () => layerManager.switchModeCallback()),
     new MenuButton("↺", "Undo",
@@ -4264,25 +4352,20 @@ class LeftMenu extends Menu {
   css_zIndex    = "100";
   css_marginTop = "120px";
 
+  drawFreeOptions = [
+    ["_lines", "-|", "lines"],
+    ["█", "█", "fill"],
+    ["x", "x", "character"],
+    ["*", "*", "character"],
+    [".", ".", "character"],
+    ["+", "+", "character"],
+    ["•", "•", "character"],
+    [">", ">", "character"],
+    ["<", "<", "character"],
+  ];
+  
+
   buttons = [
-    new MenuButtonLeft("-|", "lines",
-      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("_lines")),
-    new MenuButtonLeft("█", " fill",
-      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("█")),
-    new MenuButtonLeft("x", "character",
-      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("x")),
-    new MenuButtonLeft("*", "character",
-      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("*")),
-    new MenuButtonLeft(".", "character",
-      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar(".")),
-    new MenuButtonLeft("+", "character",
-      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("+")),
-    new MenuButtonLeft("•", "character",
-      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("•")),
-    new MenuButtonLeft(">", "character",
-      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar(">")),
-    new MenuButtonLeft("<", "character",
-      [modeMaster.has, "draw", "free"], [], [], (event) => FreeLayer.setFreeChar("<")),
     new MenuButtonLeft("⧉", "Copy",
       [modeMaster.has, "selected"], [], [], (event) => layerManager.copySelectedLayersEvent(event)),
     new MenuButtonLeft("⧓", "Group",
@@ -4311,12 +4394,31 @@ class LeftMenu extends Menu {
       [modeMaster.has, "selected", "line-based"], [], [], () => layerManager.redrawLineBasedEvent("solid-thin")),
   ]
 
+  drawFreeButtons() {
+    let buttons = [];
+    for (let [char, icon, name] of this.drawFreeOptions) {
+      buttons.push(
+        new MenuButtonLeft(
+          icon,
+          name,
+          [modeMaster.has, "draw", "free"],
+          [modeMaster.reset, "draw", "free", "dfbutton", char], [char], (event) => FreeLayer.setFreeChar(char)
+        )
+      )
+    }
+    return buttons;
+  }
+
   refresh() {
     super.refresh();
     this.hide();
     if (this.buttons.map(button => button.showCondition()).some(Boolean)) this.show();
   }
-
+  
+  defineChildren() {
+    this.buttons = this.buttons.concat(this.drawFreeButtons()); 
+    return super.defineChildren();
+  }
 }
 
 
