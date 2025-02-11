@@ -4,10 +4,6 @@
 *** TODO ***
 
 FE  -
-  - diagnoal down arrows direction fix
-  - zindex copy bug?
-  - auto-switch select on joint pixels :(
-  - redraw -> unicode -> cursors show everywgere
   - various todos
   - intro / why ascii
   - manual page. shortcuts, etc.
@@ -327,11 +323,10 @@ class ModeMaster {
   }
 }
 
+
 ////////////////
 //// EVENTS ////
 ////////////////
-
-
 
 class EventDef {
   constructor(modeCondition, modeUpdate, callback=()=>{}) {
@@ -419,6 +414,9 @@ class EventManager {
     },
     window: {
       mouseEvents: {
+        resize: [
+          new EventDef([], [], (event) => canvas.scale()),
+        ],
         paste: [
           new EventDef([modeMaster.has, "writing", "text"],
           [], (event) => layerManager.pasteToTextLayerEvent(event))
@@ -637,11 +635,6 @@ class CharManager {
       return this.getBestChar("free");
     }
 }
-
-
-////////////////////
-////// LAYERS //////
-////////////////////
 
 
 class GroupManager {
@@ -1061,18 +1054,14 @@ class LayerManager {
     for (let layer of this.getLayersOrderedByZindex().reverse()) {
       // If the pixel is either part of the layer, or used as a joint pixel by the layer.
       let isUsingPixel = layer.usesPixel(targetPixel.id());
+      let isTargetLayer = layer.id == targetLayer.id;
 
       // We need to determine if layer and targetLayer are 'connected' at the target pixel,
       // regardless of if a joint has been created yet.
-      let isJoinerToTargetLayerAtTargetPixel = (
-        layer.getJoinerPixels().map(pixel => pixel.id()).includes(targetPixel.id())
-      )
-      let targetLayerIsJoinerToAtTargetPixel = (
-        layer.getJointPixels().map(pixel => pixel.id()).includes(targetPixel.id())
-      )
-      let isConnectedToTargetLayer = isJoinerToTargetLayerAtTargetPixel || targetLayerIsJoinerToAtTargetPixel;
-      let isTargetLayer = layer.id == targetLayer.id;
-
+      let isConnectedToTargetLayer = (
+        layer.hasJoinerPixel(targetPixel.id()) ||
+        layer.hasJointPixel(targetPixel.id())
+      );
       // If the first layer to have the target pixel is the target layer, it's visible.
       // IsUsingPixel check here isn't really needed as targetLayer should always use targetPixel,
       // nonetheless it makes more sense in case the provided target layer/pixel is wrong.
@@ -1361,12 +1350,14 @@ class LayerManager {
 
   selectMouseOverEvent(event) {
     let activePixel = canvas.getPixelById(event.target.id);
-    for (var layer of this.layers) {
-      // Avoid showing / unshowing resize pixels as they're
-      // already permanently on for selected layers.
-      if (layer.isSelected()) continue;
+    // Ascending
+    for (let layer of this.getLayersOrderedByZindex()) {
       for (var resizePixel of layer.getResizePixels()) {
-        if (activePixel.isNear(resizePixel) && this.layerPixelIsVisible(layer, resizePixel)) {
+        if (
+          (layer.isSelected() ||
+          activePixel.isNear(resizePixel)) &&
+          this.layerPixelIsVisible(layer, resizePixel)
+        ) {
           resizePixel.renderResizable();
         } else {
           resizePixel.renderWasSelected();
@@ -1480,6 +1471,10 @@ class LayerManager {
 }
 
 
+///////////////////
+///// LAYERS //////
+///////////////////
+
 class Layer {
   static type = "base";
   static lineBased = false;
@@ -1551,7 +1546,7 @@ class Layer {
       ty: this.getType(),
       id: this.id,
       fp: this.fromPixel.id(),
-      tp: this.toPixel.id(), // TODO when importing, canvas size will need to use these
+      tp: this.toPixel.id(),
       zi: this.zindex,
       lf: this.lineForm,
       jts: this.joints,
@@ -1569,10 +1564,14 @@ class Layer {
 
   static drawMouseDownEvent(event) {
     let activePixel = canvas.getPixelById(event.target.id);
-
     // Just a little side hussle to auto-switch to selecting
     // if drawing but an existing layer was touched.
-    if (layerManager.getLayerByPixelId(activePixel.id())) {
+    let selectLayer = layerManager.getLayerByPixelId(activePixel.id())
+    if (
+      selectLayer
+      && !selectLayer.hasJointPixel(activePixel.id())
+      && !selectLayer.hasJoinerPixel(activePixel.id())
+    ) {
       modeMaster.reset("select");
       Layer.selectMouseDownEvent(event);
       return;
@@ -1615,7 +1614,7 @@ class Layer {
     modeMaster.add(
       layerManager.prepareLayerResizing(activePixel, layer)? "resizing": "moving"
     );
-    if (!modeMaster.has("ctrl") || layer.is("table") || layer.hasTable()) {
+    if (!modeMaster.has("shift") || layer.is("table") || layer.hasTable()) {
       // Select all members of a group if not bypassed by ctrl to select a grouped
       // layer.
       // This bypass shouldn't work for tables / table children to avoid undefined behaviour.
@@ -1810,6 +1809,14 @@ class Layer {
     return this.getResizePixels().map(pixel => pixel.id()).indexOf(targetPixel.id());
   }
 
+  hasJoinerPixel(pixelId) {
+    return this.getJoinerPixels().map(pixel => pixel.id()).includes(pixelId);
+  }
+
+  hasJointPixel(pixelId) {
+    return this.getJointPixels().map(pixel => pixel.id()).includes(pixelId);
+  }
+
   clear() {
     this.pixels.forEach((pixel) => pixel.clear());
   }
@@ -1851,8 +1858,10 @@ class Layer {
       // repoint joints to new layers.
       layerCopy.joints = this.joints.map(joint => structuredClone(joint));
       layerCopy.id = this.id;
-
       layerCopy.zindex = this.zindex;
+    } else {
+      // By default, a copied layer should appear infront of it's original.
+      layerCopy.zindex = this.zindex + 1;
     }
     layerCopy.setFromPixel(this.fromPixel);
     layerCopy.setToPixel(this.toPixel);
@@ -1890,6 +1899,7 @@ class Layer {
   }
 
   renderSelected() {
+    // Don't show joint pixels if the layer is selected.
     this.getJointPixels().forEach(pixel => pixel.renderWasSelected());
     this.pixels.forEach(pixel => pixel.renderSelected());
     this.getResizePixels().forEach(pixel => pixel.renderResizable());
@@ -2007,7 +2017,7 @@ class Layer {
   }
 
   usesPixel(id) {
-    return this.hasPixel(id) || this.getJointPixels().map(pixel => pixel.id()).includes(id);
+    return this.hasPixel(id) || this.hasJointPixel(id);
   }
 
   getPixelIndex(id) {
@@ -2050,10 +2060,6 @@ class Layer {
   }
 }
 
-
-/////////////////////////
-////// TEXT LAYER ///////
-/////////////////////////
 
 class TextLayer extends Layer {
 
@@ -2110,7 +2116,7 @@ class TextLayer extends Layer {
   static writingMouseDownEvent(event) {
     let activePixel = canvas.getPixelById(event.target.id);
     if (!TextLayer.focusedOtherTextLayer(activePixel)) {
-      modeMaster.reset("select");
+      modeMaster.change("writing", "draw");
       layerManager.unselectAll();
     }
   }
@@ -2308,7 +2314,7 @@ class TextLayer extends Layer {
     this.checkNoWrites();
   }
 
-  drawLayer() {
+  drawLayer(_, force=false) {
     // Ensure the cursor is cleared incase pre-render clearing
     // didn't (if the cursor isn't on the layer's pixel).
     this.clearLastCursor();
@@ -2326,7 +2332,9 @@ class TextLayer extends Layer {
       );
       // Writing out of bounds. Stop the writing! Let a rollback take care of it.
       if (!pixel) return;
-      if (this.cursor == i + 1) {
+
+      // Draw the cursor if this isn't a redraw (forced).
+      if (this.cursor == i + 1 && !force) {
         this.lastCursorPixel = pixel;
         pixel.startCursor();
       }
@@ -2364,9 +2372,6 @@ class TextLayer extends Layer {
   }
 }
 
-/////////////////////////
-////// LINE LAYER ///////
-/////////////////////////
 
 class BaseLineLayer extends Layer {
 
@@ -2479,7 +2484,10 @@ class FreeLineLayer extends BaseLineLayer {
 
     var startValue = value;
     var endValue = value;
-    if (Math.abs(verticalDiff) > Math.abs(lateralDiff)) {
+    // We double verticalDiff to give it a bias here,
+    // as it looks better given width < height,
+    // (~double pixels in same visual distance laterally).
+    if (Math.abs(verticalDiff) * 2 > Math.abs(lateralDiff)) {
       if (toPixel.isAbove(fromPixel)) {
         endValue = (this.hasArrowLeft) ? this.arrowUpChar : value;
         startValue = (this.hasArrowRight) ? this.arrowDownChar : value;
@@ -2959,10 +2967,6 @@ class FreeLayer extends Layer {
 }
 
 
-//////////////////////
-//// SQUARE LAYER ////
-//////////////////////
-
 class SquareBoundLayer extends Layer {
   static lineBased = true;
 
@@ -2993,10 +2997,11 @@ class SquareBoundLayer extends Layer {
   }
 }
 
+
 class CircleLayer extends Layer {
 
   static type = "circle";
-  static lineBased = true; // TODO decide how works with CharManager
+  static lineBased = true;
 
   getKeyedJointPixels() {
     let firstPixel = this.getFirstPixel();
@@ -3047,16 +3052,19 @@ class CircleLayer extends Layer {
     var [col, row] = [0, radius];
     var p = 1 - radius;
     while (col <= row) {
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col + col * 2), "/");
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col - col * 2), "\\");
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col + col * 2), "\\");
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col - col * 2), "/");
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col + row * 2), "/");
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col - row * 2), "\\");
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col + row * 2), "\\");
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col - row * 2), "/");
+      for (var i = 0; i <= 1; i ++) {
+        // This so that we will in the lateral gaps given columns are factored by 2.
+        this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col + col * 2 - i), this.lateralChar);
+        this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col - col * 2 - i), this.lateralChar);
+        this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col + col * 2 - i), this.lateralChar);
+        this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col - col * 2 - i), this.lateralChar);
+      }
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col + row * 2), this.verticalChar);
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col - row * 2), this.verticalChar);
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col + row * 2), this.verticalChar);
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col - row * 2), this.verticalChar);
       // A clever algorithm I found online that I don't really understand...
-      // https://en.wikipedia.org/wiki/Midpoint_circle_algorithm 
+      // https://en.wikipedia.org/wiki/Midpoint_circle_algorithm
       col += 1;
       if (p < 0) {
         p += 2 * col + 1;
@@ -3226,10 +3234,6 @@ class SquareLayer extends SquareBoundLayer {
     }
   }
 }
-
-/////////////////////
-//// TABLE LAYER ////
-/////////////////////
 
 
 class TableLayer extends SquareBoundLayer {
@@ -3636,9 +3640,11 @@ class TableLayer extends SquareBoundLayer {
   }
 }
 
+
 /////////////////////
 //// COMPONENTS /////
 /////////////////////
+
 class Component {
   _MagicMethodEventPrefix = "on";
   _MagicPropCssPrefix = "css";
@@ -3756,12 +3762,10 @@ class Pixel extends Component {
 
   css_position = "absolute";
 
-  constructor(size, widthDivider, row, col) {
+  constructor(row, col) {
     super();
     this.row = row;
     this.col = col;
-    this.size = size;
-    this.widthDivider = widthDivider;
     this.defaultBorder = "none";
     this.cursorFlashInterval = null;
     this.selected = false;
@@ -3888,42 +3892,39 @@ class Pixel extends Component {
     return closestPixel;
   }
 
+  scale(size, widthDivider) {
+    this.css("marginLeft", `${this.col * size * widthDivider}px`);
+    this.css("marginTop", `${this.row * size}px`);
+    this.css("height", `${size}px`);
+    this.css("width", `${size * widthDivider}px`);
+  }
+
   renderCallback() {
     this.renderNormal();
-    this.css("marginLeft", `${this.col * this.size * this.widthDivider}px`);
-    this.css("marginTop", `${this.row * this.size}px`);
-    this.css("height", `${this.size}px`);
-    this.css("width", `${this.size * this.widthDivider}px`);
-    this.setValue("");
+    this.scale();
   }
 }
 
-////////////////
-//// CANVAS ////
-////////////////
-
-class Canvas extends Component {
+class CanvasComponent extends Component {
 
   type = "div";
 
-  rowCount = 60;
-  colCount = 160;
+  rowCount = 65;
+  colCount = 225;
 
   css_userSelect = "none";
   css_position   = "absolute";
   css_zIindex    = "0";
-  pixelSize = 14;
+  css_borderBottom     = "1px solid grey";
   pixelWidthDivider = 0.5;
 
   constructor() {
     super();
     this.pixels = {};
-    this.setRowColWindowFit();
   }
 
-  setRowColWindowFit() {
-    this.rowCount = roundHalf(window.innerHeight / this.pixelSize) - 1;
-    this.colCount = roundHalf(window.innerWidth / (this.pixelSize * this.pixelWidthDivider)) - 1;
+  calcPixelSize() {
+    return roundDown(window.innerWidth / this.colCount / this.pixelWidthDivider);
   }
 
   getPixelById(id) {
@@ -3998,52 +3999,85 @@ class Canvas extends Component {
   }
 
   on_mouseDown() {
-    bodyComponent.settings.hide();
-    bodyComponent.help.hide();
+    bodyComponent.hidePopups();
   }
 
   defineChildren() {
     for (var row = 0; row < this.rowCount; row++) {
       for (var col = 0; col < this.colCount; col++) {
-        let pixel = new Pixel(this.pixelSize, this.pixelWidthDivider, row, col);
+        let pixel = new Pixel(row, col);
         this.pixels[pixel.id()] = pixel;
       }
     }
     return Object.values(this.pixels);
   }
 
+  scale() {
+    let pixelSize = this.calcPixelSize();
+    this.css("width", `${this.colCount * pixelSize * this.pixelWidthDivider}px`);
+    this.css("height", `${this.rowCount * pixelSize}px`);
+    this.css("fontSize", `${pixelSize}px`);
+    Object.values(this.pixels).forEach(pixel => pixel.scale(pixelSize, this.pixelWidthDivider));
+  }
+
   renderCallback() {
-    this.css("width", `${this.colCount * this.pixelSize * this.pixelWidthDivider}px`);
-    this.css("height", `${this.rowCount * this.pixelSize}px`);
-    this.css("fontSize", `${this.pixelSize}px`);
+    this.scale();
+  }
+}
+
+class PopupComponent extends Component {
+  css_boxShadow       = "0px 0px 20px #403f3f";
+  css_borderRadius    = "15px";
+  css_padding         = "15px";
+  css_backgroundColor = "bodyBgColor";
+  css_position        = "absolute";
+  css_zIndex          = "100";
+  css_marginTop       = "15vh";
+  css_userSelect      = "none";
+
+  isPopup = true;
+
+  toggle() {
+    bodyComponent.hidePopups();
+    super.toggle();
   }
 }
 
 
-class Help extends Component {
-
-  css_boxShadow       = "0px 0px 20px #403f3f";
-  css_borderRadius    = "15px";
-  css_padding         = "15px";
-
+class HelpComponent extends PopupComponent {
   css_width           = "500px";
   css_height          = "500px";
-  css_backgroundColor = "bodyBgColor";
-  css_position        = "absolute";
-  css_zIndex          = "100";
   css_marginLeft      = "calc(50vw - 250px)";
-  css_marginTop       = "20vh";
-  css_userSelect      = "none";
   css_overflow        = "scroll";
   css_scrollbarWidth  = "none";
-  css_textAlign       = "center";
   value               = `
-    <h1>?</h1>
-    thi is a test 
-    <h2>FAQ</h2>
-    thi is a test 
-    <h2>Shortcuts</h2>
-    this inweg
+<div style='text-align: center;'><h2>Hi</h2>
+
+<p>
+This is the first well-equipped ASCII diagram builder available on the internet.
+It stresses portability, simplicity, and immediateness. ASCII diagrams are
+the best balance between pen to paper and advanced graphical builders, while also allowing
+users to present visual information in places that can
+only render text (such as in code, consoles, primitive displays, and so on).
+</p>
+<p>
+Or, maybe, you're just too good for file formats, attaching documents and over-styled distractions.
+</p>
+<h2>FAQ</h2>
+<h2>Usage</h2>
+<h2>Shortcuts</h2>
+</div>
+<span style='white-space: pre-wrap'>
+<b>g</b>                   Group
+<b>ctrl-c</b>              Copy layer
+<b>ctrl-z</b>              Undo
+<b>ctrl-shift-z</b>        Redo
+<b>ctrl-a</b>              Select all
+<b>backspace/delete</b>    Delete layer
+<b>shift-click</b>         Multi-select or single-select member of group.
+<b>arrow keys</b>          Move layer
+<b>ctrl-v</b>              Paste text (when editing text)
+</span>
   `;
 
   defineTheme() {
@@ -4060,30 +4094,20 @@ class Help extends Component {
 
 }
 
-class Settings extends Component {
-
-  css_boxShadow       = "0px 0px 20px #403f3f";
-  css_borderRadius    = "15px";
-  css_padding         = "15px";
-
+class SettingsComponent extends PopupComponent {
   css_width           = "300px";
-  css_height          = "300px";
-  css_backgroundColor = "bodyBgColor";
-  css_position        = "absolute";
-  css_zIndex          = "1000";
+  css_height          = "250px";
   css_marginLeft      = "calc(50vw - 150px)";
-  css_marginTop       = "20vh";
-  css_userSelect      = "none";
 
   charsetButtons = [
-    new Button({
+    new ButtonComponent({
       charsetId: "ascii",
       selectByDefault: charManager.getCharset() == "ascii",
-      value: "Ascii",
+      value: "ASCII",
       css_width: "50%",
       on_click: () => this.setCharset("ascii"),
     }),
-    new Button({
+    new ButtonComponent({
       charsetId: "unicode",
       selectByDefault: charManager.getCharset() == "unicode",
       value: "Unicode",
@@ -4092,21 +4116,21 @@ class Settings extends Component {
     }),
   ];
   themeButtons = [
-    new Button({
+    new ButtonComponent({
       themeId: "darkTheme",
       selectByDefault: themeManager.defaultTheme == "darkTheme",
       css_width: "33%",
       value: "Dark",
       on_click: () => this.setTheme("darkTheme")
     }),
-    new Button({
+    new ButtonComponent({
       themeId: "lightTheme",
       selectByDefault: themeManager.defaultTheme == "lightTheme",
       css_width: "33%",
       value: "Light",
       on_click: () => this.setTheme("lightTheme")
     }),
-    new Button({
+    new ButtonComponent({
       themeId: "consoleTheme",
       selectByDefault: themeManager.defaultTheme == "consoleTheme",
       css_width: "33%",
@@ -4144,7 +4168,7 @@ class Settings extends Component {
         css_textAlign: "center",
         value: "⚙",
       }),
-      new Component({css_textAlign: "center", css_marginTop: "20px", value: "Charset"}),
+      new Component({css_textAlign: "center", css_marginTop: "30px", value: "Charset"}),
       new Component({
         css_display: "flex",
         css_columnGap: "3px",
@@ -4172,7 +4196,7 @@ class Settings extends Component {
 }
 
 
-class Button extends Component {
+class ButtonComponent extends Component {
 
   type = "button"
   css_fontFamily       = "monospace";
@@ -4214,13 +4238,11 @@ class Button extends Component {
 }
 
 
-class MenuButton extends Button {
+class MenuButtonComponent extends ButtonComponent {
 
-  css_marginLeft       = "5px";
   css_marginTop        = "10px";
   css_border           = "1px solid #212121";
   css_boxShadow        = "0px 0px 20px #403f3f";
-  css_float            = "left";
 
   constructor (icon, name, showCondition, setModes, activeModes, callback=()=>{}) {
     super();
@@ -4271,12 +4293,12 @@ class MenuButton extends Button {
   }
 }
 
-class MenuButtonLeft extends MenuButton {
+class MenuButtonLeftComponent extends MenuButtonComponent {
   css_width = "100%";
 }
 
 
-class Menu extends Component {
+class MenuComponent extends Component {
 
   unselectAll() {
     this.buttons.forEach(button => button.unselect());
@@ -4296,11 +4318,14 @@ class Menu extends Component {
   }
 }
 
-class MainMenu extends Menu {
+class MainMenuComponent extends MenuComponent {
   css_top            = "0";
   css_left           = "0";
   css_right          = "0";
   css_bottom         = "0";
+  css_display        = "flex";
+  css_columnGap      = "3px";
+  css_justifyContent = "space-between";
   css_margin         = "15px auto";
   css_width          = "fit-content";
   css_position       = "absolute";
@@ -4308,44 +4333,44 @@ class MainMenu extends Menu {
   css_height         = "7vh";
 
   buttons = [
-    new MenuButton("➤", "Select",
+    new MenuButtonComponent("➤", "Select",
       [], [modeMaster.reset, "select"], ["selected", "select"], () => layerManager.switchModeCallback()),
-    new MenuButton("◻", "Square",
+    new MenuButtonComponent("◻", "Square",
       [], [modeMaster.reset, "draw", "square", "dsbutton"], ["dsbutton"], () => layerManager.switchModeCallback()),
-    new MenuButton("◯", "Circle",
+    new MenuButtonComponent("◯", "Circle",
       [], [modeMaster.reset, "draw", "circle", "cbutton"], ["cbutton"], () => layerManager.switchModeCallback()),
-    new MenuButton("t",  "Text",
+    new MenuButtonComponent("t",  "Text",
       [], [modeMaster.reset, "draw", "text", "dtbutton"], ["writing", "dtbutton"], () => layerManager.switchModeCallback()),
-    new MenuButton("/", " Line",
+    new MenuButtonComponent("/", " Line",
       [], [modeMaster.reset, "draw", "line", "free-line", "dflbutton"], ["dflbutton"], () => layerManager.switchModeCallback()),
-    new MenuButton("_|", "Step",
+    new MenuButtonComponent("_|", "Step",
       [], [modeMaster.reset, "draw", "line", "step-line", "dslbutton"], ["dslbutton"], () => layerManager.switchModeCallback()),
-    new MenuButton("_|‾", "Switch",
+    new MenuButtonComponent("_|‾", "Switch",
       [], [modeMaster.reset, "draw", "line", "switch-line", "dswlbutton"], ["dswlbutton"], () => layerManager.switchModeCallback()),
-    new MenuButton("◇", "Diamond",
+    new MenuButtonComponent("◇", "Diamond",
       [], [modeMaster.reset, "draw", "diamond", "ddibutton"], ["ddibutton"], () => layerManager.switchModeCallback()),
-    new MenuButton("᎒᎒᎒", "Table",
+    new MenuButtonComponent("᎒᎒᎒", "Table",
       [], [modeMaster.reset, "draw", "table", "dtblbutton"], ["dtblbutton"], () => layerManager.switchModeCallback()),
-    new MenuButton("∿", "Free",
+    new MenuButtonComponent("∿", "Free",
       [], [modeMaster.reset, "draw", "free", "dfbutton"], ["dfbutton"], () => FreeLayer.startFreeDraw()),
-    new MenuButton("⌫", "Erase",
+    new MenuButtonComponent("⌫", "Erase",
       [], [modeMaster.reset, "erase", "ebutton"], ["ebutton"], () => layerManager.switchModeCallback()),
-    new MenuButton("↺", "Undo",
+    new MenuButtonComponent("↺", "Undo",
       [], [], [], (event) => layerManager.undoEvent(event)),
-    new MenuButton("↻", "Redo",
+    new MenuButtonComponent("↻", "Redo",
       [], [], [], (event) => layerManager.redoEvent(event)),
-    new MenuButton("x", "Restart",
+    new MenuButtonComponent("x", "Restart",
       [], [], [], () => layerManager.refresh(() => layerManager.empty())),
-    new MenuButton("->", "Export",
+    new MenuButtonComponent("->", "Export",
       [], [], [], () => canvas.exportToClipboard()),
-    new MenuButton("⚙", "Settings",
+    new MenuButtonComponent("⚙", "Settings",
       [], [], [], () => bodyComponent.settings.toggle()),
-    new MenuButton("?", "Help",
+    new MenuButtonComponent("?", "Help",
       [], [], [], () => bodyComponent.help.toggle()),
   ]
 }
 
-class LeftMenu extends Menu {
+class LeftMenuComponent extends MenuComponent {
   css_height    = "100vh";
   css_width     = "130px";
   css_float     = "left";
@@ -4364,34 +4389,34 @@ class LeftMenu extends Menu {
     [">", ">", "character"],
     ["<", "<", "character"],
   ];
-  
+
 
   buttons = [
-    new MenuButtonLeft("⧉", "Copy",
+    new MenuButtonLeftComponent("⧉", "Copy",
       [modeMaster.has, "selected"], [], [], (event) => layerManager.copySelectedLayersEvent(event)),
-    new MenuButtonLeft("⧓", "Group",
+    new MenuButtonLeftComponent("⧓", "Group",
       [modeMaster.has, "multi-select", "selected"], [], [], (event) => layerManager.groupSelectedLayersEvent(event)),
-    new MenuButtonLeft("⧎", "Ungroup",
+    new MenuButtonLeftComponent("⧎", "Ungroup",
       [modeMaster.has, "multi-select", "selected"], [], [], (event) => layerManager.ungroupSelectedLayersEvent(event)),
-    new MenuButtonLeft("✕", "Delete",
+    new MenuButtonLeftComponent("✕", "Delete",
       [modeMaster.has, "selected"], [modeMaster.reset, "select"], [], (event) => layerManager.deleteLayersEvent(event)),
-    new MenuButtonLeft("⎘", "Forward",
+    new MenuButtonLeftComponent("⎘", "Forward",
       [modeMaster.has, "selected"], [], [], (event) => layerManager.bringForwardEvent(event)),
-    new MenuButtonLeft("⎗", "Backwards",
+    new MenuButtonLeftComponent("⎗", "Backwards",
       [modeMaster.has, "selected"], [], [], (event) => layerManager.sendBackwardsEvent(event)),
-    new MenuButtonLeft("⎘", "Front",
+    new MenuButtonLeftComponent("⎘", "Front",
       [modeMaster.has, "selected"], [], [], (event) => layerManager.bringToFrontEvent(event)),
-    new MenuButtonLeft("⎗", "Back",
+    new MenuButtonLeftComponent("⎗", "Back",
       [modeMaster.has, "selected"], [], [], (event) => layerManager.sendToBackEvent(event)),
-    new MenuButtonLeft("⏴", "Arrow",
+    new MenuButtonLeftComponent("⏴", "Arrow",
       [modeMaster.has, "selected", "line"], [], [], () => layerManager.redrawLinesEvent("left")),
-    new MenuButtonLeft("⏵", "Arrow",
+    new MenuButtonLeftComponent("⏵", "Arrow",
       [modeMaster.has, "selected", "line"], [], [], () => layerManager.redrawLinesEvent("right")),
-    new MenuButtonLeft("⋮", "Dotted",
+    new MenuButtonLeftComponent("⋮", "Dotted",
       [modeMaster.has, "selected", "line-based"], [], [], () => layerManager.redrawLineBasedEvent("dotted")),
-    new MenuButtonLeft("--", "Dashed",
+    new MenuButtonLeftComponent("--", "Dashed",
       [modeMaster.has, "selected", "line-based"], [], [], () => layerManager.redrawLineBasedEvent("dashed")),
-    new MenuButtonLeft("―", "Solid",
+    new MenuButtonLeftComponent("―", "Solid",
       [modeMaster.has, "selected", "line-based"], [], [], () => layerManager.redrawLineBasedEvent("solid-thin")),
   ]
 
@@ -4399,7 +4424,7 @@ class LeftMenu extends Menu {
     let buttons = [];
     for (let [char, icon, name] of this.drawFreeOptions) {
       buttons.push(
-        new MenuButtonLeft(
+        new MenuButtonLeftComponent(
           icon,
           name,
           [modeMaster.has, "draw", "free"],
@@ -4415,15 +4440,15 @@ class LeftMenu extends Menu {
     this.hide();
     if (this.buttons.map(button => button.showCondition()).some(Boolean)) this.show();
   }
-  
+
   defineChildren() {
-    this.buttons = this.buttons.concat(this.drawFreeButtons()); 
+    this.buttons = this.buttons.concat(this.drawFreeButtons());
     return super.defineChildren();
   }
 }
 
 
-class CanvasDump extends Component {
+class CanvasDumpComponent extends Component {
   // We never display this, but export uses this
   // to output before copying to preserve styling.
   // If a user pastes an export in the same browser,
@@ -4438,7 +4463,7 @@ class CanvasDump extends Component {
 }
 
 
-class Informer extends Component {
+class InformerComponent extends Component {
   css_width            = "30%";
   css_marginLeft       = "35%";
   css_position         = "absolute";
@@ -4497,13 +4522,13 @@ class Body extends Component {
   }
 
   defineChildren() {
-    this.informer   = new Informer();
-    this.settings   = new Settings();
-    this.help       = new Help();
-    this.mainMenu   = new MainMenu();
-    this.leftMenu   = new LeftMenu();
-    this.canvas     = new Canvas();
-    this.canvasDump = new CanvasDump();
+    this.informer   = new InformerComponent();
+    this.settings   = new SettingsComponent();
+    this.help       = new HelpComponent();
+    this.mainMenu   = new MainMenuComponent();
+    this.leftMenu   = new LeftMenuComponent();
+    this.canvas     = new CanvasComponent();
+    this.canvasDump = new CanvasDumpComponent();
     return [
       this.informer,
       this.settings,
@@ -4513,6 +4538,10 @@ class Body extends Component {
       this.canvas,
       this.canvasDump,
     ];
+  }
+
+  hidePopups() {
+    this.children.filter(child => child.isPopup).forEach(child => child.hide());
   }
 
   defineTheme() {
