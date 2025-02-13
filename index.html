@@ -852,9 +852,22 @@ class LayerManager {
     let data = JSON.parse(encodedData);
     this.layers = this.decodeLayers(data.layers);
     this.groupManager.layerGroups = data.groups;
+
+    // Why do we redraw twice? Because only once everything
+    // is drawn, can the correct draw be fully determined.
+    // For example, step line flipping needs to inspect other layers,
+    // which can only be done once all drawn.
     this.refresh(() => {
       this.layers.forEach(layer => layer.redraw());
     });
+    this.refresh(() => {
+      this.layers.forEach(layer => layer.redraw());
+    });
+  }
+
+  importFromLocalStorage() {
+    let data = localStorage.getItem("savedWorkspace");
+    if (data && JSON.parse(data).layers.length) this.import(data);
   }
 
   getSelectedLayers() {
@@ -1088,12 +1101,14 @@ class LayerManager {
     this.layers = [];
     this.layerHistory = [];
     this.groupManager.empty();
+    this.capture();
   }
 
   capture() {
     this.historyCursor = 0;
     this.layerHistory.unshift(this.copyReplaceLayers(this.layers));
     this.groupManager.capture();
+    localStorage.setItem("savedWorkspace", this.encodeAll());
   }
 
   setSelectPixel(selectedPixel) {
@@ -1535,7 +1550,7 @@ class Layer {
     let layer = new layerClass(encodedLayer.fp);
     layer.id = encodedLayer.id;
     layer.setToPixel(canvas.getPixelById(encodedLayer.tp));
-    layer.zindex = encodedLayer.zindex;
+    layer.zindex = encodedLayer.zi;
     layer.setAllChars(encodedLayer.lf);
     layer.joints = encodedLayer.jts;
     return layer;
@@ -2544,7 +2559,12 @@ class StepLineLayer extends BaseLineLayer {
 
     and choose which ever is more visible depending on other layers overlapping.
     */
-    let layersToAvoid = ["square", "table", "diamond"];
+    let layersToAvoid = [
+      SquareLayer.type,
+      CircleLayer.type,
+      DiamondLayer.type,
+      TableLayer.type
+    ];
     this.drawFromTo(this.fromPixel, this.toPixel);
     let resultNorm = layerManager.getNearOverlappingCount(this, layersToAvoid);
     this.drawFromTo(this.toPixel, this.fromPixel);
@@ -2691,7 +2711,12 @@ class SwitchLineLayer extends BaseLineLayer {
     and choose which ever is more visible depending on other layers overlapping.
     If there aren't notable overlaps, choose based on which direction is favoured.
     */
-    let layersToAvoid = ["square", "table", "diamond"];
+    let layersToAvoid = [
+      SquareLayer.type,
+      CircleLayer.type,
+      DiamondLayer.type,
+      TableLayer.type
+    ];
     this.drawVertical(fromPixel, toPixel);
     let verticalOverlap = layerManager.getNearOverlappingCount(this, layersToAvoid);
     this.drawLateral(fromPixel, toPixel);
@@ -4027,7 +4052,7 @@ class CanvasComponent extends Component {
 
 class PopupComponent extends Component {
   css_boxShadow       = "0px 0px 20px #403f3f";
-  css_borderRadius    = "15px";
+  css_borderRadius    = "10px";
   css_padding         = "15px";
   css_backgroundColor = "bodyBgColor";
   css_position        = "absolute";
@@ -4074,7 +4099,7 @@ Or, maybe, you're just too good for file formats, attaching documents and over-s
 <b>ctrl-shift-z</b>        Redo
 <b>ctrl-a</b>              Select all
 <b>backspace/delete</b>    Delete layer
-<b>shift-click</b>         Multi-select or single-select member of group.
+<b>shift-click</b>         Multi-select | single-select member of group.
 <b>arrow keys</b>          Move layer
 <b>ctrl-v</b>              Paste text (when editing text)
 </span>
@@ -4202,7 +4227,7 @@ class ButtonComponent extends Component {
   css_fontFamily       = "monospace";
   css_fontSize         = "11px";
   css_paddingBottom    = "3px";
-  css_borderRadius     = "15px";
+  css_borderRadius     = "10px";
   css_height           = "40px";
   css_border           = "1px solid";
   css_userSelect       = "none";
@@ -4468,7 +4493,7 @@ class InformerComponent extends Component {
   css_marginLeft       = "35%";
   css_position         = "absolute";
   css_marginTop        = "94vh";
-  css_borderRadius     = "15px";
+  css_borderRadius     = "10px";
   css_boxShadow        = "0px 0px 20px grey";
   css_fontSize         = "13px";
   css_padding          = "5px";
@@ -4563,10 +4588,13 @@ function main() {
   bodyComponent = new Body();
   bodyComponent.render();
 
+
   canvas = bodyComponent.canvas;
   eventManager.assignAll(
     {window: window, document: document, canvas: canvas.element}
   );
+
+  layerManager.importFromLocalStorage();
 }
 
 main(); // :)
