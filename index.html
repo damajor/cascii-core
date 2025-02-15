@@ -22,7 +22,6 @@ BIG IDEAS:
    - Testing - full web driver / record intergration testing
 
 IMPROVEMENTS (arguably features):
-  - deleting layers in groups, group doesn't recover on undo.
   - diamond resize bit odd with other layers.
   - joiner layer with arrow heads won't always show - zindex.
   - captures on every change instead of mouseup
@@ -1849,16 +1848,17 @@ class Layer {
             continue;
           } else {
             // This should not happen.
-            alert("had to unjoin dangling join: somehow disconnected");
+            // Case 1 - When a joint "steals" another joint. This is fine.
+            debugError("had to unjoin dangling join: somehow disconnected");
           }
         } else {
-          // This should not happen
-          // - originally for tables only but they get unjoined now (when rows/cols are removed).
-          alert("had to unjoin dangling join: joint pixel gone");
+          // This should not happen.
+          // Case 1 - originally for tables only but they get unjoined now (when rows/cols are removed).
+          debugError("had to unjoin dangling join: joint pixel gone");
         }
       } else {
         // This should not happen because joints get deleted when layers do.
-        alert("had to unjoin dangling join: joiner layer gone");
+        debugError("had to unjoin dangling join: joiner layer gone");
       }
       this.unjoin(joint.layerId, joint.jointKey);
     }
