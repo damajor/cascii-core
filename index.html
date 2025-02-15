@@ -452,6 +452,8 @@ class EventManager {
         mouseover: [
           new EventDef([modeMaster.has, "draw", "line"], // Technically this should be for any joiner layer...
               [], BaseLineLayer.drawMouseOver),
+          new EventDef([modeMaster.has, "draw"],
+              [], Layer.drawMouseOver),
           new EventDef([modeMaster.has, "drawing"],
               [], Layer.drawingMouseOverEvent),
           new EventDef([modeMaster.has, "erasing"],
@@ -1366,6 +1368,8 @@ class LayerManager {
 
   selectMouseOverEvent(event) {
     let activePixel = canvas.getPixelById(event.target.id);
+    let layerOver = layerManager.getLayerByPixelId(activePixel.id());
+    layerOver ? canvas.setCursor("move"): canvas.setCursor("default");
     // Ascending
     for (let layer of this.getLayersOrderedByZindex()) {
       for (var resizePixel of layer.getResizePixels()) {
@@ -1605,6 +1609,12 @@ class Layer {
     let layer = layerManager.getLatestLayer();
     layerManager.refresh(() => layer.draw(event.target.id));
     layerManager.findJoints([layer]);
+  }
+
+  static drawMouseOver() {
+    let activePixel = canvas.getPixelById(event.target.id);
+    let layerOver = layerManager.getLayerByPixelId(activePixel.id());
+    layerOver ? canvas.setCursor("move"): canvas.setCursor("crosshair");
   }
 
   static selectMouseDownEvent(event) {
@@ -2417,7 +2427,9 @@ class BaseLineLayer extends Layer {
 
 
   static drawMouseOver(event) {
+    Layer.drawMouseOver(event);
     let activePixel = canvas.getPixelById(event.target.id);
+
     for (var layer of layerManager.layers) {
       for (var jointPixel of layer.getJointPixels()) {
         if (activePixel.isNear(jointPixel) && layerManager.layerPixelIsVisible(layer, jointPixel)) {
@@ -3723,7 +3735,7 @@ class Component {
   }
 
   defineChildren() { return this.children; }
-  
+
   defineTheme() { };
 
   renderTheme() {
@@ -3751,7 +3763,7 @@ class Component {
     this.renderTheme();
     this.renderCallback();
   }
-  
+
   addChild(child) {
     this.children.push(child);
     child.render(this);
@@ -3980,6 +3992,22 @@ class CanvasComponent extends Component {
     for(var pixel in this.pixels) this.pixels[pixel].clear();
   }
 
+  setModeCursor() {
+    if (modeMaster.hasOr("moving", "resizing")) {
+      this.setCursor("move");
+    } else if (modeMaster.hasOr("writing", "text")) {
+      this.setCursor("text");
+    } else if (modeMaster.hasOr("draw", "drawing")) {
+      this.setCursor("crosshair");
+    } else {
+      this.setCursor("default");
+    }
+  }
+
+  setCursor(cursor) {
+    this.css("cursor", cursor);
+  }
+
   getCroppedRowsCols() {
     var maxCol = -1;
     var minCol = this.colCount;
@@ -4059,6 +4087,7 @@ class CanvasComponent extends Component {
 
   renderCallback() {
     this.scale();
+    modeMaster.registerCallback(() => this.setModeCursor());
   }
 }
 
