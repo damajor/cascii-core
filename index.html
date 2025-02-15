@@ -2434,6 +2434,7 @@ class BaseLineLayer extends Layer {
       for (var jointPixel of layer.getJointPixels()) {
         if (activePixel.isNear(jointPixel) && layerManager.layerPixelIsVisible(layer, jointPixel)) {
           jointPixel.renderJointNear();
+          if (activePixel.is(jointPixel)) canvas.setCursor("crosshair");
         } else {
           jointPixel.renderWasSelected();
         }
