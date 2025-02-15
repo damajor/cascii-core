@@ -143,7 +143,7 @@ class Theme {
 
 class ThemeManager {
 
-  defaultTheme = "darkTheme";
+  defaultTheme = localStorage.getItem("theme") || "darkTheme";
 
   themes = {
     darkTheme: new Theme(
@@ -221,6 +221,7 @@ class ThemeManager {
   }
 
   setTheme(theme) {
+    localStorage.setItem("theme", theme);
     this.currentTheme = this.themes[theme];
   }
 
@@ -538,8 +539,8 @@ class CharManager {
 
       // Dashed lines
       "'": ["dashed", "line", "vertical", "ascii"],
-      "╸": ["dashed", "line", "lateral", "unicode"],
-      "╻": ["dashed", "line", "vertical", "unicode"],
+      "╶": ["dashed", "line", "lateral", "unicode"],
+      "╷": ["dashed", "line", "vertical", "unicode"],
       "-": ["dashed", "solid-bold", "solid-thin", "line", "lateral", "ascii"],
 
       // Arrows
@@ -577,7 +578,7 @@ class CharManager {
     }
 
     constructor() {
-      this.charsetForm = "unicode"; // Default to unicode
+      this.charsetForm = localStorage.getItem("charset") || "unicode"; // Default to unicode
     }
 
     getBestChar(...description) {
@@ -599,6 +600,7 @@ class CharManager {
     }
 
     setCharset(form) {
+      localStorage.setItem("charset", form);
       this.charsetForm = form;
     }
 
@@ -4086,7 +4088,7 @@ class HelpComponent extends PopupComponent {
   css_overflow        = "scroll";
   css_scrollbarWidth  = "none";
   value               = `
-<div style='text-align: center;'><h2>Hi</h2>
+<div style='text-align: center;'><h2>Welcome</h2>
 
 <p>
 This is the first well-equipped ASCII diagram builder available on the internet.
@@ -4096,9 +4098,19 @@ users to present visual information in places that can
 only render text (such as in code, consoles, primitive displays, and so on).
 </p>
 <p>
-Or, maybe, you're just too good for file formats, attaching documents and over-styled distractions.
+By using text, you avoid the need for file formats, attaching documents and over-styled distractions.
 </p>
 <h2>FAQ</h2>
+ <h4>ASCII or Unicode?</h4>
+ Unicode is prettier but less reliable. Depending on where it's used,
+ it could display in unexpected ways. Here, both modes try their best
+ to use the most appropriate characters, but each mode does not promise
+ absolute ASCII or Unicode.
+ <h4>How do I contribute?</h4>
+ ...
+ <h4>Feature requests?</h4>
+ ...
+ <h4></h4>
 <h2>Usage</h2>
 <h2>Shortcuts</h2>
 </div>
