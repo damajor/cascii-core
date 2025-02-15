@@ -3717,23 +3717,26 @@ class Component {
 
   renderChildren() {
     this.children = this.defineChildren();
-    for (let child of this.children) child.render(this.element);
+    for (let child of this.children) child.render(this);
   }
 
   defineChildren() { return this.children; }
+  
   defineTheme() { };
+
   renderTheme() {
     this.defineTheme();
     this.children.forEach(child => child.renderTheme());
   }
 
   renderCallback() {};
+
   id() {return ""};
 
 
   assignParent(parent) {
     this.parent = parent;
-    this.parent.appendChild(this.element);
+    this.parent.element.appendChild(this.element);
   }
 
   render(parent) {
@@ -3745,6 +3748,12 @@ class Component {
     this.assignParent(parent);
     this.renderTheme();
     this.renderCallback();
+  }
+  
+  addChild(child) {
+    this.children.push(child);
+    child.render(this);
+
   }
 
   css(style, value) {
@@ -3780,6 +3789,7 @@ class Component {
     this.visible? this.hide(): this.show();
   }
 }
+
 
 class Pixel extends Component {
 
@@ -4342,6 +4352,7 @@ class MenuComponent extends Component {
     this.refresh();
   }
 }
+
 
 class MainMenuComponent extends MenuComponent {
   css_top            = "0";
