@@ -335,7 +335,7 @@ class BaseExternalHookManager {
   */
 
   async getShortKeyUrl() {
-    // Without a server, we return an empty short key. 
+    // Without a server, we return an empty short key.
     return "";
   }
 
@@ -3760,7 +3760,7 @@ class Component {
   type = "div";
 
   // Use this if you don't want a component's children to be traversed for theme setting.
-  skipChildrenTheme = false; 
+  skipChildrenTheme = false;
 
   constructor(props) {
     this.visible = true;
@@ -3790,7 +3790,7 @@ class Component {
     // TODO: Consider if this priority logic is worth while.
     // If there is an intermediate class, Javascript constructors initialize
     // class properties of that class after the base constructor is called :/
-    // This overrides properties being reasonably sent from a child class. 
+    // This overrides properties being reasonably sent from a child class.
     // Here, we hack together a 'feature' where we can capitalize the derived property's
     // first letter so it takes priority.
     let highPriorProps = mainProps.filter(prop => /^[A-Z]*$/.test(prop.substring(0, 1)));
@@ -4044,7 +4044,7 @@ class Pixel extends Component {
 }
 
 class CanvasComponent extends Component {
-  // Skip the theme to avoid all pixels being traversed. 
+  // Skip the theme to avoid all pixels being traversed.
   skipChildrenTheme = true;
   skipTheme = false;
 
@@ -4054,6 +4054,7 @@ class CanvasComponent extends Component {
   colCount = 225;
 
   css_userSelect = "none";
+  css_webkitUserSelect = "none";
   css_position   = "absolute";
   css_zIindex    = "0";
   pixelWidthDivider = 0.5;
@@ -4255,12 +4256,12 @@ By using text, you avoid the need for file formats, attaching documents and over
 
  <h4>Why sign up?</h4>
  Only sign up if you care about managing and tracking your drawings.
- For convenience, your active drawing is saved to the browser, but 
+ For convenience, your active drawing is saved to the browser, but
  to save multiple reliably and cross-device, an account is recommended.
  Passwords are Bcrypt-10 encrypted.
  <h4>Account Management</h4>
  If you wish to delete your account, recover a lost account, or anything else,
- please get in touch at <b>casparwylie@gmail.com</b>, using the email you 
+ please get in touch at <b>casparwylie@gmail.com</b>, using the email you
  originally signed up with.
  <h4>How do I contribute?</h4>
  Feel free to contribute on <a href="github.com/casparwylie/ascii">GitHub</a>.
