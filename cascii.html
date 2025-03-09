@@ -4825,22 +4825,17 @@ function initManagers() {
 
 function main() {
   if (isTablet()) {
-    alert("Cascii is not available on mobile devices.");
+    alert("Cascii is not available on mobile devices. Taking you to GitHub...");
+    window.location.replace("https://github.com/casparwylie/cascii-core");
     return;
   }
   initManagers();
   bodyComponent = new Body();
   bodyComponent.render();
-
   canvas = bodyComponent.canvasComponent;
-  eventManager.assignAll(
-    {window: window, document: document, canvas: canvas.element}
-  );
-
+  eventManager.assignAll({window: window, document: document, canvas: canvas.element});
   layerManager.importFromLocalStorage();
-
   handleFirstVisit();
-
   window.dispatchEvent(new Event("casciiLoaded"));
 }
 
