@@ -48,9 +48,9 @@ const firstVisit = !localStorage.getItem("visited");
 ////// UTILS /////
 //////////////////
 function isTablet() {
-  let userAgent = navigator.userAgent.toLowerCase();
-  return /(ipad|tablet|(android(?!.*mobile))|(windows(?!.*phone)(.*touch))|kindle|playbook|silk|(puffin(?!.*(IP|AP|WP))))/.test(userAgent);
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 }
+
 function reportError(message) {
   console.log(message);
 }
