@@ -1,0 +1,5 @@
+IMPROVEMENTS (arguably features):
+- diamond resize bit odd with other layers.
+- joiner layer with arrow heads won't always show - zindex.
+- captures on every change instead of mouseup
+- clever resize: text in boxes main issue
