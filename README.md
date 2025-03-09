@@ -4,6 +4,8 @@
 <br>
 Cascii
 <br>
+v1.0.0
+<br>
 </h1>
 <p align="center">
 <b>Cascii is a web-based ASCII and Unicode diagram builder written in vanilla Javascript.</b>
