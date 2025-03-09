@@ -47,7 +47,10 @@ const firstVisit = !localStorage.getItem("visited");
 //////////////////
 ////// UTILS /////
 //////////////////
-
+function isTablet() {
+  let userAgent = navigator.userAgent.toLowerCase();
+  return /(ipad|tablet|(android(?!.*mobile))|(windows(?!.*phone)(.*touch))|kindle|playbook|silk|(puffin(?!.*(IP|AP|WP))))/.test(userAgent);
+}
 function reportError(message) {
   console.log(message);
 }
@@ -4303,6 +4306,14 @@ By using text, you avoid the need for file formats, attaching documents and over
   defineChildren() {
     return [];
   }
+
+  showForMobile() {
+    this.css("marginLeft", "0vh");
+    this.css("marginTop", "0vh");
+    this.css("height", "100vh");
+    this.css("width", "100vw");
+    this.show();
+  }
 }
 
 class SettingsComponent extends PopupComponent {
@@ -4529,6 +4540,7 @@ class ModeMenuComponent extends MenuComponent {
 
 
 class MainMenuComponent extends ModeMenuComponent {
+  accessibleBy = "mainMenuComponent";
   css_top            = "0";
   css_left           = "0";
   css_right          = "0";
@@ -4801,7 +4813,7 @@ function handleFirstVisit() {
   localStorage.setItem("visited", true);
 }
 
-function main() {
+function initManagers() {
   layerManager         = new LayerManager();
   modeMaster           = new ModeMaster();
   areaSelectManager    = new AreaSelectManager();
@@ -4809,7 +4821,14 @@ function main() {
   externalHookManager  = new BaseExternalHookManager();
   charManager          = new CharManager();
   themeManager         = new ThemeManager();
+}
 
+function main() {
+  if (isTablet()) {
+    alert("Cascii is not available on mobile devices.");
+    return;
+  }
+  initManagers();
   bodyComponent = new Body();
   bodyComponent.render();
 
