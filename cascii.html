@@ -1,12 +1,18 @@
-<script>
-/*
-IMPROVEMENTS (arguably features):
-  - diamond resize bit odd with other layers.
-  - joiner layer with arrow heads won't always show - zindex.
-  - captures on every change instead of mouseup
-  - improve diagonal lines
-  - clever resize: text in boxes main issue
-*/
+<!--
+© 2025 Caspar Wylie <casparwylie@gmail.com>
+
+ ██████╗ █████╗ ███████╗ ██████╗██╗██╗
+██╔════╝██╔══██╗██╔════╝██╔════╝██║██║
+██║     ███████║███████╗██║     ██║██║
+██║     ██╔══██║╚════██║██║     ██║██║
+╚██████╗██║  ██║███████║╚██████╗██║██║
+ ╚═════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝╚═╝
+
+A web-based ASCII and Unicode diagram builder written in vanilla Javascript.
+-->
+<script defer>
+
+const VERSION = "v1.0.0";
 
 var layerManager;
 var eventManager;
@@ -20,6 +26,7 @@ var bodyComponent;
 var canvas;
 
 const ArrowKeyGroup = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+const firstVisit = !localStorage.getItem("visited");
 
 //////////////////
 ////// UTILS /////
@@ -146,10 +153,6 @@ class ThemeManager {
         pixelJointNearBgColor: Theme.Color.pink,
         pixelJointBgColor: Theme.Color.green,
         areaSelectionBgColor: Theme.Color.darkestBlue,
-
-        //informerDefaultBgColor: Theme.Color.blue,
-        //informerGoodBgColor: Theme.Color.green,
-        //informerBadBgColor: Theme.Color.red,
       }
     ),
     lightTheme: new Theme(
@@ -165,10 +168,6 @@ class ThemeManager {
         pixelResizeBgColor: Theme.Color.blue,
         pixelJointNearBgColor: Theme.Color.pink,
         pixelJointBgColor: Theme.Color.green,
-
-        //informerDefaultBgColor: Theme.Color.blue,
-        //informerGoodBgColor: Theme.Color.lightGreen,
-        //informerBadBgColor: Theme.Color.lightRed,
 
         areaSelectionBgColor: Theme.Color.lightestBlue,
       }
@@ -188,10 +187,6 @@ class ThemeManager {
         pixelNormalFgColor: Theme.Color.green,
         pixelJointNearBgColor: Theme.Color.lightGreen,
         pixelJointBgColor: Theme.Color.red,
-
-        //informerDefaultBgColor: Theme.Color.blue,
-        //informerGoodBgColor: Theme.Color.darkGreen,
-        //informerBadBgColor: Theme.Color.red,
 
         areaSelectionBgColor: Theme.Color.darkRed,
       }
@@ -224,6 +219,7 @@ class ModeMaster {
 
   constructor() {
     this.callbacks = [];
+    this._modes = [];
     this.setDefault();
   }
 
@@ -232,7 +228,7 @@ class ModeMaster {
   }
 
   setDefault() {
-    this.reset("select");
+    if (!this.hasAny()) this.reset("select");
   }
 
   modeChangedCallback() {
@@ -4229,8 +4225,8 @@ class HelpComponent extends PopupComponent {
   css_overflow        = "scroll";
   css_scrollbarWidth  = "none";
   value               = `
-<div style='text-align: center;'><h2>Welcome</h2>
-
+<div style='text-align: center;'><h2>Cascii</h2>
+<h3>${VERSION}</h3>
 <p>
 This is one of the few well-equipped ASCII diagram builders freely available on the internet.
 It stresses portability, simplicity, and immediateness. ASCII diagrams are
@@ -4259,18 +4255,18 @@ By using text, you avoid the need for file formats, attaching documents and over
  Otherwise you'll see a mess.</b>
 
  <h4>Why sign up?</h4>
+ If using Cascii locally, please see <a href="cascii.app">cascii.app</a> to sign up.
  Only sign up if you care about managing and tracking your drawings.
  For convenience, your active drawing is saved to the browser, but
  to save multiple reliably and cross-device, an account is recommended.
- Passwords are Bcrypt-10 encrypted.
  <h4>Account Management</h4>
  If you wish to delete your account, recover a lost account, or anything else,
  please get in touch at <b>casparwylie@gmail.com</b>, using the email you
  originally signed up with.
  <h4>How do I contribute?</h4>
- Feel free to contribute on <a href="github.com/casparwylie/ascii">GitHub</a>.
- <h4>Feature requests?</h4>
- Please use the Issue Tracker on <a href="github.com/casparwylie/ascii">GitHub</a>.
+ Feel free to contribute on <a href="github.com/casparwylie/cascii-core">GitHub</a>.
+ <h4>Feature requests / bug reporting?</h4>
+ Please use the Issue Tracker on <a href="github.com/casparwylie/cascii-core">GitHub</a>.
  <h4></h4>
 <h2>Usage</h2>
 <h2>Shortcuts</h2>
@@ -4290,12 +4286,6 @@ By using text, you avoid the need for file formats, attaching documents and over
 
   defineChildren() {
     return [];
-  }
-
-  showIfFirstVisit() {
-    if (!localStorage.getItem("visited")) {
-      this.show();
-    }
   }
 }
 
@@ -4748,12 +4738,13 @@ class InformerComponent extends Component {
 
 
 class Body extends Component {
-  type = "body";
   css_overflow = "hidden";
 
+  create() {
+    this.element = document.body;
+  }
+
   assignParent(parent) {
-    this.parent = document;
-    this.parent.body = this.element;
   }
 
   defineChildren() {
@@ -4780,6 +4771,19 @@ class Body extends Component {
   }
 }
 
+function handleFirstVisit() {
+  if (firstVisit) {
+    let shownTip = false;
+    bodyComponent.helpComponent.show();
+    modeMaster.registerCallback(() => {
+      if (modeMaster.has("draw") && !shownTip) {
+        bodyComponent.informerComponent.report("Click and drag to start drawing in any of the draw modes!")
+        shownTip = true;
+      }
+    })
+  }
+  localStorage.setItem("visited", true);
+}
 
 function main() {
   layerManager         = new LayerManager();
@@ -4793,7 +4797,6 @@ function main() {
   bodyComponent = new Body();
   bodyComponent.render();
 
-
   canvas = bodyComponent.canvasComponent;
   eventManager.assignAll(
     {window: window, document: document, canvas: canvas.element}
@@ -4801,13 +4804,13 @@ function main() {
 
   layerManager.importFromLocalStorage();
 
-  bodyComponent.helpComponent.showIfFirstVisit();
+  handleFirstVisit();
 
-  localStorage.setItem("visited", true);
+  window.dispatchEvent(new Event("casciiLoaded"));
 }
 
-main(); // :)
+window.onload = main; // :)
 </script>
 
 <!-- By design, this can happily 404 and run without a backend -->
-<script src="/static/serverLink.js"></script>
+<script src="/static/serverLayer.js"></script>
