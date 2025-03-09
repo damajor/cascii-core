@@ -1,5 +1,4 @@
-<script>
-/*
+<!--
 © 2025 Caspar Wylie <casparwylie@gmail.com>
 
  ██████╗ █████╗ ███████╗ ██████╗██╗██╗
@@ -10,8 +9,15 @@
  ╚═════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝╚═╝
 
 A web-based ASCII and Unicode diagram builder written in vanilla Javascript.
-*/
-
+-->
+<head>
+<title>Cascii: A web-based ASCII diagram builder</title>
+<meta name="title" content="Cascii: A web-based ASCII diagram builder" />
+<meta name="description" content="A well-equipped ASCII diagram builders freely available on the internet.
+It stresses portability, simplicity, and immediateness." />
+<meta name="keywords" content="ASCII, ascii, unicode, diagrams, drawing">
+<meta name="author" content="Caspar Wylie">
+<script>
 const VERSION = "v1.0.0";
 
 var layerManager;
@@ -4814,3 +4820,4 @@ window.onload = main; // :)
 
 <!-- By design, this can happily 404 and run without a backend -->
 <script src="/static/serverLayer.js"></script>
+</head>
