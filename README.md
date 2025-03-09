@@ -3,11 +3,15 @@
 <img src="https://i.postimg.cc/FzK68HLQ/cascii-logo.png" width="150">
 <br>
 Cascii
-  <br>
+<br>
 </h1>
-<p align="center"><b>Cascii is a web-based ASCII and Unicode diagram builder built in vanilla Javascript</b>. It has 0 dependencies on a server, web packing, libraries, and is also no-html and no-stylesheets. You can start building diagrams by simply opening the index.html file in this core repository. Cascii is also hosted at <a href="cascii.app">cascii.app</a> where you can get short links to your diagrams, or open an account for saving diagrams.</p>
-
-Here is a diagram built with Cascaii that loosely explains how cascii is structured internally:
+<p align="center">
+<b>Cascii is a web-based ASCII and Unicode diagram builder built in vanilla Javascript.</b>
+<br><br>
+It has zero dependencies on any servers, web packing, libraries, and is no-markup and no-stylesheets. You can start building diagrams by simply opening the <a href="https://github.com/casparwylie/cascii-core/blob/main/index.html">cascii.html</a> file in this core repository. Cascii is also hosted at <a href="cascii.app">cascii.app</a> where you can get short links to your diagrams, open an account, etc. 
+<br><br>
+Here is a diagram built with Cascaii that loosely explains how Cascii is structured internally:
+</p>
 
 ```
                         ┌╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶┐                                                                      
