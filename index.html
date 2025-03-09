@@ -223,12 +223,16 @@ class ThemeManager {
 class ModeMaster {
 
   constructor() {
-    this._modes = ["select"];
     this.callbacks = [];
+    this.setDefault();
   }
 
   registerCallback(func) {
     this.callbacks.push(func);
+  }
+
+  setDefault() {
+    this.reset("select");
   }
 
   modeChangedCallback() {
@@ -434,7 +438,7 @@ class EventManager {
         paste: [
           new EventDef([modeMaster.has, "writing", "text"],
           [], (event) => layerManager.pasteToTextLayerEvent(event)),
-          new EventDef([],
+          new EventDef([modeMaster.hasAny],
           [], (event) => layerManager.pasteAsTextLayerEvent(event))
         ],
         mouseup: [
@@ -4292,7 +4296,6 @@ By using text, you avoid the need for file formats, attaching documents and over
     if (!localStorage.getItem("visited")) {
       this.show();
     }
-    localStorage.setItem("visited", true);
   }
 }
 
@@ -4766,6 +4769,7 @@ class Body extends Component {
   }
 
   hidePopups() {
+    modeMaster.setDefault();
     this.children.filter(child => child.isPopup).forEach(child => child.hide());
   }
 
@@ -4798,6 +4802,8 @@ function main() {
   layerManager.importFromLocalStorage();
 
   bodyComponent.helpComponent.showIfFirstVisit();
+
+  localStorage.setItem("visited", true);
 }
 
 main(); // :)
