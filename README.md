@@ -60,6 +60,7 @@ Edit/view: https://cascii.app/7c24a
 - Grouping
 - Ordering
 - Duplicating
+- Dynamic tables
 - Free draw / erase
 - Layers: Free, Switch Lines, Steps Lines, Free Lines, Square, Circle, Diamond, Text, Table
 - History (undo/redo)
