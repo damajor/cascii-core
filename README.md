@@ -47,10 +47,10 @@ Edit/view: https://cascii.app/7c24a
 
 
 <p align="center">
-<img src="https://s3.gifyu.com/images/bbjaw.gif" width=400>
-<img src="https://s3.gifyu.com/images/bbjV1.gif" width=400>
-<img src="https://s3.gifyu.com/images/bbjfv.gif" width=400>
-<img src="https://s3.gifyu.com/images/bbjf7.gif" width=400>
+<img src="https://s3.gifyu.com/images/bbjaw.gif" width=500>
+<img src="https://s3.gifyu.com/images/bbjV1.gif" width=500>
+<img src="https://s3.gifyu.com/images/bbjfv.gif" width=500>
+<img src="https://s3.gifyu.com/images/bbjf7.gif" width=500>
 </p>
 
 ## Installation
