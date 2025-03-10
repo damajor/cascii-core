@@ -62,6 +62,7 @@ Edit/view: https://cascii.app/7c24a
 - Duplicating
 - Dynamic tables
 - Free draw / erase
+- Auto save (browser local storage)
 - Layers: Free, Switch Lines, Steps Lines, Free Lines, Square, Circle, Diamond, Text, Table
 - History (undo/redo)
 - Line styling
