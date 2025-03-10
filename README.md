@@ -11,7 +11,7 @@ v1.0.0
 <b>Cascii is a web-based ASCII and Unicode diagram builder written in vanilla Javascript.</b>
 <br><br>
 It has zero dependencies on any servers, web packing, libraries, and is no-markup and no-stylesheets. You can start building diagrams by simply opening the <a href="https://github.com/casparwylie/cascii-core/blob/main/cascii.html">cascii.html</a> file in a browser. Cascii is also hosted at <a href="https://cascii.app">cascii.app</a> where you can get short links to your diagrams, open an account, etc. 
-  
+
 ## Examples
 Here is a diagram built with Cascii that loosely explains how Cascii is structured internally:
 </p>
@@ -52,6 +52,17 @@ Edit/view: https://cascii.app/7c24a
 <img src="https://s3.gifyu.com/images/bbjf7.gif" width=400>
 </p>
 
+## Installation
+Simply download and open the `cascii.html` file!
+
+<b>...Literally...</b>
+
+`curl https://cascii.app -o cascii.html && open cascii.html`
+ 
+<b>...Or...</b>
+
+If you are not making changes, it's recommended to use <a href="https://casci.app">cascii.app</a>
+directly so you can take advantage of short links and save your work. Locally, short links will not appear in your exports.
 ## Features
 
 - Basic drawing
