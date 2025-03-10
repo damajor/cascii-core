@@ -4,7 +4,7 @@
 <br>
 Cascii
 <br>
-v1.0.0
+v1.0.0 (beta)
 <br>
 </h1>
 <p align="center">
