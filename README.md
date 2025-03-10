@@ -73,6 +73,7 @@ directly so you can take advantage of short links and save your work. Locally, s
 - Dynamic tables
 - Free draw / erase
 - Auto save (browser local storage)
+- Paste / import text
 - Layers: Free, Switch Lines, Steps Lines, Free Lines, Square, Circle, Diamond, Text, Table
 - History (undo/redo)
 - Line styling
