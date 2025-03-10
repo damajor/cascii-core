@@ -15,40 +15,40 @@ Here is a diagram built with Cascii that loosely explains how Cascii is structur
 </p>
 
 ```
-                                          ┌╶╶╶╶╶╶╶╶╶╶╶╶╶╶┐                                          
-                                          ╷ GroupManager ╷                                          
-                                          └╶╶╶╶╶╶╶╶╶╶╶╶╶╶┘                                          
-                      ┌─────────────┐    /                  ┌─────────────┐                         
-                      │EventManager │   /           ┌───────│SquareLayer  │                         
-                      └─────────────┘  /            │       │─────────────│        ┌───────────────┐
-                             \        /             │───────│CircleLayer  │   ┌────│SwitchLineLayer│
-                              \      /              │       │─────────────│   │    │───────────────│
-                               ┏━━━━━━━━━━━━┓       │───────│BaseLineLayer│◀──┐────│FreeLineLayer  │
-                               ┃LayerManager┃◀──────┘       │─────────────│   │    │───────────────│
-                               ┗━━━━━━━━━━━━┛       │───────│DiamondLayer │   └────│StepLineLayer  │
-               ┌────────────┐ /      /       \      │       │─────────────│        └───────────────┘
-               │CharManager │/      /         \     │───────│FreeLayer    │                         
-               └────────────┘      /           \    │       │─────────────│                         
-                                  /             \   └───────│TableLayer   │                         
-                            ┌────────────┐       \          └─────────────┘            Pixels!      
-                            │ ModeMaster │        •                                                 
-                            └────────────┘      •   •                                     ▲         
-                                              •       •                                   │         
-                                            •           •                                 │         
-                                          •   CanvasCom   ────────────────────────────────┘         
-                                            •           •                                           
-                                              •       •                                             
-                                                •   •                                               
-                                                  •      
+                                      ┌╶╶╶╶╶╶╶╶╶╶╶╶╶╶┐                                          
+                                      ╷ GroupManager ╷                                          
+                                      └╶╶╶╶╶╶╶╶╶╶╶╶╶╶┘                                          
+                  ┌─────────────┐    /                  ┌─────────────┐                         
+                  │EventManager │   /           ┌───────│SquareLayer  │                         
+                  └─────────────┘  /            │       │─────────────│        ┌───────────────┐
+                         \        /             │───────│CircleLayer  │   ┌────│SwitchLineLayer│
+                          \      /              │       │─────────────│   │    │───────────────│
+                           ┏━━━━━━━━━━━━┓       │───────│BaseLineLayer│◀──┐────│FreeLineLayer  │
+                           ┃LayerManager┃◀──────┘       │─────────────│   │    │───────────────│
+                           ┗━━━━━━━━━━━━┛       │───────│DiamondLayer │   └────│StepLineLayer  │
+           ┌────────────┐ /      /       \      │       │─────────────│        └───────────────┘
+           │CharManager │/      /         \     │───────│FreeLayer    │                         
+           └────────────┘      /           \    │       │─────────────│                         
+                              /             \   └───────│TableLayer   │                         
+                        ┌────────────┐       \          └─────────────┘            Pixels!      
+                        │ ModeMaster │        •                                                 
+                        └────────────┘      •   •                                     ▲         
+                                          •       •                                   │         
+                                        •           •                                 │         
+                                      •   CanvasCom   ────────────────────────────────┘         
+                                        •           •                                           
+                                          •       •                                             
+                                            •   •                                               
+                                              • 
 Edit/view: https://cascii.app/7c24a  
 ```
 
 
 <p align="center">
-<img src="https://s3.gifyu.com/images/bbjaw.gif" width=500>
-<img src="https://s3.gifyu.com/images/bbjV1.gif" width=500>
-<img src="https://s3.gifyu.com/images/bbjfv.gif" width=500>
-<img src="https://s3.gifyu.com/images/bbjf7.gif" width=500>
+<img src="https://s3.gifyu.com/images/bbjaw.gif" width=400>
+<img src="https://s3.gifyu.com/images/bbjV1.gif" width=400>
+<img src="https://s3.gifyu.com/images/bbjfv.gif" width=400>
+<img src="https://s3.gifyu.com/images/bbjf7.gif" width=400>
 </p>
 
 ## Installation
