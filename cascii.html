@@ -1044,6 +1044,8 @@ class LayerManager {
   }
 
   switchModeCallback() {
+    // This is used when a major mode is changed to clear up a few things.
+    bodyComponent.hidePopups();
     this.unselectAll();
     this.capture();
   }
@@ -4134,6 +4136,8 @@ class CanvasComponent extends Component {
       this.setCursor("text");
     } else if (modeMaster.hasOr("draw", "drawing")) {
       this.setCursor("crosshair");
+    } else if (modeMaster.hasOr("erase", "erasing")) {
+      this.setCursor("pointer");
     } else {
       this.setCursor("default");
     }
