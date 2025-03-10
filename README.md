@@ -11,6 +11,8 @@ v1.0.0
 <b>Cascii is a web-based ASCII and Unicode diagram builder written in vanilla Javascript.</b>
 <br><br>
 It has zero dependencies on any servers, web packing, libraries, and is no-markup and no-stylesheets. You can start building diagrams by simply opening the <a href="https://github.com/casparwylie/cascii-core/blob/main/cascii.html">cascii.html</a> file in a browser. Cascii is also hosted at <a href="https://cascii.app">cascii.app</a> where you can get short links to your diagrams, open an account, etc. 
+  
+## Examples
 <br><br>
 Here is a diagram built with Cascii that loosely explains how Cascii is structured internally:
 </p>
@@ -44,3 +46,56 @@ Here is a diagram built with Cascii that loosely explains how Cascii is structur
 ```
 Edit/view: https://cascii.app/7c24a  
 
+<p align="center">
+<img src="https://s3.gifyu.com/images/bbjaw.gif" width=400>
+<img src="https://s3.gifyu.com/images/bbjV1.gif" width=400>
+<img src="https://s3.gifyu.com/images/bbjfv.gif" width=400>
+<img src="https://s3.gifyu.com/images/bbjf7.gif" width=400>
+</p>
+
+## Usage
+
+#### Basic drawing and selection
+
+To draw a layer, select the drawing mode (e.g Square) and click and drag. All layer will scale appropriately. Text will assume editing mode after a single click. 
+
+#### Selection
+
+Selection mode can be used by choosing Select, selecting a layer while in another mode (for convenience), or selecting all with `ctrl-a`.
+Once in select mode, you can select any shape for resizing or moving. 
+
+- You can select multiple layers by holding `shift`.
+- You can select all layers using `ctrl-a`.
+- You can select an indvidual layer who is otherwise part of a group by holding `shift`.
+
+Once layer(s) are selected, you can:
+- Resize resizable layers by click and dragging their resize pixels / handles (which are usually blue).
+- 
+
+area select
+multi-select 
+single select
+
+
+#### Joints
+
+#### Grouping
+
+#### Ordering
+
+#### Text
+
+#### Lines
+
+#### Tables
+
+#### History (undo/redo)
+
+#### ASCII v Unicode
+
+
+
+## Contributing
+Contributions are very welcomed. Please feel free to submit proposals directly in the form of a PR or Issue. 
+## License
+Licensed under the Apache License, Version 2.0
