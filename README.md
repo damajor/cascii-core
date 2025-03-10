@@ -13,7 +13,6 @@ v1.0.0
 It has zero dependencies on any servers, web packing, libraries, and is no-markup and no-stylesheets. You can start building diagrams by simply opening the <a href="https://github.com/casparwylie/cascii-core/blob/main/cascii.html">cascii.html</a> file in a browser. Cascii is also hosted at <a href="https://cascii.app">cascii.app</a> where you can get short links to your diagrams, open an account, etc. 
   
 ## Examples
-<br><br>
 Here is a diagram built with Cascii that loosely explains how Cascii is structured internally:
 </p>
 
@@ -53,45 +52,31 @@ Edit/view: https://cascii.app/7c24a
 <img src="https://s3.gifyu.com/images/bbjf7.gif" width=400>
 </p>
 
-## Usage
+## Features
 
-#### Basic drawing and selection
+- Basic drawing
+- Selection (area selection, multi-selection, resize, move)
+- Joints
+- Grouping
+- Ordering
+- Duplicating
+- Free draw / erase
+- Layers: Free, Switch Lines, Steps Lines, Free Lines, Square, Circle, Diamond, Text, Table
+- History (undo/redo)
+- Line styling
+- ASCII and Unicode
 
-To draw a layer, select the drawing mode (e.g Square) and click and drag. All layer will scale appropriately. Text will assume editing mode after a single click. 
+## Shortcuts
 
-#### Selection
-
-Selection mode can be used by choosing Select, selecting a layer while in another mode (for convenience), or selecting all with `ctrl-a`.
-Once in select mode, you can select any shape for resizing or moving. 
-
-- You can select multiple layers by holding `shift`.
-- You can select all layers using `ctrl-a`.
-- You can select an indvidual layer who is otherwise part of a group by holding `shift`.
-
-Once layer(s) are selected, you can:
-- Resize resizable layers by click and dragging their resize pixels / handles (which are usually blue).
-- 
-
-area select
-multi-select 
-single select
-
-
-#### Joints
-
-#### Grouping
-
-#### Ordering
-
-#### Text
-
-#### Lines
-
-#### Tables
-
-#### History (undo/redo)
-
-#### ASCII v Unicode
+- `ctrl-g`             Group
+- `ctrl-c`             Copy layer
+- `ctrl-z`             Undo
+- `ctrl-shift-z`       Redo
+- `ctrl-a`             Select all
+- `backspace/delete`   Delete layer
+- `shift-click`        Multi-select | single-select member of group
+- `arrow keys`         Move layer
+- `ctrl-v`             Paste text (when editing text), or paste as a layer in any other mode
 
 
 
