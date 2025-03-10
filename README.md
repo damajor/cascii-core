@@ -2,10 +2,8 @@
 <br>
 <img src="https://i.postimg.cc/FzK68HLQ/cascii-logo.png" width="150">
 <br>
-Cascii
-<br>
-v1.0.0 (beta)
-<br>
+Cascii v1.0.0 (beta)
+
 </h1>
 <p align="center">
 <b>Cascii is a web-based ASCII and Unicode diagram builder written in vanilla Javascript.</b>
