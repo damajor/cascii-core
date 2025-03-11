@@ -251,9 +251,7 @@ It stresses portability, simplicity, and immediateness."
       makeFunc(instruction) {
         // This just gives dispatchers a prettier notation...
         // e.g () => modeMaster.has("x", "y") becomes [modeMaster.has, "x", "y"]
-        return instruction.length
-          ? instruction[0].bind(this, ...instruction.slice(1))
-          : () => true;
+        return instruction.length ? instruction[0].bind(this, ...instruction.slice(1)) : () => true;
       }
 
       change(beforeMode, afterMode) {
@@ -377,87 +375,63 @@ It stresses portability, simplicity, and immediateness."
         document: {
           keyEvents: {
             keypress: {
-              "*": [
-                new EventDef(
-                  [modeMaster.has, "writing", "text"],
-                  [],
-                  TextLayer.keyDownEvent,
-                ),
-              ],
+              "*": [new EventDef([modeMaster.has, "writing", "text"], [], TextLayer.keyDownEvent)],
             },
             keydown: {
               [keyGroup(...ArrowKeyGroup)]: [
                 new EventDef([modeMaster.has, "selected"], [], (event) =>
-                  layerManager.selectedArrowKeyDownEvent(event.key),
+                  layerManager.selectedArrowKeyDownEvent(event.key)
                 ),
               ],
-              [["Shift"]]: [
-                new EventDef([modeMaster.hasAny], [modeMaster.add, "shift"]),
-              ],
+              [["Shift"]]: [new EventDef([modeMaster.hasAny], [modeMaster.add, "shift"])],
               [keyGroup("Backspace", "Delete")]: [
-                new EventDef(
-                  [modeMaster.has, "selected"],
-                  [modeMaster.reset, "select"],
-                  () => layerManager.deleteLayersEvent(),
+                new EventDef([modeMaster.has, "selected"], [modeMaster.reset, "select"], () =>
+                  layerManager.deleteLayersEvent()
                 ),
               ],
               [keyGroup("Escape")]: [
                 new EventDef(
                   [modeMaster.hasOr, "writing", "selected"],
                   [modeMaster.reset, "select"],
-                  () => layerManager.unselectAll(),
+                  () => layerManager.unselectAll()
                 ),
               ],
               [keyGroup("Backspace", "Delete", ...ArrowKeyGroup)]: [
-                new EventDef(
-                  [modeMaster.has, "writing", "text"],
-                  [],
-                  TextLayer.keyDownEvent,
-                ),
+                new EventDef([modeMaster.has, "writing", "text"], [], TextLayer.keyDownEvent),
               ],
-              [keyGroup("Control")]: [
-                new EventDef([modeMaster.hasAny], [modeMaster.add, "ctrl"]),
-              ],
+              [keyGroup("Control")]: [new EventDef([modeMaster.hasAny], [modeMaster.add, "ctrl"])],
               [keyGroup("Z", "z")]: [
                 new EventDef([modeMaster.has, "shift", "ctrl"], [], (event) =>
-                  layerManager.redoEvent(event),
+                  layerManager.redoEvent(event)
                 ),
               ],
               [keyGroup("z")]: [
                 new EventDef([modeMaster.has, "ctrl"], [], (event) =>
-                  layerManager.undoEvent(event),
+                  layerManager.undoEvent(event)
                 ),
               ],
               [keyGroup("c")]: [
                 new EventDef([modeMaster.has, "ctrl", "selected"], [], () =>
-                  layerManager.copySelectedLayersEvent(),
+                  layerManager.copySelectedLayersEvent()
                 ),
               ],
               [keyGroup("a")]: [
-                new EventDef(
-                  [modeMaster.has, "ctrl"],
-                  [modeMaster.reset, "selected"],
-                  (event) => layerManager.selectAllEvent(event),
+                new EventDef([modeMaster.has, "ctrl"], [modeMaster.reset, "selected"], (event) =>
+                  layerManager.selectAllEvent(event)
                 ),
               ],
               [keyGroup("g")]: [
                 new EventDef([modeMaster.has, "selected"], [], () =>
-                  layerManager.groupSelectedLayersEvent(),
+                  layerManager.groupSelectedLayersEvent()
                 ),
               ],
             },
             keyup: {
               [keyGroup("Shift")]: [
-                new EventDef(
-                  [modeMaster.has, "shift"],
-                  [modeMaster.remove, "shift"],
-                ),
+                new EventDef([modeMaster.has, "shift"], [modeMaster.remove, "shift"]),
               ],
               [keyGroup("Control")]: [
-                new EventDef(
-                  [modeMaster.has, "ctrl"],
-                  [modeMaster.remove, "ctrl"],
-                ),
+                new EventDef([modeMaster.has, "ctrl"], [modeMaster.remove, "ctrl"]),
               ],
             },
           },
@@ -467,36 +441,29 @@ It stresses portability, simplicity, and immediateness."
             resize: [new EventDef([], [], (event) => canvas.scale())],
             paste: [
               new EventDef([modeMaster.has, "writing", "text"], [], (event) =>
-                layerManager.pasteToTextLayerEvent(event),
+                layerManager.pasteToTextLayerEvent(event)
               ),
               new EventDef([modeMaster.hasAny], [], (event) =>
-                layerManager.pasteAsTextLayerEvent(event),
+                layerManager.pasteAsTextLayerEvent(event)
               ),
             ],
             mouseup: [
               new EventDef(
                 [modeMaster.has, "drawing"],
                 [modeMaster.change, "drawing", "draw"],
-                (event) => layerManager.changeEvent(event),
+                (event) => layerManager.changeEvent(event)
               ),
-              new EventDef(
-                [modeMaster.has, "erasing"],
-                [modeMaster.change, "erasing", "erase"],
-              ),
-              new EventDef(
-                [modeMaster.has, "moving"],
-                [modeMaster.remove, "moving"],
-                (event) => layerManager.changeEvent(event),
+              new EventDef([modeMaster.has, "erasing"], [modeMaster.change, "erasing", "erase"]),
+              new EventDef([modeMaster.has, "moving"], [modeMaster.remove, "moving"], (event) =>
+                layerManager.changeEvent(event)
               ),
               new EventDef(
                 [modeMaster.has, "area-selecting"],
                 [modeMaster.remove, "area-selecting"],
-                (event) => areaSelectManager.areaSelectingMouseUpEvent(event),
+                (event) => areaSelectManager.areaSelectingMouseUpEvent(event)
               ),
-              new EventDef(
-                [modeMaster.has, "resizing"],
-                [modeMaster.remove, "resizing"],
-                (event) => layerManager.changeEvent(event),
+              new EventDef([modeMaster.has, "resizing"], [modeMaster.remove, "resizing"], (event) =>
+                layerManager.changeEvent(event)
               ),
             ],
           },
@@ -507,70 +474,60 @@ It stresses portability, simplicity, and immediateness."
               new EventDef(
                 [modeMaster.has, "draw", "text"],
                 [modeMaster.change, "draw", "writing"],
-                TextLayer.drawMouseDownEvent,
+                TextLayer.drawMouseDownEvent
               ),
               new EventDef(
                 [modeMaster.has, "draw"],
                 [modeMaster.change, "draw", "drawing"],
-                Layer.drawMouseDownEvent,
+                Layer.drawMouseDownEvent
               ),
               new EventDef(
                 [modeMaster.has, "writing", "text"],
                 [],
-                TextLayer.writingMouseDownEvent,
+                TextLayer.writingMouseDownEvent
               ),
               new EventDef(
                 [modeMaster.has, "erase"],
                 [modeMaster.change, "erase", "erasing"],
-                (event) => layerManager.erasePixelEvent(event),
+                (event) => layerManager.erasePixelEvent(event)
               ),
               new EventDef(
                 [modeMaster.hasOr, "selected", "select"],
                 [],
-                Layer.selectMouseDownEvent,
+                Layer.selectMouseDownEvent
               ),
             ],
             mouseover: [
               new EventDef(
                 [modeMaster.has, "draw", "line"], // Technically this should be for any joiner layer...
                 [],
-                BaseLineLayer.drawMouseOver,
+                BaseLineLayer.drawMouseOver
               ),
               new EventDef([modeMaster.has, "draw"], [], Layer.drawMouseOver),
-              new EventDef(
-                [modeMaster.has, "drawing"],
-                [],
-                Layer.drawingMouseOverEvent,
-              ),
+              new EventDef([modeMaster.has, "drawing"], [], Layer.drawingMouseOverEvent),
               new EventDef([modeMaster.has, "erasing"], [], (event) =>
-                layerManager.erasePixelEvent(event),
+                layerManager.erasePixelEvent(event)
               ),
               new EventDef([modeMaster.has, "area-selecting"], [], (event) =>
-                areaSelectManager.areaSelectingMouseOverEvent(event),
+                areaSelectManager.areaSelectingMouseOverEvent(event)
               ),
               new EventDef([modeMaster.has, "moving"], [], (event) =>
-                layerManager.movingMouseOverEvent(event),
+                layerManager.movingMouseOverEvent(event)
               ),
               new EventDef([modeMaster.has, "resizing"], [], (event) =>
-                layerManager.resizingMouseOverEvent(event),
+                layerManager.resizingMouseOverEvent(event)
               ),
-              new EventDef(
-                [modeMaster.hasOr, "selected", "select"],
-                [],
-                (event) => layerManager.selectMouseOverEvent(event),
+              new EventDef([modeMaster.hasOr, "selected", "select"], [], (event) =>
+                layerManager.selectMouseOverEvent(event)
               ),
             ],
             dblclick: [
               new EventDef(
                 [modeMaster.has, "selected", "text"],
                 [modeMaster.change, "selected", "writing"],
-                TextLayer.selectedDoubleClickEvent,
+                TextLayer.selectedDoubleClickEvent
               ),
-              new EventDef(
-                [modeMaster.has, "writing"],
-                [],
-                TextLayer.selectedDoubleClickEvent,
-              ),
+              new EventDef([modeMaster.has, "writing"], [], TextLayer.selectedDoubleClickEvent),
             ],
           },
         },
@@ -607,10 +564,7 @@ It stresses portability, simplicity, and immediateness."
           for (const [eventGroup, eventDefs] of Object.entries(eventGroups)) {
             switch (eventGroup) {
               case "mouseEvents":
-                this.assignMouseEventDefs(
-                  namedElements[elementName],
-                  eventDefs,
-                );
+                this.assignMouseEventDefs(namedElements[elementName], eventDefs);
                 break;
               case "keyEvents":
                 this.assignKeyEventDefs(namedElements[elementName], eventDefs);
@@ -626,24 +580,8 @@ It stresses portability, simplicity, and immediateness."
       // And: https://www.amp-what.com/unicode/search/dot
       charset = {
         // Dotted lines
-        "•": [
-          "dotted",
-          "line",
-          "vertical",
-          "lateral",
-          "corner",
-          "generic",
-          "unicode",
-        ],
-        ".": [
-          "dotted",
-          "line",
-          "vertical",
-          "lateral",
-          "corner",
-          "generic",
-          "ascii",
-        ],
+        "•": ["dotted", "line", "vertical", "lateral", "corner", "generic", "unicode"],
+        ".": ["dotted", "line", "vertical", "lateral", "corner", "generic", "ascii"],
 
         // Solid lines
         "━": ["solid-bold", "line", "lateral", "unicode"],
@@ -651,22 +589,8 @@ It stresses portability, simplicity, and immediateness."
         "|": ["solid-thin", "solid-bold", "line", "vertical", "ascii"],
         "─": ["solid-thin", "line", "lateral", "unicode"],
         "│": ["solid-thin", "line", "vertical", "unicode"],
-        "\\": [
-          "solid-thin",
-          "solid-bold",
-          "diag-back",
-          "line",
-          "unicode",
-          "ascii",
-        ],
-        "/": [
-          "solid-thin",
-          "solid-bold",
-          "diag-forward",
-          "line",
-          "unicode",
-          "ascii",
-        ],
+        "\\": ["solid-thin", "solid-bold", "diag-back", "line", "unicode", "ascii"],
+        "/": ["solid-thin", "solid-bold", "diag-forward", "line", "unicode", "ascii"],
 
         // Dashed lines
         "'": ["dashed", "line", "vertical", "ascii"],
@@ -695,14 +619,7 @@ It stresses portability, simplicity, and immediateness."
         "└": ["corner", "dashed", "solid-thin", "bottom-left", "unicode"],
         "┘": ["corner", "dashed", "solid-thin", "bottom-right", "unicode"],
 
-        "·": [
-          "diamond-corner",
-          "solid-thin",
-          "solid-bold",
-          "vertical",
-          "lateral",
-          "unicode",
-        ],
+        "·": ["diamond-corner", "solid-thin", "solid-bold", "vertical", "lateral", "unicode"],
 
         "+": [
           "corner",
@@ -752,30 +669,15 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getDiagBackLine(lineForm) {
-        return this.getBestChar(
-          "diag-back",
-          "line",
-          lineForm,
-          this.getCharset(),
-        );
+        return this.getBestChar("diag-back", "line", lineForm, this.getCharset());
       }
 
       getDiagForwardLine(lineForm) {
-        return this.getBestChar(
-          "diag-forward",
-          "line",
-          lineForm,
-          this.getCharset(),
-        );
+        return this.getBestChar("diag-forward", "line", lineForm, this.getCharset());
       }
 
       getVerticalLine(lineForm) {
-        return this.getBestChar(
-          "vertical",
-          "line",
-          lineForm,
-          this.getCharset(),
-        );
+        return this.getBestChar("vertical", "line", lineForm, this.getCharset());
       }
 
       getLateralLine(lineForm) {
@@ -783,21 +685,11 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getCorner(lineForm, position) {
-        return this.getBestChar(
-          "corner",
-          position,
-          lineForm,
-          this.getCharset(),
-        );
+        return this.getBestChar("corner", position, lineForm, this.getCharset());
       }
 
       getDiamondCorner(lineForm, position) {
-        return this.getBestChar(
-          "diamond-corner",
-          position,
-          lineForm,
-          this.getCharset(),
-        );
+        return this.getBestChar("diamond-corner", position, lineForm, this.getCharset());
       }
 
       getArrow(direction) {
@@ -844,11 +736,7 @@ It stresses portability, simplicity, and immediateness."
         var foundGroups = [];
         let layerIds = layers.map((layer) => layer.id);
         for (var groupLayerIds of this.layerGroups) {
-          if (
-            groupLayerIds
-              .map((layerId) => layerIds.includes(layerId))
-              .every(Boolean)
-          ) {
+          if (groupLayerIds.map((layerId) => layerIds.includes(layerId)).every(Boolean)) {
             foundGroups.push(groupLayerIds);
           }
         }
@@ -856,12 +744,8 @@ It stresses portability, simplicity, and immediateness."
       }
 
       ungroupLayers(layers) {
-        let groups = this.findGroupsFromLayers(layers).map((group) =>
-          group.toString(),
-        );
-        this.layerGroups = this.layerGroups.filter(
-          (group) => !groups.includes(group.toString()),
-        );
+        let groups = this.findGroupsFromLayers(layers).map((group) => group.toString());
+        this.layerGroups = this.layerGroups.filter((group) => !groups.includes(group.toString()));
       }
 
       groupLayers(layers) {
@@ -879,9 +763,7 @@ It stresses portability, simplicity, and immediateness."
       tidy(layers) {
         var index = 0;
         for (var layerGroup of this.layerGroups) {
-          this.layerGroups[index] = layerGroup.filter(
-            (layerId) => !layers.includes(layerId),
-          );
+          this.layerGroups[index] = layerGroup.filter((layerId) => !layers.includes(layerId));
           index++;
         }
         // Tidy empty / one layer groups
@@ -902,9 +784,7 @@ It stresses portability, simplicity, and immediateness."
       areaSelectingMouseUpEvent(event) {
         this.clearAreaSelection();
         // Re-render selected layers having just cleared pixels.
-        layerManager
-          .getSelectedLayers()
-          .forEach((layer) => layer.renderSelected());
+        layerManager.getSelectedLayers().forEach((layer) => layer.renderSelected());
       }
 
       areaSelectingMouseOverEvent(event) {
@@ -920,10 +800,7 @@ It stresses portability, simplicity, and immediateness."
         var drawCol = firstPixel.col;
         for (var row = 0; row <= Math.abs(verticalDiff); row++) {
           for (var col = 0; col <= Math.abs(lateralDiff); col++) {
-            let pixel = canvas.getPixelByRowCol(
-              parseInt(drawRow),
-              parseInt(drawCol),
-            );
+            let pixel = canvas.getPixelByRowCol(parseInt(drawRow), parseInt(drawCol));
             this.areaSelectionPixels.push(pixel);
             drawCol += lateralDiff / Math.abs(lateralDiff);
           }
@@ -939,13 +816,8 @@ It stresses portability, simplicity, and immediateness."
         let layersToSelect = [];
         for (var layer of layerManager.layers) {
           let layerPixelIds = layer.pixels.map((pixel) => pixel.id());
-          let selectedPixelIds = this.areaSelectionPixels.map((pixel) =>
-            pixel.id(),
-          );
-          if (
-            layerPixelIds.filter((pixel) => !selectedPixelIds.includes(pixel))
-              .length
-          ) {
+          let selectedPixelIds = this.areaSelectionPixels.map((pixel) => pixel.id());
+          if (layerPixelIds.filter((pixel) => !selectedPixelIds.includes(pixel)).length) {
             if (layer.isSelected()) {
               layer.unselect();
             }
@@ -989,9 +861,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getLineBasedLayerTypes() {
-        return this.LayerRegister.filter((cls) => cls.lineBased).map(
-          (cls) => cls.type,
-        );
+        return this.LayerRegister.filter((cls) => cls.lineBased).map((cls) => cls.type);
       }
 
       getLayerClassByType(type) {
@@ -1039,9 +909,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       decodeLayers(layers) {
-        return layers.map((layer) =>
-          this.getLayerClassByType(layer.ty).decode(layer),
-        );
+        return layers.map((layer) => this.getLayerClassByType(layer.ty).decode(layer));
       }
 
       import(encodedData) {
@@ -1088,20 +956,15 @@ It stresses portability, simplicity, and immediateness."
 
       selectGroupsByMemberLayer(memberLayer) {
         let siblingLayerIds = this.groupManager.getSiblingLayerIds(memberLayer);
-        siblingLayerIds.forEach((layerId) =>
-          this.getLayerById(layerId).select(),
-        );
+        siblingLayerIds.forEach((layerId) => this.getLayerById(layerId).select());
       }
 
       undo() {
         let limit = this.layerHistory.length - 1;
-        this.historyCursor =
-          this.historyCursor < limit ? this.historyCursor + 1 : limit;
+        this.historyCursor = this.historyCursor < limit ? this.historyCursor + 1 : limit;
         // Copy historic layers to avoid mutating them now that they're current.
         // Past will otherwise show as present...
-        this.layers = this.copyReplaceLayers(
-          this.layerHistory[this.historyCursor],
-        );
+        this.layers = this.copyReplaceLayers(this.layerHistory[this.historyCursor]);
         this.groupManager.jumpHistory(this.historyCursor);
 
         // Put latest visuals to local storage (we can't rely on capture as undo should not capture).
@@ -1109,13 +972,10 @@ It stresses portability, simplicity, and immediateness."
       }
 
       redo() {
-        this.historyCursor =
-          this.historyCursor > 0 ? this.historyCursor - 1 : 0;
+        this.historyCursor = this.historyCursor > 0 ? this.historyCursor - 1 : 0;
         // Copy historic layers to avoid mutating them now that they're current.
         // Past will otherwise show as present...
-        this.layers = this.copyReplaceLayers(
-          this.layerHistory[this.historyCursor],
-        );
+        this.layers = this.copyReplaceLayers(this.layerHistory[this.historyCursor]);
         this.groupManager.jumpHistory(this.historyCursor);
 
         // Put latest visuals to local storage (we can't rely on capture as redo should not capture).
@@ -1133,9 +993,12 @@ It stresses portability, simplicity, and immediateness."
         let layerLookup = {};
         let layersToCopy = this.getSelectedLayers();
         for (var layer of layersToCopy)
-          layerLookup[layer.id] = { old: layer, new: layer.copyAndRender() };
+          layerLookup[layer.id] = {
+            old: layer,
+            new: layer.copyAndRender(),
+          };
         this.moveLayersToAvailableSpace(
-          Object.values(layerLookup).map((oldNewLayer) => oldNewLayer.new),
+          Object.values(layerLookup).map((oldNewLayer) => oldNewLayer.new)
         );
 
         this.repointJointsForCopiedLayers(layerLookup);
@@ -1170,9 +1033,7 @@ It stresses portability, simplicity, and immediateness."
 
       regroupForCopiedLayers(layerLookup) {
         // This groups the newly copied layers which were grouped before being copied.
-        let layersToCopy = Object.values(layerLookup).map(
-          (oldNewLayer) => oldNewLayer.old,
-        );
+        let layersToCopy = Object.values(layerLookup).map((oldNewLayer) => oldNewLayer.old);
         let groupsToCopy = this.groupManager.findGroupsFromLayers(layersToCopy);
         for (var group of groupsToCopy) {
           var newGroup = group.map((layerId) => layerLookup[layerId].new);
@@ -1237,9 +1098,7 @@ It stresses portability, simplicity, and immediateness."
 
       tidyAllJoints(layersToDelete) {
         for (var layer of this.layers) {
-          layer.joints = layer.joints.filter(
-            (joint) => !layersToDelete.includes(joint.layerId),
-          );
+          layer.joints = layer.joints.filter((joint) => !layersToDelete.includes(joint.layerId));
           layer.tidyJoints();
         }
       }
@@ -1251,9 +1110,7 @@ It stresses portability, simplicity, and immediateness."
           .map((layer) => layer.id);
 
         // Delete empty layers
-        this.layers = this.layers.filter(
-          (layer) => !layersToDelete.includes(layer.id),
-        );
+        this.layers = this.layers.filter((layer) => !layersToDelete.includes(layer.id));
 
         // Delete references to empty layers in groups
         this.groupManager.tidy(layersToDelete);
@@ -1269,8 +1126,7 @@ It stresses portability, simplicity, and immediateness."
       tidyAllTables(layersToDelete) {
         for (let layer of this.layers.filter((layer) => layer.is("table"))) {
           for (let key in layer.textLayers) {
-            if (layersToDelete.includes(layer.textLayers[key]))
-              delete layer.textLayers[key];
+            if (layersToDelete.includes(layer.textLayers[key])) delete layer.textLayers[key];
           }
         }
       }
@@ -1302,8 +1158,7 @@ It stresses portability, simplicity, and immediateness."
           // We need to determine if layer and targetLayer are 'connected' at the target pixel,
           // regardless of if a joint has been created yet.
           let isConnectedToTargetLayer =
-            layer.hasJoinerPixel(targetPixel.id()) ||
-            layer.hasJointPixel(targetPixel.id());
+            layer.hasJoinerPixel(targetPixel.id()) || layer.hasJointPixel(targetPixel.id());
           // If the first layer to have the target pixel is the target layer, it's visible.
           // IsUsingPixel check here isn't really needed as targetLayer should always use targetPixel,
           // nonetheless it makes more sense in case the provided target layer/pixel is wrong.
@@ -1318,8 +1173,7 @@ It stresses portability, simplicity, and immediateness."
           //    (joiner pixel should not hide the joint pixel, otherwise it'll never make a joint!).
           //  - Joint pixels aren't always on the layer, and are therefore 'transparent'
           //    (joint pixels alone shouldn't hide joiner pixels).
-          if (!isTargetLayer && isUsingPixel && !isConnectedToTargetLayer)
-            return false;
+          if (!isTargetLayer && isUsingPixel && !isConnectedToTargetLayer) return false;
         }
 
         // There is no obvious case we should arrive here, unless the targetLayer somehow
@@ -1378,10 +1232,7 @@ It stresses portability, simplicity, and immediateness."
         // the canvas boundary, none should move. Hence, here
         // we ensure all moves are doable before keeping them.
         let success = this.atomicCommit(
-          ...layers.map((layer) => [
-            layer,
-            () => layer.move(verticalDiff, lateralDiff),
-          ]),
+          ...layers.map((layer) => [layer, () => layer.move(verticalDiff, lateralDiff)])
         );
         if (!success) return;
 
@@ -1399,9 +1250,7 @@ It stresses portability, simplicity, and immediateness."
 
       moveSelectedLayers(verticalDiff, lateralDiff) {
         let selectedLayers = this.getSelectedLayers();
-        this.refresh(() =>
-          this.moveLayersAtomically(selectedLayers, verticalDiff, lateralDiff),
-        );
+        this.refresh(() => this.moveLayersAtomically(selectedLayers, verticalDiff, lateralDiff));
         this.findJoints(selectedLayers);
       }
 
@@ -1467,10 +1316,7 @@ It stresses portability, simplicity, and immediateness."
             // If the selected layer is the lead / currently selected layer
             // Then we already know the activePixel is the resize pixel.
             resizePixel = activePixel;
-          } else if (
-            resizeLayer.getType() == leadLayer.getType() &&
-            !leadLayer.isLine()
-          ) {
+          } else if (resizeLayer.getType() == leadLayer.getType() && !leadLayer.isLine()) {
             // If the lead layer is the same type as a selected layer,
             // we can use the same resize pixel position and resize the layer
             // in the same way for the best experience.
@@ -1561,7 +1407,7 @@ It stresses portability, simplicity, and immediateness."
 
           let toPixel = canvas.getPixelByRowCol(
             layer.toPixel.row + verticalDiff,
-            layer.toPixel.col + lateralDiff,
+            layer.toPixel.col + lateralDiff
           );
           if (!toPixel) continue;
 
@@ -1654,10 +1500,7 @@ It stresses portability, simplicity, and immediateness."
         this.groupManager.ungroupLayers(this.getSelectedLayers());
         layerManager.unselectAll();
         modeMaster.reset("select");
-        bodyComponent.informerComponent.report(
-          "Successfully ungrouped",
-          "good",
-        );
+        bodyComponent.informerComponent.report("Successfully ungrouped", "good");
         this.triggerChanged();
       }
 
@@ -1672,8 +1515,7 @@ It stresses portability, simplicity, and immediateness."
 
       redrawLineBasedEvent(lineForm) {
         for (var layer of this.getSelectedLayers()) {
-          if (layer.isLineBased())
-            this.refresh(() => layer.redrawChars(lineForm));
+          if (layer.isLineBased()) this.refresh(() => layer.redrawChars(lineForm));
         }
         this.triggerChanged();
       }
@@ -1687,10 +1529,7 @@ It stresses portability, simplicity, and immediateness."
         let activePixel = canvas.getPixelById(event.target.id);
         let layer = this.getLayerByPixelId(activePixel.id());
         if (layer && !layer.is("free")) {
-          bodyComponent.informerComponent.report(
-            "Can only erase free drawings!",
-            "bad",
-          );
+          bodyComponent.informerComponent.report("Can only erase free drawings!", "bad");
           return;
         }
         if (layer) this.refresh(() => layer.erasePixel(activePixel.id()));
@@ -1716,26 +1555,20 @@ It stresses portability, simplicity, and immediateness."
 
       bringForwardEvent(event) {
         let highestZindex = this.getHighestZindex();
-        this.refresh(() =>
-          this.getSelectedLayers().forEach((layer) => layer.zindex++),
-        );
+        this.refresh(() => this.getSelectedLayers().forEach((layer) => layer.zindex++));
         this.triggerChanged();
       }
 
       sendBackwardsEvent(event) {
         let lowestZindex = this.getLowestZindex();
-        this.refresh(() =>
-          this.getSelectedLayers().forEach((layer) => layer.zindex--),
-        );
+        this.refresh(() => this.getSelectedLayers().forEach((layer) => layer.zindex--));
         this.triggerChanged();
       }
 
       bringToFrontEvent(event) {
         let highestZindex = this.getHighestZindex();
         this.refresh(() =>
-          this.getSelectedLayers().forEach(
-            (layer) => (layer.zindex = highestZindex + 1),
-          ),
+          this.getSelectedLayers().forEach((layer) => (layer.zindex = highestZindex + 1))
         );
         this.triggerChanged();
       }
@@ -1743,9 +1576,7 @@ It stresses portability, simplicity, and immediateness."
       sendToBackEvent(event) {
         let lowestZindex = this.getLowestZindex();
         this.refresh(() =>
-          this.getSelectedLayers().forEach(
-            (layer) => (layer.zindex = lowestZindex - 1),
-          ),
+          this.getSelectedLayers().forEach((layer) => (layer.zindex = lowestZindex - 1))
         );
         this.triggerChanged();
       }
@@ -1757,9 +1588,9 @@ It stresses portability, simplicity, and immediateness."
         let text = clipboardData.getData("Text").substring(0, 100);
         this.refresh(() =>
           this.editingTextLayer.commit(
-            () => this.editingTextLayer.paste(text),
+            () => this.editingTextLayer.paste(text)
             // TODO: Show error when failing to copy
-          ),
+          )
         );
       }
 
@@ -1918,17 +1749,13 @@ It stresses portability, simplicity, and immediateness."
         modeMaster.change("select", "selected");
         modeMaster.setSelectedLayerMode(layer);
         modeMaster.add(
-          layerManager.prepareLayerResizing(activePixel, layer)
-            ? "resizing"
-            : "moving",
+          layerManager.prepareLayerResizing(activePixel, layer) ? "resizing" : "moving"
         );
         if (!modeMaster.has("shift") || layer.is("table") || layer.hasTable()) {
           // Select all members of a group if not bypassed by ctrl to select a grouped
           // layer.
           // This bypass shouldn't work for tables / table children to avoid undefined behaviour.
-          layerManager.refresh(() =>
-            layerManager.selectGroupsByMemberLayer(layer),
-          );
+          layerManager.refresh(() => layerManager.selectGroupsByMemberLayer(layer));
         }
       }
 
@@ -1945,7 +1772,7 @@ It stresses portability, simplicity, and immediateness."
           this.pixels.every(Boolean) &&
             this.getJointPixels().every(Boolean) &&
             this.fromPixel &&
-            this.toPixel,
+            this.toPixel
         );
       }
 
@@ -2021,15 +1848,13 @@ It stresses portability, simplicity, and immediateness."
       select() {
         this._isSelected = true;
         this.renderSelected();
-        if (layerManager.getSelectedLayers().length > 1)
-          modeMaster.add("multi-select");
+        if (layerManager.getSelectedLayers().length > 1) modeMaster.add("multi-select");
       }
 
       unselect() {
         this._isSelected = false;
         this.renderUnselected();
-        if (layerManager.getSelectedLayers().length <= 1)
-          modeMaster.remove("multi-select");
+        if (layerManager.getSelectedLayers().length <= 1) modeMaster.remove("multi-select");
       }
 
       setToPixel(pixel) {
@@ -2041,15 +1866,11 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getLastPixel() {
-        return this.pixels.length
-          ? this.pixels[this.pixels.length - 1]
-          : this.fromPixel;
+        return this.pixels.length ? this.pixels[this.pixels.length - 1] : this.fromPixel;
       }
 
       getMiddlePixel() {
-        return this.pixels.length
-          ? this.pixels[roundHalf(this.pixels.length / 2)]
-          : this.fromPixel;
+        return this.pixels.length ? this.pixels[roundHalf(this.pixels.length / 2)] : this.fromPixel;
       }
 
       getFirstPixel() {
@@ -2061,9 +1882,7 @@ It stresses portability, simplicity, and immediateness."
         this.pixels.push(pixel);
         this.values.push(value);
         if (this.pixels.length != this.values.length) {
-          debugError(
-            `layer pixel/value mismatch: ${this.pixels} != ${this.values}`,
-          );
+          debugError(`layer pixel/value mismatch: ${this.pixels} != ${this.values}`);
         }
       }
 
@@ -2226,9 +2045,7 @@ It stresses portability, simplicity, and immediateness."
         for (let direction of directions) {
           total += targetLayer
             .getMove(...direction)
-            .filter(
-              (pixel) => pixel && layerPixelIds.includes(pixel.id()),
-            ).length;
+            .filter((pixel) => pixel && layerPixelIds.includes(pixel.id())).length;
         }
         return total;
       }
@@ -2248,16 +2065,12 @@ It stresses portability, simplicity, and immediateness."
       render() {
         this.releaseCommit();
         this.isSelected() ? this.renderSelected() : this.renderUnselected();
-        for (var i = 0; i < this.pixels.length; i++)
-          this.pixels[i].setValue(this.values[i]);
+        for (var i = 0; i < this.pixels.length; i++) this.pixels[i].setValue(this.values[i]);
       }
 
       getMove(verticalDiff, lateralDiff) {
         return this.pixels.map((pixel) =>
-          canvas.getPixelByRowCol(
-            pixel.row + verticalDiff,
-            pixel.col + lateralDiff,
-          ),
+          canvas.getPixelByRowCol(pixel.row + verticalDiff, pixel.col + lateralDiff)
         );
       }
 
@@ -2267,14 +2080,11 @@ It stresses portability, simplicity, and immediateness."
         this.setFromPixel(
           canvas.getPixelByRowCol(
             this.fromPixel.row + verticalDiff,
-            this.fromPixel.col + lateralDiff,
-          ),
+            this.fromPixel.col + lateralDiff
+          )
         );
         this.setToPixel(
-          canvas.getPixelByRowCol(
-            this.toPixel.row + verticalDiff,
-            this.toPixel.col + lateralDiff,
-          ),
+          canvas.getPixelByRowCol(this.toPixel.row + verticalDiff, this.toPixel.col + lateralDiff)
         );
       }
 
@@ -2291,8 +2101,7 @@ It stresses portability, simplicity, and immediateness."
           // Depending on multi-select and the action being taken,
           // it effects if a selected probe join layer should be redrawn.
           // Moved layers don't need to, where as resized layers do.
-          if (!layer || (!resizeSelectedJoinerLayers && layer.isSelected()))
-            continue;
+          if (!layer || (!resizeSelectedJoinerLayers && layer.isSelected())) continue;
 
           let beforeJointPixel = this.lastKeyedJointPixels[joint.jointKey];
           let currentJointPixel = this.getKeyedJointPixels()[joint.jointKey];
@@ -2473,8 +2282,7 @@ It stresses portability, simplicity, and immediateness."
 
       static keyDownEvent(event) {
         var layer = layerManager.editingTextLayer;
-        if (layer && layer.is("text"))
-          layerManager.refresh(() => layer.draw(event.key));
+        if (layer && layer.is("text")) layerManager.refresh(() => layer.draw(event.key));
       }
 
       static focusedOtherTextLayer(activePixel) {
@@ -2510,9 +2318,7 @@ It stresses portability, simplicity, and immediateness."
           // If the textLayer has a parent table, it's happiness
           // should also depend on the parent (it should rollback if the parent has
           // become unhappy)
-          return (
-            layerManager.getLayerById(this.tableId).isHappy() && super.isHappy()
-          );
+          return layerManager.getLayerById(this.tableId).isHappy() && super.isHappy();
         }
         return super.isHappy();
       }
@@ -2566,8 +2372,7 @@ It stresses portability, simplicity, and immediateness."
         var cursor = pixIndex + line + 1;
         // If the user has selected the end, decrement the cursor once so that it
         // doesn't flip to the beginning.
-        this.cursor =
-          this.pixIndex == this.pixels.length - 1 ? cursor - 1 : cursor;
+        this.cursor = this.pixIndex == this.pixels.length - 1 ? cursor - 1 : cursor;
         this.lastCursorPixel = pixel;
         pixel.startCursor();
       }
@@ -2623,22 +2428,17 @@ It stresses portability, simplicity, and immediateness."
         if (direction == "up") {
           nextLine = currentLine > 0 ? currentLine - 1 : currentLine;
         } else {
-          nextLine =
-            lineLengths.length - 1 > currentLine
-              ? currentLine + 1
-              : currentLine;
+          nextLine = lineLengths.length - 1 > currentLine ? currentLine + 1 : currentLine;
         }
         let col =
-          lineLengths[nextLine] > cursorLineOffset
-            ? cursorLineOffset
-            : lineLengths[nextLine];
+          lineLengths[nextLine] > cursorLineOffset ? cursorLineOffset : lineLengths[nextLine];
         return this.getLineStart(nextLine) + col;
       }
 
       draw(key) {
         let committed = this.commit(
           () => this.writeChar(key),
-          () => this.drawLayer(),
+          () => this.drawLayer()
         );
         if (!committed) return;
         this.resizeJoinerLayers(true);
@@ -2697,10 +2497,7 @@ It stresses portability, simplicity, and immediateness."
             line++;
             col = 0;
           }
-          let pixel = canvas.getPixelByRowCol(
-            this.fromPixel.row + line,
-            this.fromPixel.col + col,
-          );
+          let pixel = canvas.getPixelByRowCol(this.fromPixel.row + line, this.fromPixel.col + col);
           // Writing out of bounds. Stop the writing! Let a rollback take care of it.
           if (!pixel) return;
 
@@ -2833,10 +2630,7 @@ It stresses portability, simplicity, and immediateness."
         let verticalDiff = toPixel.row - fromPixel.row;
         let lateralDiff = toPixel.col - fromPixel.col;
 
-        var totalSteps = Math.max(
-          Math.abs(verticalDiff),
-          Math.abs(lateralDiff),
-        );
+        var totalSteps = Math.max(Math.abs(verticalDiff), Math.abs(lateralDiff));
         var verticalStep = verticalDiff / totalSteps;
         var lateralStep = lateralDiff / totalSteps;
 
@@ -2867,28 +2661,18 @@ It stresses portability, simplicity, and immediateness."
         if (Math.abs(verticalDiff) * 2 > Math.abs(lateralDiff)) {
           if (toPixel.isAbove(fromPixel)) {
             endValue = this.hasArrowLeft ? charManager.getArrow("up") : value;
-            startValue = this.hasArrowRight
-              ? charManager.getArrow("down")
-              : value;
+            startValue = this.hasArrowRight ? charManager.getArrow("down") : value;
           } else {
             endValue = this.hasArrowLeft ? charManager.getArrow("down") : value;
-            startValue = this.hasArrowRight
-              ? charManager.getArrow("up")
-              : value;
+            startValue = this.hasArrowRight ? charManager.getArrow("up") : value;
           }
         } else {
           if (fromPixel.isLeft(toPixel)) {
-            endValue = this.hasArrowRight
-              ? charManager.getArrow("right")
-              : value;
-            startValue = this.hasArrowLeft
-              ? charManager.getArrow("left")
-              : value;
+            endValue = this.hasArrowRight ? charManager.getArrow("right") : value;
+            startValue = this.hasArrowLeft ? charManager.getArrow("left") : value;
           } else {
             endValue = this.hasArrowLeft ? charManager.getArrow("left") : value;
-            startValue = this.hasArrowRight
-              ? charManager.getArrow("right")
-              : value;
+            startValue = this.hasArrowRight ? charManager.getArrow("right") : value;
           }
         }
 
@@ -2896,7 +2680,7 @@ It stresses portability, simplicity, and immediateness."
         for (var i = 0; i <= totalSteps; i++) {
           this.add(
             canvas.getPixelByRowCol(roundHalf(rowDraw), roundHalf(colDraw)),
-            i == 0 ? startValue : value,
+            i == 0 ? startValue : value
           );
           rowDraw += verticalStep;
           colDraw += lateralStep;
@@ -2937,15 +2721,9 @@ It stresses portability, simplicity, and immediateness."
           TableLayer.type,
         ];
         this.drawFromTo(this.fromPixel, this.toPixel);
-        let resultNorm = layerManager.getNearOverlappingCount(
-          this,
-          layersToAvoid,
-        );
+        let resultNorm = layerManager.getNearOverlappingCount(this, layersToAvoid);
         this.drawFromTo(this.toPixel, this.fromPixel);
-        let resultFlip = layerManager.getNearOverlappingCount(
-          this,
-          layersToAvoid,
-        );
+        let resultFlip = layerManager.getNearOverlappingCount(this, layersToAvoid);
         if (resultNorm > resultFlip) {
           this.drawFromTo(this.toPixel, this.fromPixel);
         } else {
@@ -2962,10 +2740,7 @@ It stresses portability, simplicity, and immediateness."
         let absVerticalDiff = Math.abs(verticalDiff);
         let absLateralDiff = Math.abs(lateralDiff);
 
-        let [lateralArrowValue, verticalArrowValue] = this.getArrowChars(
-          fromPixel,
-          toPixel,
-        );
+        let [lateralArrowValue, verticalArrowValue] = this.getArrowChars(fromPixel, toPixel);
         var cornerChar = this.getCornerChar(fromPixel, toPixel);
 
         var drawCol = fromPixel.col;
@@ -2974,7 +2749,7 @@ It stresses portability, simplicity, and immediateness."
         for (var i = 0; i < absLateralDiff; i++) {
           this.add(
             canvas.getPixelByRowCol(fromPixel.row, drawCol),
-            i == 0 ? lateralArrowValue : lateralChar,
+            i == 0 ? lateralArrowValue : lateralChar
           );
           drawCol += lateralDiff / absLateralDiff;
         }
@@ -2991,7 +2766,7 @@ It stresses portability, simplicity, and immediateness."
           let value = verticalDiff && lateralDiff ? cornerChar : verticalChar;
           this.add(
             canvas.getPixelByRowCol(drawRow, toPixel.col),
-            i == absVerticalDiff ? verticalArrowValue : verticalChar,
+            i == absVerticalDiff ? verticalArrowValue : verticalChar
           );
         }
       }
@@ -3015,8 +2790,7 @@ It stresses portability, simplicity, and immediateness."
           //    |
           //    |
           //    |____
-          if (this.hasArrowRight)
-            lateralArrowValue = charManager.getArrow("right");
+          if (this.hasArrowRight) lateralArrowValue = charManager.getArrow("right");
           if (this.hasArrowLeft) {
             verticalArrowValue =
               fromPixel.row > toPixel.row
@@ -3028,8 +2802,7 @@ It stresses portability, simplicity, and immediateness."
           //       |
           //       |
           //    ___|
-          if (this.hasArrowLeft)
-            lateralArrowValue = charManager.getArrow("left");
+          if (this.hasArrowLeft) lateralArrowValue = charManager.getArrow("left");
           if (this.hasArrowRight) {
             verticalArrowValue =
               fromPixel.row > toPixel.row
@@ -3108,15 +2881,9 @@ It stresses portability, simplicity, and immediateness."
           TableLayer.type,
         ];
         this.drawVertical(fromPixel, toPixel);
-        let verticalOverlap = layerManager.getNearOverlappingCount(
-          this,
-          layersToAvoid,
-        );
+        let verticalOverlap = layerManager.getNearOverlappingCount(this, layersToAvoid);
         this.drawLateral(fromPixel, toPixel);
-        let lateralOverlap = layerManager.getNearOverlappingCount(
-          this,
-          layersToAvoid,
-        );
+        let lateralOverlap = layerManager.getNearOverlappingCount(this, layersToAvoid);
         if (verticalOverlap > lateralOverlap) {
           this.drawLateral(fromPixel, toPixel);
         } else if (lateralOverlap > verticalOverlap) {
@@ -3131,76 +2898,36 @@ It stresses portability, simplicity, and immediateness."
       drawVertical(fromPixel, toPixel) {
         let lateralChar = charManager.getLateralLine(this.lineForm);
         let verticalChar = charManager.getVerticalLine(this.lineForm);
-        let [firstChar, lastChar] = this.getArrowCharsVertical(
-          fromPixel,
-          toPixel,
-        );
-        let [firstCornerChar, lastCornerChar] = this.getCornerCharsVertical(
-          fromPixel,
-          toPixel,
-        );
+        let [firstChar, lastChar] = this.getArrowCharsVertical(fromPixel, toPixel);
+        let [firstCornerChar, lastCornerChar] = this.getCornerCharsVertical(fromPixel, toPixel);
         this.drawFromTo(
           fromPixel.col,
           fromPixel.row,
           toPixel.col,
           toPixel.row,
-          [
-            verticalChar,
-            lateralChar,
-            firstChar,
-            lastChar,
-            firstCornerChar,
-            lastCornerChar,
-          ],
-          (a, b) => canvas.getPixelByRowCol(a, b),
+          [verticalChar, lateralChar, firstChar, lastChar, firstCornerChar, lastCornerChar],
+          (a, b) => canvas.getPixelByRowCol(a, b)
         );
       }
 
       drawLateral(fromPixel, toPixel) {
         let lateralChar = charManager.getLateralLine(this.lineForm);
         let verticalChar = charManager.getVerticalLine(this.lineForm);
-        let [firstChar, lastChar] = this.getArrowCharsLateral(
-          fromPixel,
-          toPixel,
-        );
-        let [firstCornerChar, lastCornerChar] = this.getCornerCharsLateral(
-          fromPixel,
-          toPixel,
-        );
+        let [firstChar, lastChar] = this.getArrowCharsLateral(fromPixel, toPixel);
+        let [firstCornerChar, lastCornerChar] = this.getCornerCharsLateral(fromPixel, toPixel);
         this.drawFromTo(
           fromPixel.row,
           fromPixel.col,
           toPixel.row,
           toPixel.col,
-          [
-            lateralChar,
-            verticalChar,
-            firstChar,
-            lastChar,
-            firstCornerChar,
-            lastCornerChar,
-          ],
-          (a, b) => canvas.getPixelByRowCol(b, a),
+          [lateralChar, verticalChar, firstChar, lastChar, firstCornerChar, lastCornerChar],
+          (a, b) => canvas.getPixelByRowCol(b, a)
         );
       }
 
-      drawFromTo(
-        fromPixelCol,
-        fromPixelRow,
-        toPixelCol,
-        toPixelRow,
-        chars,
-        pixelFunc,
-      ) {
+      drawFromTo(fromPixelCol, fromPixelRow, toPixelCol, toPixelRow, chars, pixelFunc) {
         this.empty();
-        let [
-          mainChar,
-          midChar,
-          firstChar,
-          lastChar,
-          firstCornerChar,
-          lastCornerChar,
-        ] = chars;
+        let [mainChar, midChar, firstChar, lastChar, firstCornerChar, lastCornerChar] = chars;
         let diffA = toPixelRow - fromPixelRow;
         let diffB = toPixelCol - fromPixelCol;
         let absDiffA = Math.abs(diffA);
@@ -3393,9 +3120,7 @@ It stresses portability, simplicity, and immediateness."
 
       static decode(encodedLayer) {
         let layer = Layer.decode(encodedLayer);
-        layer.pixels = encodedLayer.pxs.map((pixelId) =>
-          canvas.getPixelById(pixelId),
-        );
+        layer.pixels = encodedLayer.pxs.map((pixelId) => canvas.getPixelById(pixelId));
         layer.values = encodedLayer.vls;
         return layer;
       }
@@ -3410,12 +3135,9 @@ It stresses portability, simplicity, and immediateness."
       redraw() {} // FreeLayers are static and should not be redrawable
 
       characterWarning(value) {
-        if (
-          this.warningUnicodeChars.includes(value) &&
-          charManager.charsetForm != "unicode"
-        ) {
+        if (this.warningUnicodeChars.includes(value) && charManager.charsetForm != "unicode") {
           bodyComponent.informerComponent.report(
-            "Warning: using unicode character in non-unicode mode",
+            "Warning: using unicode character in non-unicode mode"
           );
         }
       }
@@ -3480,9 +3202,13 @@ It stresses portability, simplicity, and immediateness."
       getKeyedJointPixels() {
         let firstPixel = this.getFirstPixel();
         if (this.pixels.length < 4)
-          return { t: firstPixel, r: firstPixel, b: firstPixel, l: firstPixel };
-        let [leftPixel, rightPixel, topPixel, bottomPixel] =
-          this.getCornerPixels();
+          return {
+            t: firstPixel,
+            r: firstPixel,
+            b: firstPixel,
+            l: firstPixel,
+          };
+        let [leftPixel, rightPixel, topPixel, bottomPixel] = this.getCornerPixels();
         return {
           t: canvas.getPixelByRowCol(topPixel.row - 1, topPixel.col),
           r: canvas.getPixelByRowCol(rightPixel.row, rightPixel.col + 1),
@@ -3513,7 +3239,7 @@ It stresses portability, simplicity, and immediateness."
         let [minCol, maxCol, minRow, maxRow] = this.getCornerPixels();
         return canvas.getPixelByRowCol(
           minRow.row + roundHalf((maxRow.row - minRow.row) / 2),
-          minCol.col + roundHalf((maxCol.col - minCol.col) / 2),
+          minCol.col + roundHalf((maxCol.col - minCol.col) / 2)
         );
       }
 
@@ -3524,10 +3250,7 @@ It stresses portability, simplicity, and immediateness."
         this.setToPixel(canvas.getPixelById(activePixelId));
         let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
         let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
-        var diff =
-          verticalDiff > lateralDiff
-            ? verticalDiff
-            : roundHalf(lateralDiff / 2);
+        var diff = verticalDiff > lateralDiff ? verticalDiff : roundHalf(lateralDiff / 2);
         var radius = diff;
         var [col, row] = [0, radius];
         var p = 1 - radius;
@@ -3535,61 +3258,37 @@ It stresses portability, simplicity, and immediateness."
           for (var i = 0; i <= 1; i++) {
             // This so that we will in the lateral gaps given columns are factored by 2.
             this.add(
-              canvas.getPixelByRowCol(
-                this.fromPixel.row + row,
-                this.fromPixel.col + col * 2 - i,
-              ),
-              lateralChar,
+              canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col + col * 2 - i),
+              lateralChar
             );
             this.add(
-              canvas.getPixelByRowCol(
-                this.fromPixel.row + row,
-                this.fromPixel.col - col * 2 - i,
-              ),
-              lateralChar,
+              canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col - col * 2 - i),
+              lateralChar
             );
             this.add(
-              canvas.getPixelByRowCol(
-                this.fromPixel.row - row,
-                this.fromPixel.col + col * 2 - i,
-              ),
-              lateralChar,
+              canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col + col * 2 - i),
+              lateralChar
             );
             this.add(
-              canvas.getPixelByRowCol(
-                this.fromPixel.row - row,
-                this.fromPixel.col - col * 2 - i,
-              ),
-              lateralChar,
+              canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col - col * 2 - i),
+              lateralChar
             );
           }
           this.add(
-            canvas.getPixelByRowCol(
-              this.fromPixel.row + col,
-              this.fromPixel.col + row * 2,
-            ),
-            verticalChar,
+            canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col + row * 2),
+            verticalChar
           );
           this.add(
-            canvas.getPixelByRowCol(
-              this.fromPixel.row + col,
-              this.fromPixel.col - row * 2,
-            ),
-            verticalChar,
+            canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col - row * 2),
+            verticalChar
           );
           this.add(
-            canvas.getPixelByRowCol(
-              this.fromPixel.row - col,
-              this.fromPixel.col + row * 2,
-            ),
-            verticalChar,
+            canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col + row * 2),
+            verticalChar
           );
           this.add(
-            canvas.getPixelByRowCol(
-              this.fromPixel.row - col,
-              this.fromPixel.col - row * 2,
-            ),
-            verticalChar,
+            canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col - row * 2),
+            verticalChar
           );
           // A clever algorithm I found online that I don't really understand...
           // https://en.wikipedia.org/wiki/Midpoint_circle_algorithm
@@ -3611,9 +3310,13 @@ It stresses portability, simplicity, and immediateness."
       getKeyedJointPixels() {
         let firstPixel = this.getFirstPixel();
         if (this.pixels.length < 4)
-          return { t: firstPixel, r: firstPixel, b: firstPixel, l: firstPixel };
-        let [leftPixel, rightPixel, topPixel, bottomPixel] =
-          this.getCornerPixels();
+          return {
+            t: firstPixel,
+            r: firstPixel,
+            b: firstPixel,
+            l: firstPixel,
+          };
+        let [leftPixel, rightPixel, topPixel, bottomPixel] = this.getCornerPixels();
         return {
           t: topPixel,
           r: rightPixel,
@@ -3644,48 +3347,27 @@ It stresses portability, simplicity, and immediateness."
         let [minCol, maxCol, minRow, maxRow] = this.getCornerPixels();
         return canvas.getPixelByRowCol(
           minRow.row + roundHalf((maxRow.row - minRow.row) / 2),
-          minCol.col + roundHalf((maxCol.col - minCol.col) / 2),
+          minCol.col + roundHalf((maxCol.col - minCol.col) / 2)
         );
       }
 
       drawLayer(activePixelId, force = false) {
         let diagBackChar = charManager.getDiagBackLine(this.lineForm);
         let diagForwardChar = charManager.getDiagForwardLine(this.lineForm);
-        let cornerDiamondVerticalChar = charManager.getDiamondCorner(
-          this.lineForm,
-          "vertical",
-        );
-        let cornerDiamondLateralChar = charManager.getDiamondCorner(
-          this.lineForm,
-          "lateral",
-        );
+        let cornerDiamondVerticalChar = charManager.getDiamondCorner(this.lineForm, "vertical");
+        let cornerDiamondLateralChar = charManager.getDiamondCorner(this.lineForm, "lateral");
 
         this.setToPixel(canvas.getPixelById(activePixelId));
         let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
         let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
-        var diff =
-          verticalDiff > lateralDiff
-            ? verticalDiff
-            : roundHalf(lateralDiff / 2);
+        var diff = verticalDiff > lateralDiff ? verticalDiff : roundHalf(lateralDiff / 2);
 
         var middlePixel = this.fromPixel;
 
-        let topPixel = canvas.getPixelByRowCol(
-          middlePixel.row - diff,
-          middlePixel.col,
-        );
-        let leftPixel = canvas.getPixelByRowCol(
-          middlePixel.row,
-          middlePixel.col - diff * 2,
-        );
-        let rightPixel = canvas.getPixelByRowCol(
-          middlePixel.row,
-          middlePixel.col + diff * 2,
-        );
-        let bottomPixel = canvas.getPixelByRowCol(
-          middlePixel.row + diff,
-          middlePixel.col,
-        );
+        let topPixel = canvas.getPixelByRowCol(middlePixel.row - diff, middlePixel.col);
+        let leftPixel = canvas.getPixelByRowCol(middlePixel.row, middlePixel.col - diff * 2);
+        let rightPixel = canvas.getPixelByRowCol(middlePixel.row, middlePixel.col + diff * 2);
+        let bottomPixel = canvas.getPixelByRowCol(middlePixel.row + diff, middlePixel.col);
 
         let corners = [topPixel, leftPixel, rightPixel, bottomPixel];
         if (!corners.every(Boolean)) return;
@@ -3697,34 +3379,22 @@ It stresses portability, simplicity, and immediateness."
         this.add(corners[3], cornerDiamondLateralChar);
         for (var backCount = 1; backCount < diff; backCount++) {
           this.add(
-            canvas.getPixelByRowCol(
-              rightPixel.row - backCount,
-              rightPixel.col - backCount * 2,
-            ),
-            diagBackChar,
+            canvas.getPixelByRowCol(rightPixel.row - backCount, rightPixel.col - backCount * 2),
+            diagBackChar
           );
           this.add(
-            canvas.getPixelByRowCol(
-              bottomPixel.row - backCount,
-              bottomPixel.col - backCount * 2,
-            ),
-            diagBackChar,
+            canvas.getPixelByRowCol(bottomPixel.row - backCount, bottomPixel.col - backCount * 2),
+            diagBackChar
           );
         }
         for (var fCount = 1; fCount < diff; fCount++) {
           this.add(
-            canvas.getPixelByRowCol(
-              leftPixel.row - fCount,
-              leftPixel.col + fCount * 2,
-            ),
-            diagForwardChar,
+            canvas.getPixelByRowCol(leftPixel.row - fCount, leftPixel.col + fCount * 2),
+            diagForwardChar
           );
           this.add(
-            canvas.getPixelByRowCol(
-              bottomPixel.row - fCount,
-              bottomPixel.col + fCount * 2,
-            ),
-            diagForwardChar,
+            canvas.getPixelByRowCol(bottomPixel.row - fCount, bottomPixel.col + fCount * 2),
+            diagForwardChar
           );
         }
       }
@@ -3736,7 +3406,16 @@ It stresses portability, simplicity, and immediateness."
       getKeyedJointPixels() {
         let fp = this.getFirstPixel();
         if (this.pixels.length < 2) {
-          return { tl: fp, tr: fp, br: fp, bl: fp, l: fp, r: fp, b: fp, t: fp };
+          return {
+            tl: fp,
+            tr: fp,
+            br: fp,
+            bl: fp,
+            l: fp,
+            r: fp,
+            b: fp,
+            t: fp,
+          };
         }
         let corners = this.getCornerPixels();
         let minRow = corners[0].row;
@@ -3760,31 +3439,19 @@ It stresses portability, simplicity, and immediateness."
       drawLayer(activePixelId, force = false) {
         let lateralChar = charManager.getLateralLine(this.lineForm);
         let verticalChar = charManager.getVerticalLine(this.lineForm);
-        let cornerTopLeftChar = charManager.getCorner(
-          this.lineForm,
-          "top-left",
-        );
-        let cornerTopRightChar = charManager.getCorner(
-          this.lineForm,
-          "top-right",
-        );
-        let cornerBottomLeftChar = charManager.getCorner(
-          this.lineForm,
-          "bottom-left",
-        );
-        let cornerBottomRightChar = charManager.getCorner(
-          this.lineForm,
-          "bottom-right",
-        );
+        let cornerTopLeftChar = charManager.getCorner(this.lineForm, "top-left");
+        let cornerTopRightChar = charManager.getCorner(this.lineForm, "top-right");
+        let cornerBottomLeftChar = charManager.getCorner(this.lineForm, "bottom-left");
+        let cornerBottomRightChar = charManager.getCorner(this.lineForm, "bottom-right");
 
         this.setToPixel(canvas.getPixelById(activePixelId));
         let topLeftPixel = canvas.getPixelByRowCol(
           Math.min(this.toPixel.row, this.fromPixel.row),
-          Math.min(this.toPixel.col, this.fromPixel.col),
+          Math.min(this.toPixel.col, this.fromPixel.col)
         );
         let bottomRightPixel = canvas.getPixelByRowCol(
           Math.max(this.toPixel.row, this.fromPixel.row),
-          Math.max(this.toPixel.col, this.fromPixel.col),
+          Math.max(this.toPixel.col, this.fromPixel.col)
         );
 
         let verticalDiff = bottomRightPixel.row - topLeftPixel.row;
@@ -3801,41 +3468,23 @@ It stresses portability, simplicity, and immediateness."
 
         // Draw corners
         this.add(canvas.getPixelByRowCol(rowPos, colPos), cornerTopLeftChar);
-        this.add(
-          canvas.getPixelByRowCol(rowPos, bottomRightPixel.col),
-          cornerTopRightChar,
-        );
-        this.add(
-          canvas.getPixelByRowCol(bottomRightPixel.row, colPos),
-          cornerBottomLeftChar,
-        );
+        this.add(canvas.getPixelByRowCol(rowPos, bottomRightPixel.col), cornerTopRightChar);
+        this.add(canvas.getPixelByRowCol(bottomRightPixel.row, colPos), cornerBottomLeftChar);
         this.add(
           canvas.getPixelByRowCol(bottomRightPixel.row, bottomRightPixel.col),
-          cornerBottomRightChar,
+          cornerBottomRightChar
         );
 
         // Draw lines
         for (var row = 0; row < absVerticalDiff - 1; row++) {
           rowPos += verticalDiff / absVerticalDiff;
-          this.add(
-            canvas.getPixelByRowCol(rowPos, topLeftPixel.col),
-            verticalChar,
-          );
-          this.add(
-            canvas.getPixelByRowCol(rowPos, bottomRightPixel.col),
-            verticalChar,
-          );
+          this.add(canvas.getPixelByRowCol(rowPos, topLeftPixel.col), verticalChar);
+          this.add(canvas.getPixelByRowCol(rowPos, bottomRightPixel.col), verticalChar);
         }
         for (var col = 0; col < absLateralDiff - 1; col++) {
           colPos += lateralDiff / absLateralDiff;
-          this.add(
-            canvas.getPixelByRowCol(topLeftPixel.row, colPos),
-            lateralChar,
-          );
-          this.add(
-            canvas.getPixelByRowCol(bottomRightPixel.row, colPos),
-            lateralChar,
-          );
+          this.add(canvas.getPixelByRowCol(topLeftPixel.row, colPos), lateralChar);
+          this.add(canvas.getPixelByRowCol(bottomRightPixel.row, colPos), lateralChar);
         }
       }
     }
@@ -3919,22 +3568,15 @@ It stresses portability, simplicity, and immediateness."
         let pixels = {};
         var corners = this.getCornerPixels();
         if (!corners.length) return {};
-        let [topLeftPixel, topRightPixel, bottomRightPixel, bottomLeftPixel] =
-          corners;
+        let [topLeftPixel, topRightPixel, bottomRightPixel, bottomLeftPixel] = corners;
         var rowPos = topLeftPixel.row + 1;
         var index = 0;
         for (let row = 0; row < this.tblRows; row++) {
           let height = this.getRowHeight(row);
           rowPos += height;
           let jointPos = rowPos - roundHalf(height / 2) - 1;
-          pixels[`l-${index}`] = canvas.getPixelByRowCol(
-            jointPos,
-            topLeftPixel.col - 1,
-          ); // Left
-          pixels[`r-${index}`] = canvas.getPixelByRowCol(
-            jointPos,
-            topRightPixel.col + 1,
-          ); // Right
+          pixels[`l-${index}`] = canvas.getPixelByRowCol(jointPos, topLeftPixel.col - 1); // Left
+          pixels[`r-${index}`] = canvas.getPixelByRowCol(jointPos, topRightPixel.col + 1); // Right
           index++;
         }
         var colPos = topLeftPixel.col + 1;
@@ -3943,14 +3585,8 @@ It stresses portability, simplicity, and immediateness."
           let width = this.getColWidth(col);
           colPos += width;
           let jointPos = colPos - roundHalf(width / 2);
-          pixels[`t-${index}`] = canvas.getPixelByRowCol(
-            topLeftPixel.row - 1,
-            jointPos,
-          ); // Top
-          pixels[`b-${index}`] = canvas.getPixelByRowCol(
-            bottomLeftPixel.row + 1,
-            jointPos,
-          ); // Bottom
+          pixels[`t-${index}`] = canvas.getPixelByRowCol(topLeftPixel.row - 1, jointPos); // Top
+          pixels[`b-${index}`] = canvas.getPixelByRowCol(bottomLeftPixel.row + 1, jointPos); // Bottom
           index++;
         }
         return pixels;
@@ -3963,11 +3599,8 @@ It stresses portability, simplicity, and immediateness."
         let relVerticalDiff = verticalDiff - this.getTablePixelHeight();
         let belowRowHeight = this.getRowHeight(this.tblRows);
         let aboveRowHeight = this.getRowHeight(this.tblRows - 1);
-        let nextRowHeight =
-          relVerticalDiff > 0 ? belowRowHeight : aboveRowHeight;
-        return Math.abs(
-          this.tblRows + roundHalf(relVerticalDiff / nextRowHeight),
-        );
+        let nextRowHeight = relVerticalDiff > 0 ? belowRowHeight : aboveRowHeight;
+        return Math.abs(this.tblRows + roundHalf(relVerticalDiff / nextRowHeight));
       }
 
       getNewTblCols(lateralDiff) {
@@ -3978,35 +3611,23 @@ It stresses portability, simplicity, and immediateness."
         let belowColWidth = this.getColWidth(this.tblCols);
         let aboveColWidth = this.getColWidth(this.tblCols - 1);
         let nextColWidth = relLateralDiff > 0 ? belowColWidth : aboveColWidth;
-        return Math.abs(
-          this.tblCols + roundHalf(relLateralDiff / nextColWidth),
-        );
+        return Math.abs(this.tblCols + roundHalf(relLateralDiff / nextColWidth));
       }
 
       drawLayer(activePixelId, force = false) {
         this.setToPixel(canvas.getPixelById(activePixelId));
         let topLeftPixel = this.getTopLeftPixel();
         let bottomRightPixel = this.getBottomRightPixel();
-        let newTblRows = this.getNewTblRows(
-          bottomRightPixel.row - topLeftPixel.row,
-        );
-        let newTblCols = this.getNewTblCols(
-          bottomRightPixel.col - topLeftPixel.col,
-        );
+        let newTblRows = this.getNewTblRows(bottomRightPixel.row - topLeftPixel.row);
+        let newTblCols = this.getNewTblCols(bottomRightPixel.col - topLeftPixel.col);
 
         if (!force) {
           // Don't bother updating the table if no proper changes have been calculated.
           if (newTblRows == this.tblRows && newTblCols == this.tblCols) return;
           if (newTblCols == 0 || newTblRows == 0) return;
           // ...or if the size limit is hit...
-          if (
-            newTblRows >= this.tblSizeLimit ||
-            newTblCols >= this.tblSizeLimit
-          ) {
-            bodyComponent.informerComponent.report(
-              "Table getting too big",
-              "bad",
-            );
+          if (newTblRows >= this.tblSizeLimit || newTblCols >= this.tblSizeLimit) {
+            bodyComponent.informerComponent.report("Table getting too big", "bad");
             return;
           }
         }
@@ -4044,22 +3665,10 @@ It stresses portability, simplicity, and immediateness."
 
         let lateralChar = charManager.getLateralLine(this.lineForm);
         let verticalChar = charManager.getVerticalLine(this.lineForm);
-        let cornerTopLeftChar = charManager.getCorner(
-          this.lineForm,
-          "top-left",
-        );
-        let cornerTopRightChar = charManager.getCorner(
-          this.lineForm,
-          "top-right",
-        );
-        let cornerBottomLeftChar = charManager.getCorner(
-          this.lineForm,
-          "bottom-left",
-        );
-        let cornerBottomRightChar = charManager.getCorner(
-          this.lineForm,
-          "bottom-right",
-        );
+        let cornerTopLeftChar = charManager.getCorner(this.lineForm, "top-left");
+        let cornerTopRightChar = charManager.getCorner(this.lineForm, "top-right");
+        let cornerBottomLeftChar = charManager.getCorner(this.lineForm, "bottom-left");
+        let cornerBottomRightChar = charManager.getCorner(this.lineForm, "bottom-right");
 
         let tblHeight = this.getTablePixelHeight();
         let tblWidth = this.getTablePixelWidth();
@@ -4148,41 +3757,36 @@ It stresses portability, simplicity, and immediateness."
       getBottomRightPixel() {
         return canvas.getPixelByRowCol(
           Math.max(this.toPixel.row, this.fromPixel.row),
-          Math.max(this.toPixel.col, this.fromPixel.col),
+          Math.max(this.toPixel.col, this.fromPixel.col)
         );
       }
 
       getTopLeftPixel() {
         return canvas.getPixelByRowCol(
           Math.min(this.toPixel.row, this.fromPixel.row),
-          Math.min(this.toPixel.col, this.fromPixel.col),
+          Math.min(this.toPixel.col, this.fromPixel.col)
         );
       }
 
       getTextLayers() {
-        return Object.values(this.textLayers).map((layerId) =>
-          layerManager.getLayerById(layerId),
-        );
+        return Object.values(this.textLayers).map((layerId) => layerManager.getLayerById(layerId));
       }
 
       getCellFromTextLayerId(textLayerId) {
         for (let cellId in this.textLayers) {
-          if (this.textLayers[cellId] == textLayerId)
-            return this.parseCellId(cellId);
+          if (this.textLayers[cellId] == textLayerId) return this.parseCellId(cellId);
         }
       }
 
       getTablePixelHeight() {
         var height = 0;
-        for (let row = 0; row < this.tblRows; row++)
-          height += this.getRowHeight(row);
+        for (let row = 0; row < this.tblRows; row++) height += this.getRowHeight(row);
         return height;
       }
 
       getTablePixelWidth() {
         var width = 0;
-        for (let col = 0; col < this.tblCols; col++)
-          width += this.getColWidth(col);
+        for (let col = 0; col < this.tblCols; col++) width += this.getColWidth(col);
         return width;
       }
 
@@ -4221,12 +3825,8 @@ It stresses portability, simplicity, and immediateness."
       }
 
       reviveCell(cellId, absRow, absCol) {
-        let textLayer = new TextLayer(
-          canvas.getPixelByRowCol(absRow, absCol).id(),
-          this.id,
-        );
-        textLayer.contents =
-          this.cellTextArchive[cellId] || this.defaultCellContents.split("");
+        let textLayer = new TextLayer(canvas.getPixelByRowCol(absRow, absCol).id(), this.id);
+        textLayer.contents = this.cellTextArchive[cellId] || this.defaultCellContents.split("");
         layerManager.addSecond(textLayer);
         this.textLayers[cellId] = textLayer.id;
         textLayer.commit(() => textLayer.drawLayer());
@@ -4247,10 +3847,7 @@ It stresses portability, simplicity, and immediateness."
           // we don't need to consider it.
           if (row != cellRow && col != cellCol) continue;
           let lineLengths = this.getTextLayer(cellId).getLineLengths();
-          let [textHeight, textWidth] = [
-            lineLengths.length + 1,
-            Math.max(...lineLengths) + 1,
-          ];
+          let [textHeight, textWidth] = [lineLengths.length + 1, Math.max(...lineLengths) + 1];
           // If the row is on the edited text's row, consider it's height as the new tallest.
           if (row == cellRow && textHeight > this.tblRowHeights[row])
             this.setRowHeight(row, textHeight);
@@ -4350,12 +3947,8 @@ It stresses portability, simplicity, and immediateness."
         // This overrides properties being reasonably sent from a child class.
         // Here, we hack together a 'feature' where we can capitalize the derived property's
         // first letter so it takes priority.
-        let highPriorProps = mainProps.filter((prop) =>
-          /^[A-Z]*$/.test(prop.substring(0, 1)),
-        );
-        let lowPriorProps = mainProps.filter((prop) =>
-          /^[a-z]*$/.test(prop.substring(0, 1)),
-        );
+        let highPriorProps = mainProps.filter((prop) => /^[A-Z]*$/.test(prop.substring(0, 1)));
+        let lowPriorProps = mainProps.filter((prop) => /^[a-z]*$/.test(prop.substring(0, 1)));
 
         for (let prop of lowPriorProps.concat(highPriorProps)) {
           let [type, name] = prop.split("_");
@@ -4365,9 +3958,7 @@ It stresses portability, simplicity, and immediateness."
             case this._MagicPropCssPrefix:
               this.css(name, this[prop]);
             case this._MagicMethodEventPrefix:
-              this.element.addEventListener(name.toLowerCase(), () =>
-                this[prop](),
-              );
+              this.element.addEventListener(name.toLowerCase(), () => this[prop]());
               break;
           }
         }
@@ -4530,10 +4121,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       renderCursor() {
-        this.css(
-          "borderRight",
-          `1px solid ${themeManager.getTheme().pixelCursorColor}`,
-        );
+        this.css("borderRight", `1px solid ${themeManager.getTheme().pixelCursorColor}`);
       }
 
       startCursor() {
@@ -4545,7 +4133,7 @@ It stresses portability, simplicity, and immediateness."
             setTimeout(() => pixel.renderNoCursor(), 500);
           },
           1000,
-          this,
+          this
         );
       }
 
@@ -4583,8 +4171,7 @@ It stresses portability, simplicity, and immediateness."
 
       isNear(pixel, distance = 6) {
         return (
-          Math.abs(pixel.row - this.row) <= distance &&
-          Math.abs(pixel.col - this.col) <= distance
+          Math.abs(pixel.row - this.row) <= distance && Math.abs(pixel.col - this.col) <= distance
         );
       }
 
@@ -4592,8 +4179,7 @@ It stresses portability, simplicity, and immediateness."
         var closestPixel;
         var minDistance = -1;
         for (var pixel of pixels) {
-          let distance =
-            Math.abs(pixel.row - this.row) + Math.abs(pixel.col - this.col);
+          let distance = Math.abs(pixel.row - this.row) + Math.abs(pixel.col - this.col);
           if (distance < minDistance || minDistance == -1) {
             closestPixel = pixel;
             minDistance = distance;
@@ -4637,9 +4223,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       calcPixelSize() {
-        return roundDown(
-          window.innerWidth / this.colCount / this.pixelWidthDivider,
-        );
+        return roundDown(window.innerWidth / this.colCount / this.pixelWidthDivider);
       }
 
       getPixelById(id) {
@@ -4727,10 +4311,7 @@ It stresses portability, simplicity, and immediateness."
         selection.addRange(range);
         document.execCommand("copy");
         window.getSelection().removeAllRanges();
-        bodyComponent.informerComponent.report(
-          "Successfully copied work to clipboard!",
-          "good",
-        );
+        bodyComponent.informerComponent.report("Successfully copied work to clipboard!", "good");
       }
 
       defineTheme() {
@@ -4754,14 +4335,11 @@ It stresses portability, simplicity, and immediateness."
 
       scale() {
         let pixelSize = this.calcPixelSize();
-        this.css(
-          "width",
-          `${this.colCount * pixelSize * this.pixelWidthDivider}px`,
-        );
+        this.css("width", `${this.colCount * pixelSize * this.pixelWidthDivider}px`);
         this.css("height", `${this.rowCount * pixelSize}px`);
         this.css("fontSize", `${pixelSize}px`);
         Object.values(this.pixels).forEach((pixel) =>
-          pixel.scale(pixelSize, this.pixelWidthDivider),
+          pixel.scale(pixelSize, this.pixelWidthDivider)
         );
       }
 
@@ -5029,14 +4607,7 @@ By using text, you avoid the need for file formats, attaching documents and over
     }
 
     class ModeMenuButtonComponent extends MenuButtonComponent {
-      constructor(
-        icon,
-        name,
-        showCondition,
-        setModes,
-        activeModes,
-        callback = () => {},
-      ) {
+      constructor(icon, name, showCondition, setModes, activeModes, callback = () => {}) {
         super();
         /*
     name: display name of the button
@@ -5141,7 +4712,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "select"],
           [modeMaster.hasOr, "selected", "select"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent(
           "◻",
@@ -5149,7 +4720,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "draw", "square"],
           [modeMaster.isDrawyMode, "square"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent(
           "◯",
@@ -5157,7 +4728,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "draw", "circle"],
           [modeMaster.isDrawyMode, "circle"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent(
           "t",
@@ -5165,7 +4736,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "draw", "text"],
           [modeMaster.isDrawyMode, "text"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent(
           "/",
@@ -5173,7 +4744,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "draw", "line", "free-line"],
           [modeMaster.isDrawyMode, "free-line"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent(
           "_|",
@@ -5181,7 +4752,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "draw", "line", "step-line"],
           [modeMaster.isDrawyMode, "step-line"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent(
           "_|‾",
@@ -5189,7 +4760,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "draw", "line", "switch-line"],
           [modeMaster.isDrawyMode, "switch-line"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent(
           "◇",
@@ -5197,7 +4768,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "draw", "diamond"],
           [modeMaster.isDrawyMode, "diamond"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent(
           "᎒᎒᎒",
@@ -5205,7 +4776,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "draw", "table"],
           [modeMaster.isDrawyMode, "table"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent(
           "∿",
@@ -5213,7 +4784,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "draw", "free"],
           [modeMaster.isDrawyMode, "free"],
-          () => FreeLayer.startFreeDraw(),
+          () => FreeLayer.startFreeDraw()
         ),
         new ModeMenuButtonComponent(
           "⌫",
@@ -5221,25 +4792,25 @@ By using text, you avoid the need for file formats, attaching documents and over
           [],
           [modeMaster.reset, "erase", "ebutton"],
           [modeMaster.hasOr, "erasing", "erase"],
-          () => layerManager.switchModeCallback(),
+          () => layerManager.switchModeCallback()
         ),
         new ModeMenuButtonComponent("↺", "Undo", [], [], [], (event) =>
-          layerManager.undoEvent(event),
+          layerManager.undoEvent(event)
         ),
         new ModeMenuButtonComponent("↻", "Redo", [], [], [], (event) =>
-          layerManager.redoEvent(event),
+          layerManager.redoEvent(event)
         ),
         new ModeMenuButtonComponent("x", "Restart", [], [], [], () =>
-          layerManager.refresh(() => layerManager.empty()),
+          layerManager.refresh(() => layerManager.empty())
         ),
         new ModeMenuButtonComponent("->", "<b>Export</b>", [], [], [], () =>
-          canvas.exportToClipboard(),
+          canvas.exportToClipboard()
         ),
         new ModeMenuButtonComponent("⚙", "<b>Settings</b>", [], [], [], () =>
-          bodyComponent.settingsComponent.toggle(),
+          bodyComponent.settingsComponent.toggle()
         ),
         new ModeMenuButtonComponent("?", "<b>Help</b>", [], [], [], () =>
-          bodyComponent.helpComponent.toggle(),
+          bodyComponent.helpComponent.toggle()
         ),
       ];
     }
@@ -5265,13 +4836,8 @@ By using text, you avoid the need for file formats, attaching documents and over
       ];
 
       buttons = [
-        new MenuButtonLeftComponent(
-          "⧉",
-          "Copy",
-          [modeMaster.has, "selected"],
-          [],
-          [],
-          (event) => layerManager.copySelectedLayersEvent(event),
+        new MenuButtonLeftComponent("⧉", "Copy", [modeMaster.has, "selected"], [], [], (event) =>
+          layerManager.copySelectedLayersEvent(event)
         ),
         new MenuButtonLeftComponent(
           "⧓",
@@ -5279,7 +4845,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "multi-select", "selected"],
           [],
           [],
-          (event) => layerManager.groupSelectedLayersEvent(event),
+          (event) => layerManager.groupSelectedLayersEvent(event)
         ),
         new MenuButtonLeftComponent(
           "⧎",
@@ -5287,7 +4853,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "multi-select", "selected"],
           [],
           [],
-          (event) => layerManager.ungroupSelectedLayersEvent(event),
+          (event) => layerManager.ungroupSelectedLayersEvent(event)
         ),
         new MenuButtonLeftComponent(
           "✕",
@@ -5295,15 +4861,10 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "selected"],
           [modeMaster.reset, "select"],
           [],
-          (event) => layerManager.deleteLayersEvent(event),
+          (event) => layerManager.deleteLayersEvent(event)
         ),
-        new MenuButtonLeftComponent(
-          "⎘",
-          "Forward",
-          [modeMaster.has, "selected"],
-          [],
-          [],
-          (event) => layerManager.bringForwardEvent(event),
+        new MenuButtonLeftComponent("⎘", "Forward", [modeMaster.has, "selected"], [], [], (event) =>
+          layerManager.bringForwardEvent(event)
         ),
         new MenuButtonLeftComponent(
           "⎗",
@@ -5311,23 +4872,13 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "selected"],
           [],
           [],
-          (event) => layerManager.sendBackwardsEvent(event),
+          (event) => layerManager.sendBackwardsEvent(event)
         ),
-        new MenuButtonLeftComponent(
-          "⎘",
-          "Front",
-          [modeMaster.has, "selected"],
-          [],
-          [],
-          (event) => layerManager.bringToFrontEvent(event),
+        new MenuButtonLeftComponent("⎘", "Front", [modeMaster.has, "selected"], [], [], (event) =>
+          layerManager.bringToFrontEvent(event)
         ),
-        new MenuButtonLeftComponent(
-          "⎗",
-          "Back",
-          [modeMaster.has, "selected"],
-          [],
-          [],
-          (event) => layerManager.sendToBackEvent(event),
+        new MenuButtonLeftComponent("⎗", "Back", [modeMaster.has, "selected"], [], [], (event) =>
+          layerManager.sendToBackEvent(event)
         ),
         new MenuButtonLeftComponent(
           "⏴",
@@ -5335,7 +4886,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "selected", "line"],
           [],
           [],
-          () => layerManager.redrawLinesEvent("left"),
+          () => layerManager.redrawLinesEvent("left")
         ),
         new MenuButtonLeftComponent(
           "⏵",
@@ -5343,7 +4894,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "selected", "line"],
           [],
           [],
-          () => layerManager.redrawLinesEvent("right"),
+          () => layerManager.redrawLinesEvent("right")
         ),
         new MenuButtonLeftComponent(
           "⋮",
@@ -5351,7 +4902,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "selected", "line-based"],
           [],
           [],
-          () => layerManager.redrawLineBasedEvent("dotted"),
+          () => layerManager.redrawLineBasedEvent("dotted")
         ),
         new MenuButtonLeftComponent(
           "--",
@@ -5359,7 +4910,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "selected", "line-based"],
           [],
           [],
-          () => layerManager.redrawLineBasedEvent("dashed"),
+          () => layerManager.redrawLineBasedEvent("dashed")
         ),
         new MenuButtonLeftComponent(
           "―",
@@ -5367,7 +4918,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "selected", "line-based"],
           [],
           [],
-          () => layerManager.redrawLineBasedEvent("solid-thin"),
+          () => layerManager.redrawLineBasedEvent("solid-thin")
         ),
         new MenuButtonLeftComponent(
           "―",
@@ -5375,7 +4926,7 @@ By using text, you avoid the need for file formats, attaching documents and over
           [modeMaster.has, "selected", "line-based"],
           [],
           [],
-          () => layerManager.redrawLineBasedEvent("solid-bold"),
+          () => layerManager.redrawLineBasedEvent("solid-bold")
         ),
       ];
 
@@ -5389,8 +4940,8 @@ By using text, you avoid the need for file formats, attaching documents and over
               [modeMaster.has, "draw", "free"],
               [modeMaster.reset, "draw", "free", "dfbutton", char],
               [modeMaster.has, char],
-              (event) => FreeLayer.setFreeChar(char),
-            ),
+              (event) => FreeLayer.setFreeChar(char)
+            )
           );
         }
         return buttons;
@@ -5399,8 +4950,7 @@ By using text, you avoid the need for file formats, attaching documents and over
       refresh() {
         super.refresh();
         this.hide();
-        if (this.buttons.map((button) => button.showCondition()).some(Boolean))
-          this.show();
+        if (this.buttons.map((button) => button.showCondition()).some(Boolean)) this.show();
       }
 
       defineChildren() {
@@ -5523,9 +5073,7 @@ By using text, you avoid the need for file formats, attaching documents and over
 
       hidePopups() {
         modeMaster.setDefault();
-        this.children
-          .filter((child) => child.isPopup)
-          .forEach((child) => child.hide());
+        this.children.filter((child) => child.isPopup).forEach((child) => child.hide());
       }
 
       defineTheme() {
@@ -5542,7 +5090,7 @@ By using text, you avoid the need for file formats, attaching documents and over
         modeMaster.registerCallback(() => {
           if (modeMaster.has("draw") && !shownTip) {
             bodyComponent.informerComponent.report(
-              "Click and drag to start drawing in any of the draw modes!",
+              "Click and drag to start drawing in any of the draw modes!"
             );
             shownTip = true;
           }
@@ -5563,9 +5111,7 @@ By using text, you avoid the need for file formats, attaching documents and over
 
     function main() {
       if (isTablet()) {
-        alert(
-          "Cascii is not available on mobile devices. Taking you to GitHub...",
-        );
+        alert("Cascii is not available on mobile devices. Taking you to GitHub...");
         window.location.replace("https://github.com/casparwylie/cascii-core");
         return;
       }
