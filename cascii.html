@@ -1583,7 +1583,7 @@ class Layer {
   }
 
   constructor(firstPixelId) {
-    this.setAllChars("solid-thin");
+    this.lineForm = "solid-thin"; // Default
     this.id = this.makeId();
     this.pixels = [];
     this.values = [];
@@ -1596,33 +1596,13 @@ class Layer {
     this.stashed = {};
   }
 
-
-  setAllChars(lineForm) {
-    this.lineForm = lineForm;
-    this.lateralChar = charManager.getLateralLine(this.lineForm);
-    this.verticalChar = charManager.getVerticalLine(this.lineForm);
-    this.diagBackChar = charManager.getDiagBackLine(this.lineForm);
-    this.diagForwardChar = charManager.getDiagForwardLine(this.lineForm);
-    this.cornerTopLeftChar = charManager.getCorner(this.lineForm, "top-left");
-    this.cornerTopRightChar = charManager.getCorner(this.lineForm, "top-right");
-    this.cornerBottomLeftChar = charManager.getCorner(this.lineForm, "bottom-left");
-    this.cornerBottomRightChar = charManager.getCorner(this.lineForm, "bottom-right");
-    this.cornerDiamondVerticalChar = charManager.getDiamondCorner(this.lineForm, "vertical");
-    this.cornerDiamondLateralChar = charManager.getDiamondCorner(this.lineForm, "lateral");
-    this.cornerGenericChar = charManager.getCorner(this.lineForm, "generic");
-    this.arrowUpChar    = charManager.getArrow("up");
-    this.arrowDownChar  = charManager.getArrow("down");
-    this.arrowLeftChar  = charManager.getArrow("left");
-    this.arrowRightChar = charManager.getArrow("right");
-  }
-
   static decode(encodedLayer) {
     let layerClass = layerManager.getLayerClassByType(encodedLayer.ty);
     let layer = new layerClass(encodedLayer.fp);
     layer.id = encodedLayer.id;
     layer.setToPixel(canvas.getPixelById(encodedLayer.tp));
     layer.zindex = encodedLayer.zi;
-    layer.setAllChars(encodedLayer.lf);
+    layer.lineForm = encodedLayer.lf;
     layer.joints = encodedLayer.jts;
     return layer;
   }
@@ -1640,7 +1620,7 @@ class Layer {
   }
 
   redrawChars(lineForm) {
-    this.setAllChars(lineForm);
+    this.lineForm = lineForm;
     this.redraw();
   }
 
@@ -1954,6 +1934,16 @@ class Layer {
 
   copy(identical=false) {
     let layerCopy = new this.constructor(this.fromPixel.id());
+    layerCopy.setFromPixel(this.fromPixel);
+    layerCopy.setToPixel(this.toPixel);
+    layerCopy.pixels = this.pixels.map(pixel => pixel);
+    layerCopy.values = this.values.map(value => value);
+    
+      // By default, a copied layer should appear infront of it's original.
+    layerCopy.zindex = this.zindex + 1;
+
+    layerCopy.lineForm = this.lineForm;
+
     if (identical) {
       // This is an exact copy, mainly used for capturing snapshots,
       // reverting history.
@@ -1962,14 +1952,7 @@ class Layer {
       layerCopy.joints = this.joints.map(joint => structuredClone(joint));
       layerCopy.id = this.id;
       layerCopy.zindex = this.zindex;
-    } else {
-      // By default, a copied layer should appear infront of it's original.
-      layerCopy.zindex = this.zindex + 1;
     }
-    layerCopy.setFromPixel(this.fromPixel);
-    layerCopy.setToPixel(this.toPixel);
-    layerCopy.pixels = this.pixels.map(pixel => pixel);
-    layerCopy.values = this.values.map(value => value);
     return layerCopy;
   }
 
@@ -2582,17 +2565,17 @@ class FreeLineLayer extends BaseLineLayer {
     var value = "x";
 
     if (Math.abs(verticalStep) < 0.3){
-      value = this.lateralChar;
+      value = charManager.getLateralLine(this.lineForm);
     } else if (Math.abs(lateralStep) < 0.5) {
-      value = this.verticalChar;
+      value = charManager.getVerticalLine(this.lineForm);
     } else if (toPixel.isLeft(fromPixel) && toPixel.isBelow(fromPixel)) {
-      value = this.diagForwardChar;
+      value = charManager.getDiagForwardLine(this.lineForm);
     } else if (toPixel.isRight(fromPixel) && toPixel.isBelow(fromPixel)) {
-      value = this.diagBackChar;
+      value = charManager.getDiagBackLine(this.lineForm);
     } else if (toPixel.isLeft(fromPixel) && toPixel.isAbove(fromPixel)) {
-      value = this.diagBackChar;
+      value = charManager.getDiagBackLine(this.lineForm);
     } else if (toPixel.isRight(fromPixel) && toPixel.isAbove(fromPixel)) {
-      value = this.diagForwardChar;
+      value = charManager.getDiagForwardLine(this.lineForm);
     }
 
     var startValue = value;
@@ -2602,19 +2585,19 @@ class FreeLineLayer extends BaseLineLayer {
     // (~double pixels in same visual distance laterally).
     if (Math.abs(verticalDiff) * 2 > Math.abs(lateralDiff)) {
       if (toPixel.isAbove(fromPixel)) {
-        endValue = (this.hasArrowLeft) ? this.arrowUpChar : value;
-        startValue = (this.hasArrowRight) ? this.arrowDownChar : value;
+        endValue = (this.hasArrowLeft) ? charManager.getArrow("up") : value;
+        startValue = (this.hasArrowRight) ? charManager.getArrow("down"): value;
       } else {
-        endValue = (this.hasArrowLeft) ? this.arrowDownChar : value;
-        startValue = (this.hasArrowRight) ? this.arrowUpChar : value;
+        endValue = (this.hasArrowLeft) ? charManager.getArrow("down") : value;
+        startValue = (this.hasArrowRight) ? charManager.getArrow("up") : value;
       }
     } else{
       if (fromPixel.isLeft(toPixel)) {
-        endValue = (this.hasArrowRight) ? this.arrowRightChar : value;
-        startValue = (this.hasArrowLeft) ? this.arrowLeftChar : value;
+        endValue = (this.hasArrowRight) ? charManager.getArrow("right") : value;
+        startValue = (this.hasArrowLeft) ? charManager.getArrow("left") : value;
       } else {
-        endValue = (this.hasArrowLeft) ? this.arrowLeftChar : value;
-        startValue = (this.hasArrowRight) ? this.arrowRightChar : value;
+        endValue = (this.hasArrowLeft) ? charManager.getArrow("left") : value;
+        startValue = (this.hasArrowRight)? charManager.getArrow("right") : value;
      }
     }
 
@@ -2675,6 +2658,8 @@ class StepLineLayer extends BaseLineLayer {
   }
 
   drawFromTo(fromPixel, toPixel) {
+    let lateralChar = charManager.getLateralLine(this.lineForm);
+    let verticalChar = charManager.getVerticalLine(this.lineForm);
     this.empty();
     let verticalDiff  = toPixel.row - fromPixel.row;
     let lateralDiff   = toPixel.col - fromPixel.col;
@@ -2690,57 +2675,63 @@ class StepLineLayer extends BaseLineLayer {
     for (var i = 0; i < absLateralDiff; i ++) {
       this.add(
         canvas.getPixelByRowCol(fromPixel.row, drawCol),
-        (i == 0)? lateralArrowValue: this.lateralChar
+        (i == 0)? lateralArrowValue: lateralChar
       );
       drawCol += lateralDiff / absLateralDiff;
     }
 
     if (verticalDiff && !lateralDiff) {
-      cornerChar = this.verticalChar;
+      cornerChar = verticalChar;
     } else if (!verticalDiff && lateralDiff) {
-      cornerChar = this.lateralChar;
+      cornerChar = lateralChar;
     }
     this.add(canvas.getPixelByRowCol(drawRow, drawCol), cornerChar);
 
     for (var i = 1; i <= absVerticalDiff; i ++) {
       drawRow += verticalDiff / absVerticalDiff;
-      let value = (verticalDiff && lateralDiff)? cornerChar: this.verticalChar;
+      let value = (verticalDiff && lateralDiff)? cornerChar: verticalChar;
       this.add(
         canvas.getPixelByRowCol(drawRow, toPixel.col),
-        (i == absVerticalDiff)? verticalArrowValue: this.verticalChar
+        (i == absVerticalDiff)? verticalArrowValue: verticalChar
       );
     }
   }
 
   getCornerChar(fromPixel, toPixel) {
     if (fromPixel.col < toPixel.col) {
-      return fromPixel.row < toPixel.row? this.cornerTopRightChar:  this.cornerBottomRightChar;
-    } else {
-      return fromPixel.row < toPixel.row? this.cornerTopLeftChar:  this.cornerBottomLeftChar;
-    }
-    return "";
+      return (
+          fromPixel.row < toPixel.row? 
+          charManager.getCorner(this.lineForm, "top-right"):
+          charManager.getCorner(this.lineForm, "bottom-right")
+      );
+    } 
+    return (
+        fromPixel.row < toPixel.row? 
+        charManager.getCorner(this.lineForm, "top-left"):
+        charManager.getCorner(this.lineForm, "bottom-left")
+    );
   }
 
   getArrowChars(fromPixel, toPixel) {
-    var lateralArrowValue = this.lateralChar;
-    var verticalArrowValue = this.verticalChar;
+    var lateralArrowValue = charManager.getLateralLine(this.lineForm);
+    var verticalArrowValue = charManager.getVerticalLine(this.lineForm);
     if (fromPixel.col > toPixel.col) {
       // Vertical line is on left
       //    |
       //    |
       //    |____
-      if (this.hasArrowRight) lateralArrowValue = this.arrowRightChar;
+      if (this.hasArrowRight) lateralArrowValue = charManager.getArrow("right");
       if (this.hasArrowLeft) {
-        verticalArrowValue = fromPixel.row > toPixel.row? this.arrowUpChar: this.arrowDownChar;
+        verticalArrowValue = fromPixel.row > toPixel.row? charManager.getArrow("up"): charManager.getArrow("down");
       }
     } else {
       // Vertical line is on left
       //       |
       //       |
       //    ___|
-      if (this.hasArrowLeft) lateralArrowValue = this.arrowLeftChar;
+      if (this.hasArrowLeft) lateralArrowValue = charManager.getArrow("left");
       if (this.hasArrowRight) {
-       verticalArrowValue = fromPixel.row > toPixel.row? this.arrowUpChar: this.arrowDownChar;
+       verticalArrowValue = fromPixel.row > toPixel.row? charManager.getArrow("up"): charManager.getArrow("down");
       }
     }
     return [lateralArrowValue, verticalArrowValue];
@@ -2831,6 +2822,8 @@ class SwitchLineLayer extends BaseLineLayer {
   }
 
   drawVertical(fromPixel, toPixel) {
+    let lateralChar = charManager.getLateralLine(this.lineForm);
+    let verticalChar = charManager.getVerticalLine(this.lineForm);
     let [firstChar, lastChar] = this.getArrowCharsVertical(fromPixel, toPixel);
     let [firstCornerChar, lastCornerChar] = this.getCornerCharsVertical(fromPixel, toPixel);
     this.drawFromTo(
@@ -2838,12 +2831,14 @@ class SwitchLineLayer extends BaseLineLayer {
       fromPixel.row,
       toPixel.col,
       toPixel.row,
-      [this.verticalChar, this.lateralChar, firstChar, lastChar, firstCornerChar, lastCornerChar],
+      [verticalChar, lateralChar, firstChar, lastChar, firstCornerChar, lastCornerChar],
       (a, b) => canvas.getPixelByRowCol(a, b),
     );
   }
 
   drawLateral(fromPixel, toPixel) {
+    let lateralChar = charManager.getLateralLine(this.lineForm);
+    let verticalChar = charManager.getVerticalLine(this.lineForm);
     let [firstChar, lastChar] = this.getArrowCharsLateral(fromPixel, toPixel);
     let [firstCornerChar, lastCornerChar] = this.getCornerCharsLateral(fromPixel, toPixel);
     this.drawFromTo(
@@ -2851,7 +2846,7 @@ class SwitchLineLayer extends BaseLineLayer {
       fromPixel.col,
       toPixel.row,
       toPixel.col,
-      [this.lateralChar, this.verticalChar, firstChar, lastChar, firstCornerChar, lastCornerChar],
+      [lateralChar, verticalChar, firstChar, lastChar, firstCornerChar, lastCornerChar],
       (a, b) => canvas.getPixelByRowCol(b, a),
     );
   }
@@ -2926,107 +2921,112 @@ class SwitchLineLayer extends BaseLineLayer {
   }
 
   getArrowCharsVertical(fromPixel, toPixel) {
-    var firstChar = this.verticalChar;
-    var lastChar = this.verticalChar;
+    let verticalChar = charManager.getVerticalLine(this.lineForm);
+    var firstChar = verticalChar;
+    var lastChar = verticalChar;
     if (fromPixel.row < toPixel.row) {
       // Going down
       if (fromPixel.col < toPixel.col) {
         // Going right
-        if (this.hasArrowRight) lastChar = this.arrowDownChar;
-        if (this.hasArrowLeft) firstChar = this.arrowUpChar;
+        if (this.hasArrowRight) lastChar = charManager.getArrow("down");
+        if (this.hasArrowLeft) firstChar = charManager.getArrow("up");
       } else {
         // Going left
-        if (this.hasArrowLeft) lastChar = this.arrowDownChar;
-        if (this.hasArrowRight) firstChar = this.arrowUpChar;
+        if (this.hasArrowLeft) lastChar = charManager.getArrow("down");
+        if (this.hasArrowRight) firstChar = charManager.getArrow("up");
       }
     } else {
       // Going up
       if (fromPixel.col < toPixel.col) {
         // Going right
-        if (this.hasArrowRight) lastChar = this.arrowUpChar;
-        if (this.hasArrowLeft) firstChar = this.arrowDownChar;
+        if (this.hasArrowRight) lastChar = charManager.getArrow("up");
+        if (this.hasArrowLeft) firstChar = charManager.getArrow("down");
       } else {
         // Going left
-        if (this.hasArrowLeft) lastChar = this.arrowUpChar;
-        if (this.hasArrowRight) firstChar = this.arrowDownChar;
+        if (this.hasArrowLeft) lastChar = charManager.getArrow("up");
+        if (this.hasArrowRight) firstChar = charManager.getArrow("down");
       }
     }
     return [firstChar, lastChar];
   }
 
   getArrowCharsLateral(fromPixel, toPixel) {
-    var firstChar = this.lateralChar;
-    var lastChar = this.lateralChar;
+    let lateralChar = charManager.getLateralLine(this.lineForm);
+    var firstChar = lateralChar;
+    var lastChar = lateralChar;
     if (fromPixel.col < toPixel.col) {
       // Going right
-      if (this.hasArrowLeft) firstChar = this.arrowLeftChar;
-      if (this.hasArrowRight) lastChar = this.arrowRightChar;
+      if (this.hasArrowLeft) firstChar = charManager.getArrow("left");
+      if (this.hasArrowRight) lastChar = charManager.getArrow("right");
     } else {
       // Going left
-      if (this.hasArrowLeft) lastChar = this.arrowLeftChar;
-      if (this.hasArrowRight) firstChar = this.arrowRightChar;
+      if (this.hasArrowLeft) lastChar = charManager.getArrow("left");
+      if (this.hasArrowRight) firstChar  = charManager.getArrow("right");
     }
     return [firstChar, lastChar];
   }
 
   getCornerCharsVertical(fromPixel, toPixel) {
-    var firstChar = "";
-    var lastChar = "";
     if (fromPixel.row < toPixel.row) {
       // Going down
       if (fromPixel.col < toPixel.col) {
         // Going right
-        firstChar = this.cornerBottomLeftChar;
-        lastChar = this.cornerTopRightChar;
-      } else {
-        // Going left
-        firstChar = this.cornerBottomRightChar;
-        lastChar = this.cornerTopLeftChar;
+        return [
+          charManager.getCorner(this.lineForm, "bottom-left"),
+          charManager.getCorner(this.lineForm, "top-right"),
+        ];
       }
-    } else {
-      // Going up
-      if (fromPixel.col < toPixel.col) {
-        // Going right
-        firstChar = this.cornerTopLeftChar;
-        lastChar = this.cornerBottomRightChar;
-      } else {
-        // Going left
-        firstChar = this.cornerTopRightChar;
-        lastChar = this.cornerBottomLeftChar;
-      }
+      // Going left
+      return [
+        charManager.getCorner(this.lineForm, "bottom-right"),
+        charManager.getCorner(this.lineForm, "top-left"),
+      ];
+    } 
+    // Going up
+    if (fromPixel.col < toPixel.col) {
+      // Going right
+      return [
+        charManager.getCorner(this.lineForm, "top-left"),
+        charManager.getCorner(this.lineForm, "bottom-right"),
+      ];
     }
-    return [firstChar, lastChar];
+    // Going left
+    return [
+      charManager.getCorner(this.lineForm, "top-right"),
+      charManager.getCorner(this.lineForm, "bottom-left"),
+    ]
   }
 
   getCornerCharsLateral(fromPixel, toPixel) {
-    var firstChar = "";
-    var lastChar = "";
     if (fromPixel.row < toPixel.row) {
       // Going down
       if (fromPixel.col < toPixel.col) {
         // Going right
-        firstChar = this.cornerTopRightChar;
-        lastChar = this.cornerBottomLeftChar;
-      } else {
-        // Going left
-        firstChar = this.cornerTopLeftChar;
-        lastChar = this.cornerBottomRightChar;
+        return [
+          charManager.getCorner(this.lineForm, "top-right"),
+          charManager.getCorner(this.lineForm, "bottom-left"),
+        ];
       }
-    } else {
-      // Going up
-      if (fromPixel.col < toPixel.col) {
-        // Going right
-        firstChar = this.cornerBottomRightChar;
-        lastChar = this.cornerTopLeftChar;
-      } else {
-        // Going left
-        firstChar = this.cornerBottomLeftChar;
-        lastChar = this.cornerTopRightChar;
-      }
+      // Going left
+      return [
+        charManager.getCorner(this.lineForm, "top-left"),
+        charManager.getCorner(this.lineForm, "bottom-right"),
+      ];
     }
-    return [firstChar, lastChar];
+    // Going up
+    if (fromPixel.col < toPixel.col) {
+      // Going right
+      return [
+        charManager.getCorner(this.lineForm, "bottom-right"),
+        charManager.getCorner(this.lineForm, "top-left"),
+      ];
+    }
+    // Going left
+    return [
+      charManager.getCorner(this.lineForm, "bottom-left"),
+      charManager.getCorner(this.lineForm, "top-right"),
+    ];
   }
-
 }
 
 
@@ -3069,6 +3069,8 @@ class FreeLayer extends Layer {
   }
 
   drawLayer(activePixelId, force=false) {
+    let lateralChar = charManager.getLateralLine(this.lineForm);
+    let verticalChar = charManager.getVerticalLine(this.lineForm);
     this.setToPixel(canvas.getPixelById(activePixelId));
     var value = "";
     if (FreeLayer.freeChar == "_lines") {
@@ -3076,9 +3078,9 @@ class FreeLayer extends Layer {
       let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
 
       if (verticalDiff > lateralDiff) {
-        value = this.verticalChar;
+        value = verticalChar;
       } else if (lateralDiff > verticalDiff) {
-        value = this.lateralChar;
+        value = lateralChar;
       }
     } else {
       value = FreeLayer.freeChar;
@@ -3166,6 +3168,8 @@ class CircleLayer extends Layer {
 
 
   drawLayer(activePixelId, force=false) {
+    let lateralChar = charManager.getLateralLine(this.lineForm);
+    let verticalChar = charManager.getVerticalLine(this.lineForm);
     this.empty();
     this.setToPixel(canvas.getPixelById(activePixelId));
     let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
@@ -3177,15 +3181,15 @@ class CircleLayer extends Layer {
     while (col <= row) {
       for (var i = 0; i <= 1; i ++) {
         // This so that we will in the lateral gaps given columns are factored by 2.
-        this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col + col * 2 - i), this.lateralChar);
-        this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col - col * 2 - i), this.lateralChar);
-        this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col + col * 2 - i), this.lateralChar);
-        this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col - col * 2 - i), this.lateralChar);
+        this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col + col * 2 - i), lateralChar);
+        this.add(canvas.getPixelByRowCol(this.fromPixel.row + row, this.fromPixel.col - col * 2 - i), lateralChar);
+        this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col + col * 2 - i), lateralChar);
+        this.add(canvas.getPixelByRowCol(this.fromPixel.row - row, this.fromPixel.col - col * 2 - i), lateralChar);
       }
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col + row * 2), this.verticalChar);
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col - row * 2), this.verticalChar);
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col + row * 2), this.verticalChar);
-      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col - row * 2), this.verticalChar);
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col + row * 2), verticalChar);
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row + col, this.fromPixel.col - row * 2), verticalChar);
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col + row * 2), verticalChar);
+      this.add(canvas.getPixelByRowCol(this.fromPixel.row - col, this.fromPixel.col - row * 2), verticalChar);
       // A clever algorithm I found online that I don't really understand...
       // https://en.wikipedia.org/wiki/Midpoint_circle_algorithm
       col += 1;
@@ -3244,6 +3248,11 @@ class DiamondLayer extends Layer {
   }
 
   drawLayer(activePixelId, force=false) {
+    let diagBackChar = charManager.getDiagBackLine(this.lineForm);
+    let diagForwardChar = charManager.getDiagForwardLine(this.lineForm);
+    let cornerDiamondVerticalChar = charManager.getDiamondCorner(this.lineForm, "vertical");
+    let cornerDiamondLateralChar = charManager.getDiamondCorner(this.lineForm, "lateral");
+
     this.setToPixel(canvas.getPixelById(activePixelId));
     let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
     let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
@@ -3260,28 +3269,28 @@ class DiamondLayer extends Layer {
     if (!corners.every(Boolean)) return;
 
     this.empty();
-    this.add(corners[0], this.cornerDiamondLateralChar);
-    this.add(corners[1], this.cornerDiamondVerticalChar);
-    this.add(corners[2], this.cornerDiamondVerticalChar);
-    this.add(corners[3], this.cornerDiamondLateralChar);
+    this.add(corners[0], cornerDiamondLateralChar);
+    this.add(corners[1], cornerDiamondVerticalChar);
+    this.add(corners[2], cornerDiamondVerticalChar);
+    this.add(corners[3], cornerDiamondLateralChar);
     for (var backCount = 1; backCount < diff; backCount ++) {
       this.add(
         canvas.getPixelByRowCol(rightPixel.row - backCount, rightPixel.col - (backCount * 2)),
-        this.diagBackChar,
+        diagBackChar,
       );
       this.add(
         canvas.getPixelByRowCol(bottomPixel.row - backCount, bottomPixel.col - (backCount * 2)),
-        this.diagBackChar,
+        diagBackChar,
       );
     }
     for (var fCount = 1; fCount < diff; fCount ++) {
       this.add(
         canvas.getPixelByRowCol(leftPixel.row - fCount, leftPixel.col + (fCount * 2)),
-        this.diagForwardChar,
+        diagForwardChar,
       );
       this.add(
         canvas.getPixelByRowCol(bottomPixel.row - fCount, bottomPixel.col + (fCount * 2)),
-        this.diagForwardChar,
+        diagForwardChar,
       );
     }
   }
@@ -3316,6 +3325,13 @@ class SquareLayer extends SquareBoundLayer {
   }
 
   drawLayer(activePixelId, force=false) {
+    let lateralChar = charManager.getLateralLine(this.lineForm);
+    let verticalChar = charManager.getVerticalLine(this.lineForm);
+    let cornerTopLeftChar = charManager.getCorner(this.lineForm, "top-left");
+    let cornerTopRightChar = charManager.getCorner(this.lineForm, "top-right");
+    let cornerBottomLeftChar = charManager.getCorner(this.lineForm, "bottom-left");
+    let cornerBottomRightChar = charManager.getCorner(this.lineForm, "bottom-right");
+
     this.setToPixel(canvas.getPixelById(activePixelId));
     let topLeftPixel = canvas.getPixelByRowCol(
       Math.min(this.toPixel.row, this.fromPixel.row),
@@ -3339,21 +3355,21 @@ class SquareLayer extends SquareBoundLayer {
     this.empty();
 
     // Draw corners
-    this.add(canvas.getPixelByRowCol(rowPos, colPos), this.cornerTopLeftChar);
-    this.add(canvas.getPixelByRowCol(rowPos, bottomRightPixel.col), this.cornerTopRightChar);
-    this.add(canvas.getPixelByRowCol(bottomRightPixel.row, colPos), this.cornerBottomLeftChar);
-    this.add(canvas.getPixelByRowCol(bottomRightPixel.row, bottomRightPixel.col), this.cornerBottomRightChar);
+    this.add(canvas.getPixelByRowCol(rowPos, colPos), cornerTopLeftChar);
+    this.add(canvas.getPixelByRowCol(rowPos, bottomRightPixel.col), cornerTopRightChar);
+    this.add(canvas.getPixelByRowCol(bottomRightPixel.row, colPos), cornerBottomLeftChar);
+    this.add(canvas.getPixelByRowCol(bottomRightPixel.row, bottomRightPixel.col), cornerBottomRightChar);
 
     // Draw lines
     for(var row = 0; row < absVerticalDiff - 1; row ++) {
       rowPos += verticalDiff / absVerticalDiff;
-      this.add(canvas.getPixelByRowCol(rowPos, topLeftPixel.col), this.verticalChar);
-      this.add(canvas.getPixelByRowCol(rowPos, bottomRightPixel.col), this.verticalChar);
+      this.add(canvas.getPixelByRowCol(rowPos, topLeftPixel.col), verticalChar);
+      this.add(canvas.getPixelByRowCol(rowPos, bottomRightPixel.col), verticalChar);
     }
     for(var col = 0; col < absLateralDiff - 1; col ++) {
       colPos += lateralDiff / absLateralDiff;
-      this.add(canvas.getPixelByRowCol(topLeftPixel.row, colPos), this.lateralChar);
-      this.add(canvas.getPixelByRowCol(bottomRightPixel.row, colPos), this.lateralChar);
+      this.add(canvas.getPixelByRowCol(topLeftPixel.row, colPos), lateralChar);
+      this.add(canvas.getPixelByRowCol(bottomRightPixel.row, colPos), lateralChar);
     }
   }
 }
@@ -3532,17 +3548,26 @@ class TableLayer extends SquareBoundLayer {
 
   drawFrame(topLeftPixel) {
     this.empty();
+
+    let lateralChar = charManager.getLateralLine(this.lineForm);
+    let verticalChar = charManager.getVerticalLine(this.lineForm);
+    let cornerTopLeftChar = charManager.getCorner(this.lineForm, "top-left");
+    let cornerTopRightChar = charManager.getCorner(this.lineForm, "top-right");
+    let cornerBottomLeftChar = charManager.getCorner(this.lineForm, "bottom-left");
+    let cornerBottomRightChar = charManager.getCorner(this.lineForm, "bottom-right");
+
     let tblHeight = this.getTablePixelHeight();
     let tblWidth = this.getTablePixelWidth();
     let fromRow = topLeftPixel.row;
     let fromCol = topLeftPixel.col;
     let toRow = fromRow + tblHeight;
     let toCol = fromCol + tblWidth;
+
     // Draw corners...
-    this.add(canvas.getPixelByRowCol(fromRow, fromCol), this.cornerTopLeftChar);
-    this.add(canvas.getPixelByRowCol(fromRow, toCol), this.cornerTopRightChar);
-    this.add(canvas.getPixelByRowCol(toRow, fromCol), this.cornerBottomLeftChar);
-    this.add(canvas.getPixelByRowCol(toRow, toCol), this.cornerBottomRightChar);
+    this.add(canvas.getPixelByRowCol(fromRow, fromCol), cornerTopLeftChar);
+    this.add(canvas.getPixelByRowCol(fromRow, toCol), cornerTopRightChar);
+    this.add(canvas.getPixelByRowCol(toRow, fromCol), cornerBottomLeftChar);
+    this.add(canvas.getPixelByRowCol(toRow, toCol), cornerBottomRightChar);
 
     // Draw row lines with spacing based on text..
     // -----------------
@@ -3552,7 +3577,7 @@ class TableLayer extends SquareBoundLayer {
     var row = fromRow;
     for (var tblRow = 0; tblRow <= this.tblRows; tblRow ++) {
       for (var col = fromCol + 1; col < toCol; col++) {
-        this.add(canvas.getPixelByRowCol(row,  col), this.lateralChar);
+        this.add(canvas.getPixelByRowCol(row,  col), lateralChar);
       }
       row += this.getRowHeight(tblRow);
     }
@@ -3563,7 +3588,7 @@ class TableLayer extends SquareBoundLayer {
     var col = fromCol;
     for (var tblCol = 0; tblCol <= this.tblCols; tblCol ++) {
       for (var row = fromRow + 1; row < toRow; row ++) {
-        this.add(canvas.getPixelByRowCol(row,  col), this.verticalChar);
+        this.add(canvas.getPixelByRowCol(row,  col), verticalChar);
       }
       col += this.getColWidth(tblCol);
     }
