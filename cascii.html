@@ -358,6 +358,7 @@ class BaseExternalHookManager {
     return "";
   }
 
+  triggerDrawingChanged() {}
 }
 
 
@@ -457,15 +458,15 @@ class EventManager {
         ],
         mouseup: [
           new EventDef([modeMaster.has, "drawing"],
-              [modeMaster.change, "drawing", "draw"], (event) => layerManager.tidyLayersEvent(event)),
+              [modeMaster.change, "drawing", "draw"], (event) => layerManager.changeEvent(event)),
           new EventDef([modeMaster.has, "erasing"],
               [modeMaster.change, "erasing", "erase"]),
           new EventDef([modeMaster.has, "moving"],
-              [modeMaster.remove, "moving"], (event) => layerManager.tidyLayersEvent(event)),
+              [modeMaster.remove, "moving"], (event) => layerManager.changeEvent(event)),
           new EventDef([modeMaster.has, "area-selecting"],
               [modeMaster.remove, "area-selecting"], (event) => areaSelectManager.areaSelectingMouseUpEvent(event)),
           new EventDef([modeMaster.has, "resizing"],
-              [modeMaster.remove, "resizing"], (event) => layerManager.tidyLayersEvent(event)),
+              [modeMaster.remove, "resizing"], (event) => layerManager.changeEvent(event)),
         ],
       }
     },
@@ -900,6 +901,12 @@ class LayerManager {
     this.refresh(() => {
       this.layers.forEach(layer => layer.redraw());
     });
+
+    // Ensure the newly imported data is aligned with local storage
+    this.saveToLocalStorage();
+
+    // Capture the latest state
+    this.capture();
   }
 
   importFromLocalStorage() {
@@ -917,7 +924,7 @@ class LayerManager {
 
   deleteSelectedLayers() {
     this.getSelectedLayers().forEach((layer) => layer.empty());
-    this.tidyLayers();
+    this.triggerChanged();
   }
 
   selectGroupsByMemberLayer(memberLayer) {
@@ -965,6 +972,8 @@ class LayerManager {
     this.repointJointsForCopiedLayers(layerLookup);
     this.regroupForCopiedLayers(layerLookup);
     this.repointTableTextLayers(layerLookup);
+
+    this.triggerChanged();
   }
 
   repointTableTextLayers(layerLookup) {
@@ -1063,7 +1072,7 @@ class LayerManager {
     }
   }
 
-  deleteLayers() {
+  tidyLayers() {
     // Find layer IDs for dereferencing
     let layersToDelete = this.layers.filter(layer => !layer.pixels.length).map(layer => layer.id);
 
@@ -1087,11 +1096,6 @@ class LayerManager {
         if (layersToDelete.includes(layer.textLayers[key])) delete layer.textLayers[key]
       }
     }
-  }
-
-  tidyLayers() {
-    this.deleteLayers();
-    this.capture();
   }
 
   clearAll() {
@@ -1153,14 +1157,20 @@ class LayerManager {
     this.capture();
   }
 
+  triggerChanged() {
+    this.tidyLayers();
+    this.capture();
+    // We also save latest changes to local storage.
+    this.saveToLocalStorage();
+    // We also trigger an external hook as this is helpful knowledge.
+    externalHookManager.triggerDrawingChanged();
+  }
+
   capture() {
     // This is used to record history for undo/redo state.
     this.historyCursor = 0;
     this.layerHistory.unshift(this.copyReplaceLayers(this.layers));
     this.groupManager.capture();
-
-    // We also save latest changes to local storage.
-    this.saveToLocalStorage();
   }
 
   setSelectPixel(selectedPixel) {
@@ -1298,6 +1308,7 @@ class LayerManager {
 
   renderCharset() {
     for (let layer of this.layers) layer.redrawChars(layer.lineForm);
+    this.triggerChanged();
   }
 
   // Generic multi-layer based events...
@@ -1400,7 +1411,7 @@ class LayerManager {
         break;
     }
     this.moveSelectedLayers(verticalDiff, lateralDiff);
-    this.capture();
+    this.triggerChanged();
   }
 
   deleteLayersEvent(event) {
@@ -1411,8 +1422,8 @@ class LayerManager {
     this.refresh(() => this.copyAndRenderSelectedLayers());
   }
 
-  tidyLayersEvent(event) {
-    this.tidyLayers();
+  changeEvent(event) {
+    this.triggerChanged();
   }
 
   selectMouseOverEvent(event) {
@@ -1446,6 +1457,7 @@ class LayerManager {
   groupSelectedLayersEvent(event) {
     this.groupManager.groupLayers(this.getSelectedLayers());
     bodyComponent.informerComponent.report("Successfully grouped", "good");
+    this.triggerChanged();
   }
 
   ungroupSelectedLayersEvent(event) {
@@ -1453,6 +1465,7 @@ class LayerManager {
     layerManager.unselectAll();
     modeMaster.reset("select");
     bodyComponent.informerComponent.report("Successfully ungrouped", "good");
+    this.triggerChanged();
   }
 
   redrawLinesEvent(direction) {
@@ -1461,12 +1474,14 @@ class LayerManager {
         this.refresh(() => layer.toggleArrows(direction));
       }
     }
+    this.triggerChanged();
   }
 
   redrawLineBasedEvent(lineForm) {
     for (var layer of this.getSelectedLayers()) {
       if (layer.isLineBased()) this.refresh(() => layer.redrawChars(lineForm));
     }
+    this.triggerChanged();
   }
 
   selectAllEvent(event) {
@@ -1505,25 +1520,25 @@ class LayerManager {
   bringForwardEvent(event) {
     let highestZindex = this.getHighestZindex();
     this.refresh(() => this.getSelectedLayers().forEach(layer =>  layer.zindex ++));
-    this.tidyLayers();
+    this.triggerChanged();
   }
 
   sendBackwardsEvent(event) {
     let lowestZindex = this.getLowestZindex();
     this.refresh(() => this.getSelectedLayers().forEach(layer => layer.zindex --));
-    this.tidyLayers();
+    this.triggerChanged();
   }
 
   bringToFrontEvent(event) {
     let highestZindex = this.getHighestZindex();
     this.refresh(() => this.getSelectedLayers().forEach(layer => layer.zindex = highestZindex + 1));
-    this.tidyLayers();
+    this.triggerChanged();
   }
 
   sendToBackEvent(event) {
     let lowestZindex = this.getLowestZindex();
     this.refresh(() => this.getSelectedLayers().forEach(layer => layer.zindex = lowestZindex - 1));
-    this.tidyLayers();
+    this.triggerChanged();
   }
 
   pasteToTextLayerEvent(event) {
@@ -1790,7 +1805,6 @@ class Layer {
 
   redraw() {
     this.drawLayer(this.toPixel.id(), true);
-    layerManager.capture();
   }
 
   select() {
@@ -1940,7 +1954,7 @@ class Layer {
     layerCopy.setToPixel(this.toPixel);
     layerCopy.pixels = this.pixels.map(pixel => pixel);
     layerCopy.values = this.values.map(value => value);
-    
+
       // By default, a copied layer should appear infront of it's original.
     layerCopy.zindex = this.zindex + 1;
 
@@ -2702,13 +2716,13 @@ class StepLineLayer extends BaseLineLayer {
   getCornerChar(fromPixel, toPixel) {
     if (fromPixel.col < toPixel.col) {
       return (
-          fromPixel.row < toPixel.row? 
+          fromPixel.row < toPixel.row?
           charManager.getCorner(this.lineForm, "top-right"):
           charManager.getCorner(this.lineForm, "bottom-right")
       );
-    } 
+    }
     return (
-        fromPixel.row < toPixel.row? 
+        fromPixel.row < toPixel.row?
         charManager.getCorner(this.lineForm, "top-left"):
         charManager.getCorner(this.lineForm, "bottom-left")
     );
@@ -2983,7 +2997,7 @@ class SwitchLineLayer extends BaseLineLayer {
         charManager.getCorner(this.lineForm, "bottom-right"),
         charManager.getCorner(this.lineForm, "top-left"),
       ];
-    } 
+    }
     // Going up
     if (fromPixel.col < toPixel.col) {
       // Going right
