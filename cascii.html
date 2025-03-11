@@ -336,15 +336,15 @@ It stresses portability, simplicity, and immediateness."
     ////////////////
     class BaseExternalHookManager {
       /*
-    This class should be overridden by optional dependencies
-    allowing upstream functionality for specific hooks coming from this core app.
+        This class should be overridden by optional dependencies
+        allowing upstream functionality for specific hooks coming from this core app.
 
-    E.g It is used to trigger server hooks for the server layer which,
-    by design, is optionally attached.
+        E.g It is used to trigger server hooks for the server layer which,
+        by design, is optionally attached.
 
-    I want this file to open as an index.html and work out-of-the box,
-    with 0 dependencies on a server, packaging, etc.
-  */
+        I want this file to open as an index.html and work out-of-the box,
+        with 0 dependencies on a server, packaging, etc.
+      */
 
       async getShortKeyUrl() {
         // Without a server, we return an empty short key.
@@ -680,12 +680,12 @@ It stresses portability, simplicity, and immediateness."
 
       findGroupsFromLayers(layers) {
         /*
-      Find groups which are fully included in the provided layers.
-      E.g
-      Groups = [[1, 2, 3], [5, 6], [4, 5], [1, 2]]
-      layers = [1, 2, 3, 4]
-        => [[1, 2, 3], [1, 2]]
-    */
+          Find groups which are fully included in the provided layers.
+          E.g
+          Groups = [[1, 2, 3], [5, 6], [4, 5], [1, 2]]
+          layers = [1, 2, 3, 4]
+            => [[1, 2, 3], [1, 2]]
+        */
 
         // This means, somehow, we are looking for groups with layers
         // that have been removed.
@@ -1019,12 +1019,12 @@ It stresses portability, simplicity, and immediateness."
 
       getNearOverlappingCount(subjectLayer, withNames) {
         /*
-    This counts how many pixels from other layers are near
-    or overlapping the subjectLayer. withNames can also
-    be provided to only worry about specific layer.getType()s
-    being near/overlapping. This is mainly used to make decisions
-    based on how busy a space is.
-    */
+        This counts how many pixels from other layers are near
+        or overlapping the subjectLayer. withNames can also
+        be provided to only worry about specific layer.getType()s
+        being near/overlapping. This is mainly used to make decisions
+        based on how busy a space is.
+        */
         var count = 0;
         for (let layer of this.layers) {
           if (withNames && withNames.includes(layer.getType())) {
@@ -1330,29 +1330,29 @@ It stresses portability, simplicity, and immediateness."
             continue;
           }
           /*
-      layer.fromPixel: The "from" pixel for a specific layer (where it should be drawn from)
-      layer.toPixel: The pixel the layer should draw to
-      selectPixel: The previous activePixel to determine the diff with current activePixel.
-                   This pixel starts as wherever the user first pressed.
-      activePixel: The actual current pixel of the mouse.
+          layer.fromPixel: The "from" pixel for a specific layer (where it should be drawn from)
+          layer.toPixel: The pixel the layer should draw to
+          selectPixel: The previous activePixel to determine the diff with current activePixel.
+                       This pixel starts as wherever the user first pressed.
+          activePixel: The actual current pixel of the mouse.
 
-      layer.fromPixel
-          ._________
-          *        |
-          |        |
-          |        |       *.. selectedPixel
-          |        |        \
-          |        |         \ .. vertical/lateralDiff
-          |________*          \
-                   .\           * .. activePixel
-                   . \
-                   .  \
-                   .   * .. layer.toPixel + vertical/lateralDiff
-                   .
-                layer.toPixel
+          layer.fromPixel
+              ._________
+              *        |
+              |        |
+              |        |       *.. selectedPixel
+              |        |        \
+              |        |         \ .. vertical/lateralDiff
+              |________*          \
+                       .\           * .. activePixel
+                       . \
+                       .  \
+                       .   * .. layer.toPixel + vertical/lateralDiff
+                       .
+                    layer.toPixel
 
-      With both of these determined, the layer can be resized.
-      */
+          With both of these determined, the layer can be resized.
+          */
 
           // For this layer, the resize pixel is out of bounds.
 
@@ -2627,12 +2627,12 @@ It stresses portability, simplicity, and immediateness."
         this.setToPixel(canvas.getPixelById(activePixelId));
 
         /* Try and draw the step line both ways e.g
-        _____
-        |                |
-        |       Vs.   ___|
+            _____
+            |                |
+            |       Vs.   ___|
 
-    and choose which ever is more visible depending on other layers overlapping.
-    */
+        and choose which ever is more visible depending on other layers overlapping.
+        */
         let layersToAvoid = [SquareLayer.type, CircleLayer.type, DiamondLayer.type, TableLayer.type];
         this.drawFromTo(this.fromPixel, this.toPixel);
         let resultNorm = layerManager.getNearOverlappingCount(this, layersToAvoid);
@@ -2770,17 +2770,17 @@ It stresses portability, simplicity, and immediateness."
         let absLateralDiff = Math.abs(lateralDiff);
 
         /*
-    Try and draw the switch line both ways e.g
-        _____
-        |                 |
-        |             ____|
-     ___|       Vs.   |
+        Try and draw the switch line both ways e.g
+            _____
+            |                 |
+            |             ____|
+         ___|       Vs.   |
 
 
 
-    and choose which ever is more visible depending on other layers overlapping.
-    If there aren't notable overlaps, choose based on which direction is favoured.
-    */
+        and choose which ever is more visible depending on other layers overlapping.
+        If there aren't notable overlaps, choose based on which direction is favoured.
+        */
         let layersToAvoid = [SquareLayer.type, CircleLayer.type, DiamondLayer.type, TableLayer.type];
         this.drawVertical(fromPixel, toPixel);
         let verticalOverlap = layerManager.getNearOverlappingCount(this, layersToAvoid);
@@ -2837,30 +2837,30 @@ It stresses portability, simplicity, and immediateness."
         var drawCol = fromPixelCol;
         var drawRow = fromPixelRow;
         /*
-     The following three loops represent each part of a
-     switch layer in order.
+         The following three loops represent each part of a
+         switch layer in order.
 
-     E.g
+         E.g
 
-    "Lateral"
-                           __________
-                           |     3
-                 __________| 2
-                     1
+        "Lateral"
+                               __________
+                               |     3
+                     __________| 2
+                         1
 
-    "Vertical"
+        "Vertical"
 
-                      | 1
-                      |
-                      |____
-                        2  |
-                           | 3
-                           |
+                          | 1
+                          |
+                          |____
+                            2  |
+                               | 3
+                               |
 
-    Note, the logic is the same both ways, but to draw laterally,
-    this method is called with cols and rows swapped.
-    It's quite confusing but I've found it works wonderfully.
-    */
+        Note, the logic is the same both ways, but to draw laterally,
+        this method is called with cols and rows swapped.
+        It's quite confusing but I've found it works wonderfully.
+        */
 
         let halfwayA = roundHalf(absDiffA / 2);
         // First line
@@ -4459,13 +4459,13 @@ By using text, you avoid the need for file formats, attaching documents and over
       constructor(icon, name, showCondition, setModes, activeModes, callback = () => {}) {
         super();
         /*
-    name: display name of the button
-    showCondition: A ModeMaster condition that gets checked every Menu.refresh
-      call to show/hide the button.
-    setModes: A ModeMaster update command when the button is pressed.
-    activeModes: A ModeMaster condition to choose if the button is selected.
-    callback: A function callback on press.
-    */
+        name: display name of the button
+        showCondition: A ModeMaster condition that gets checked every Menu.refresh
+          call to show/hide the button.
+        setModes: A ModeMaster update command when the button is pressed.
+        activeModes: A ModeMaster condition to choose if the button is selected.
+        callback: A function callback on press.
+        */
         this.icon = icon;
         this.name = name;
         this.isConditional = Boolean(showCondition.length);
