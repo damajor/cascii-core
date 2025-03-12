@@ -1151,6 +1151,10 @@ It stresses portability, simplicity, and immediateness."
         this.layers = [];
         this.layerHistory = [];
         this.groupManager.empty();
+      }
+
+      emptyEvent() {
+        this.empty();
         this.triggerChanged();
       }
 
@@ -4320,11 +4324,7 @@ It stresses portability, simplicity, and immediateness."
      please get in touch at <b>casparwylie@gmail.com</b>, using the email you
      originally signed up with.
      <h4>How do I contribute?</h4>
-     Feel free to contribute on <a href="https://github.com/casparwylie/cascii-core">GitHub</a>.
-     <h4>Feature requests / bug reporting?</h4>
-     Please use the Issue Tracker on <a href="https://github.com/casparwylie/cascii-core">GitHub</a>.
-     <h4></h4>
-    <h2>Usage</h2>
+     Feel free to contribute or report problems on <a href="https://github.com/casparwylie/cascii-core">GitHub</a>.
     <h2>Shortcuts</h2>
     </div>
     <span style='white-space: pre-wrap'>
@@ -4689,7 +4689,7 @@ It stresses portability, simplicity, and immediateness."
         ),
         new ModeMenuButtonComponent("↺", "Undo", [], [], [], (event) => layerManager.undoEvent(event)),
         new ModeMenuButtonComponent("↻", "Redo", [], [], [], (event) => layerManager.redoEvent(event)),
-        new ModeMenuButtonComponent("x", "Restart", [], [], [], () => layerManager.refresh(() => layerManager.empty())),
+        new ModeMenuButtonComponent("x", "Restart", [], [], [], () => layerManager.refresh(() => layerManager.emptyEvent())),
         new ModeMenuButtonComponent("->", "<b>Export</b>", [], [], [], () => canvas.exportToClipboard()),
         new ModeMenuButtonComponent("⚙", "<b>Settings</b>", [], [], [], () =>
           bodyComponent.settingsComponent.toggle()
