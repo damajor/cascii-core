@@ -50,6 +50,11 @@ It stresses portability, simplicity, and immediateness."
     //////////////////
     ////// UTILS /////
     //////////////////
+    function getClipboardText(limit) {
+      let clipboardData = event.clipboardData || window.clipboardData;
+      return clipboardData.getData("Text").substring(0, limit);
+    }
+
     function isTablet() {
       return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     }
@@ -336,14 +341,14 @@ It stresses portability, simplicity, and immediateness."
     ////////////////
     class BaseExternalHookManager {
       /*
-        This class should be overridden by optional dependencies
-        allowing upstream functionality for specific hooks coming from this core app.
+      This class should be overridden by optional dependencies
+      allowing upstream functionality for specific hooks coming from this core app.
 
-        E.g It is used to trigger server hooks for the server layer which,
-        by design, is optionally attached.
+      E.g It is used to trigger server hooks for the server layer which,
+      by design, is optionally attached.
 
-        I want this file to open as an index.html and work out-of-the box,
-        with 0 dependencies on a server, packaging, etc.
+      I want this file to open as an index.html and work out-of-the box,
+      with 0 dependencies on a server, packaging, etc.
       */
 
       async getShortKeyUrl() {
@@ -680,11 +685,11 @@ It stresses portability, simplicity, and immediateness."
 
       findGroupsFromLayers(layers) {
         /*
-          Find groups which are fully included in the provided layers.
-          E.g
-          Groups = [[1, 2, 3], [5, 6], [4, 5], [1, 2]]
-          layers = [1, 2, 3, 4]
-            => [[1, 2, 3], [1, 2]]
+        Find groups which are fully included in the provided layers.
+        E.g
+        Groups = [[1, 2, 3], [5, 6], [4, 5], [1, 2]]
+        layers = [1, 2, 3, 4]
+          => [[1, 2, 3], [1, 2]]
         */
 
         // This means, somehow, we are looking for groups with layers
@@ -750,6 +755,7 @@ It stresses portability, simplicity, and immediateness."
         let firstPixel = layerManager.getSelectPixel();
 
         let activePixel = canvas.getPixelById(event.target.id);
+        if (!activePixel) return;
         let lateralDiff = activePixel.col - firstPixel.col;
         let verticalDiff = activePixel.row - firstPixel.row;
         let total = Math.abs(lateralDiff * verticalDiff);
@@ -927,6 +933,10 @@ It stresses portability, simplicity, and immediateness."
 
         // Put latest visuals to local storage (we can't rely on capture as undo should not capture).
         this.saveToLocalStorage();
+
+        // Unset this as changing history makes this out of date, and
+        // tracking it is a bit overkill (a user can just re-select the layer after an undo)
+        this.editingTextLayer = null;
       }
 
       redo() {
@@ -938,6 +948,10 @@ It stresses portability, simplicity, and immediateness."
 
         // Put latest visuals to local storage (we can't rely on capture as redo should not capture).
         this.saveToLocalStorage();
+
+        // Unset this as changing history makes this out of date, and
+        // tracking it is a bit overkill (a user can just re-select the layer after an undo)
+        this.editingTextLayer = null;
       }
 
       copyReplaceLayers(layers) {
@@ -1018,13 +1032,11 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getNearOverlappingCount(subjectLayer, withNames) {
-        /*
-        This counts how many pixels from other layers are near
-        or overlapping the subjectLayer. withNames can also
-        be provided to only worry about specific layer.getType()s
-        being near/overlapping. This is mainly used to make decisions
-        based on how busy a space is.
-        */
+        // This counts how many pixels from other layers are near
+        // or overlapping the subjectLayer. withNames can also
+        // be provided to only worry about specific layer.getType()s
+        // being near/overlapping. This is mainly used to make decisions
+        // based on how busy a space is.
         var count = 0;
         for (let layer of this.layers) {
           if (withNames && withNames.includes(layer.getType())) {
@@ -1139,7 +1151,7 @@ It stresses portability, simplicity, and immediateness."
         this.layers = [];
         this.layerHistory = [];
         this.groupManager.empty();
-        this.capture();
+        this.triggerChanged();
       }
 
       triggerChanged() {
@@ -1302,6 +1314,7 @@ It stresses portability, simplicity, and immediateness."
 
       resizingMouseOverEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
+        if (!activePixel) return;
         let layers = this.getSelectedLayers();
         this.refresh(() => this.resizeLayers(layers, activePixel));
         this.findJoints(layers);
@@ -1362,7 +1375,7 @@ It stresses portability, simplicity, and immediateness."
           // resizeSelectedJoinerLayers is true because layers are changing
           // and selected joiner layers should favour maintaining joints and resizing
           // that way, instead of resizing independently.
-          layer.draw(toPixel.id(), true);
+          layer.draw(toPixel, true);
         }
         // Note we set selectPixel to activePixel so that the next iteration
         // can diff the new activePixel to this one.
@@ -1371,6 +1384,7 @@ It stresses portability, simplicity, and immediateness."
 
       movingMouseOverEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
+        if (!activePixel) return;
         let lastPixelSelected = this.getSelectPixel();
         let verticalDiff = activePixel.row - lastPixelSelected.row;
         let lateralDiff = activePixel.col - lastPixelSelected.col;
@@ -1413,7 +1427,8 @@ It stresses portability, simplicity, and immediateness."
 
       selectMouseOverEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
-        let layerOver = layerManager.getLayerByPixelId(activePixel.id());
+        if (!activePixel) return;
+        let layerOver = layerManager.getLayerByPixelId(event.target.id);
         layerOver ? canvas.setCursor("pointer") : canvas.setCursor("default");
         // Ascending
         for (let layer of this.getLayersOrderedByZindex()) {
@@ -1475,6 +1490,7 @@ It stresses portability, simplicity, and immediateness."
 
       erasePixelEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
+        if (!activePixel) return;
         let layer = this.getLayerByPixelId(activePixel.id());
         if (layer && !layer.is("free")) {
           bodyComponent.informerComponent.report("Can only erase free drawings!", "bad");
@@ -1528,30 +1544,33 @@ It stresses portability, simplicity, and immediateness."
       pasteToTextLayerEvent(event) {
         event.stopPropagation();
         event.preventDefault();
-        let clipboardData = event.clipboardData || window.clipboardData;
-        let text = clipboardData.getData("Text").substring(0, 100);
-        this.refresh(() =>
-          this.editingTextLayer.commit(
-            () => this.editingTextLayer.paste(text)
-            // TODO: Show error when failing to copy
-          )
-        );
+        let text = getClipboardText(100);
+        this.refresh(() => {
+          let commited = this.editingTextLayer.commit(() => this.editingTextLayer.paste(text));
+          if (!commited) {
+            bodyComponent.informerComponent.report("Cannot paste, content leaves canvas", "bad");
+          }
+        });
       }
 
       pasteAsTextLayerEvent(event) {
         event.stopPropagation();
         event.preventDefault();
-        // TODO: Consider unifying clipboard reading with method above
         modeMaster.reset("select");
-        let clipboardData = event.clipboardData || window.clipboardData;
-        let text = clipboardData.getData("Text").substring(0, 1000);
-        let textLayer = new TextLayer(canvas.getPixelByRowCol(30, 30).id());
+        let text = getClipboardText(1000);
+        // Just put it in the middle
+        let textLayer = new TextLayer(
+          canvas.getPixelByRowCol(roundDown(canvas.rowCount / 2), roundDown(canvas.colCount / 2)).id()
+        );
         textLayer.contents = text.split("");
         layerManager.add(textLayer);
         this.refresh(() => {
           if (textLayer.commit(() => textLayer.drawLayer())) {
+            layerManager.triggerChanged();
             textLayer.select();
-          } // TODO: Show error when failing to copy
+            return;
+          }
+          bodyComponent.informerComponent.report("Cannot paste, content leaves canvas", "bad");
         });
       }
     }
@@ -1627,15 +1646,15 @@ It stresses portability, simplicity, and immediateness."
         return randomInt(1, 10000000).toString();
       }
 
-      static drawToSelectMouseDownEvent(event) {
-        // Just a little side hussle to auto-switch to selecting
+      static drawToSelectMouseDownEvent(event, selectedLayer) {
+        // Just a little side hustle to auto-switch to selecting
         // if drawing but an existing layer was touched.
-        let activePixel = canvas.getPixelById(event.target.id);
-        let selectLayer = layerManager.getLayerByPixelId(activePixel.id());
+        // If a user selected via joint/joiner pixel, we assume they do
+        // want to draw from it.
         if (
-          selectLayer &&
-          !selectLayer.hasJointPixel(activePixel.id()) &&
-          !selectLayer.hasJoinerPixel(activePixel.id())
+          selectedLayer &&
+          !selectedLayer.hasJointPixel(event.target.id) &&
+          !selectedLayer.hasJoinerPixel(event.target.id)
         ) {
           modeMaster.reset("select");
           Layer.selectMouseDownEvent(event);
@@ -1645,23 +1664,31 @@ It stresses portability, simplicity, and immediateness."
       }
 
       static drawMouseDownEvent(event) {
-        if (Layer.drawToSelectMouseDownEvent(event)) return;
+        let activePixel = canvas.getPixelById(event.target.id);
+        if (!activePixel) return;
+        let selectedLayer = layerManager.getLayerByPixelId(activePixel.id());
+        if (Layer.drawToSelectMouseDownEvent(event, selectedLayer)) return;
+
         // Otherwise we go ahead and create a new layer.
         let layerType = modeMaster.getLayerType();
         let layerClass = layerManager.getLayerClassByType(layerType);
         let layer = new layerClass(event.target.id);
         layerManager.add(layer);
-        layerManager.refresh(() => layer.draw(event.target.id));
+        layerManager.refresh(() => layer.draw(activePixel));
       }
 
       static drawingMouseOverEvent(event) {
         let layer = layerManager.getLatestLayer();
-        layerManager.refresh(() => layer.draw(event.target.id));
+        let activePixel = canvas.getPixelById(event.target.id);
+        // Extremely rare, but somehow activePixel can be undefined.
+        if (!activePixel) return;
+        layerManager.refresh(() => layer.draw(activePixel));
         layerManager.findJoints([layer]);
       }
 
       static drawMouseOver() {
         let activePixel = canvas.getPixelById(event.target.id);
+        if (!activePixel) return;
         let layerOver = layerManager.getLayerByPixelId(activePixel.id());
         if (modeMaster.has("text") && (!layerOver || layerOver.is("text"))) {
           canvas.setCursor("text");
@@ -1674,6 +1701,7 @@ It stresses portability, simplicity, and immediateness."
 
       static selectMouseDownEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
+        if (!activePixel) return;
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         let selectedLayers = layerManager.getSelectedLayers();
 
@@ -1701,8 +1729,8 @@ It stresses portability, simplicity, and immediateness."
         }
       }
 
-      draw(activePixelId) {
-        let committed = this.commit(() => this.drawLayer(activePixelId));
+      draw(activePixel) {
+        let committed = this.commit(() => this.drawLayer(activePixel));
         if (committed && this.isJoinable()) this.resizeJoinerLayers(true);
       }
 
@@ -1781,7 +1809,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       redraw() {
-        this.drawLayer(this.toPixel.id(), true);
+        this.drawLayer(this.toPixel, true);
       }
 
       select() {
@@ -1903,7 +1931,6 @@ It stresses portability, simplicity, and immediateness."
       }
 
       tidyJoints() {
-        // TODO consider requirement here
         let keyedJoints = this.getKeyedJointPixels();
         for (let joint of this.joints) {
           let layer = layerManager.getLayerById(joint.layerId);
@@ -2057,7 +2084,7 @@ It stresses portability, simplicity, and immediateness."
             return;
           }
           layer.setFromPixel(fromPixel);
-          layer.draw(currentJointPixel.id());
+          layer.draw(currentJointPixel);
         }
       }
 
@@ -2182,28 +2209,40 @@ It stresses portability, simplicity, and immediateness."
 
       static selectedDoubleClickEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
+        if (!activePixel) return;
         let layer = layerManager.getLayerByPixelId(activePixel.id());
         layerManager.editingTextLayer = layer;
         layer.moveCursorToPixel(activePixel);
       }
 
       static drawMouseDownEvent(event) {
-        if (Layer.drawToSelectMouseDownEvent(event)) return;
         let activePixel = canvas.getPixelById(event.target.id);
-        if (!TextLayer.focusedOtherTextLayer(activePixel)) {
-          let layer = new TextLayer(event.target.id);
-          layerManager.add(layer);
-          layerManager.editingTextLayer = layer;
-          layer.setStarterChar();
-          layerManager.refresh(() => layer.drawLayer());
-          // Give an instant cursor position so it can be cleared
-          // even if no writing was done.
-          layer.lastCursorPixel = layer.fromPixel;
+        if (!activePixel) return;
+        // Check if we're trying to edit existing text...
+        if (TextLayer.focusedOtherTextLayer(activePixel)) {
+          return;
         }
+        // Text if we might be just selecting another layer...
+        let selectedLayer = layerManager.getLayerByPixelId(activePixel.id());
+        if (selectedLayer) {
+          if (Layer.drawToSelectMouseDownEvent(event, selectedLayer)) {
+            return;
+          }
+        }
+        // Finally, do as expected and create new text layer.
+        let layer = new TextLayer(event.target.id);
+        layerManager.add(layer);
+        layerManager.editingTextLayer = layer;
+        layer.setStarterChar();
+        layerManager.refresh(() => layer.drawLayer());
+        // Give an instant cursor position so it can be cleared
+        // even if no writing was done.
+        layer.lastCursorPixel = layer.fromPixel;
       }
 
       static writingMouseDownEvent(event) {
         let activePixel = canvas.getPixelById(event.target.id);
+        if (!activePixel) return;
         if (!TextLayer.focusedOtherTextLayer(activePixel)) {
           modeMaster.change("writing", "draw");
           layerManager.unselectAll();
@@ -2213,6 +2252,7 @@ It stresses portability, simplicity, and immediateness."
       static keyDownEvent(event) {
         var layer = layerManager.editingTextLayer;
         if (layer && layer.is("text")) layerManager.refresh(() => layer.draw(event.key));
+        layerManager.triggerChanged();
       }
 
       static focusedOtherTextLayer(activePixel) {
@@ -2545,8 +2585,8 @@ It stresses portability, simplicity, and immediateness."
     class FreeLineLayer extends BaseLineLayer {
       static type = "free-line";
 
-      drawLayer(activePixelId, force = false) {
-        this.setToPixel(canvas.getPixelById(activePixelId));
+      drawLayer(activePixel, force = false) {
+        this.setToPixel(activePixel);
         let fromPixel = this.fromPixel;
         let toPixel = this.toPixel;
         let verticalDiff = toPixel.row - fromPixel.row;
@@ -2623,10 +2663,10 @@ It stresses portability, simplicity, and immediateness."
         return { m: this.getLastPixel() }; // Middle
       }
 
-      drawLayer(activePixelId, force = false) {
-        this.setToPixel(canvas.getPixelById(activePixelId));
-
-        /* Try and draw the step line both ways e.g
+      drawLayer(activePixel, force = false) {
+        this.setToPixel(activePixel);
+        /*
+        Try and draw the step line both ways e.g
             _____
             |                |
             |       Vs.   ___|
@@ -2760,15 +2800,14 @@ It stresses portability, simplicity, and immediateness."
         return keyedJoints;
       }
 
-      drawLayer(activePixelId, force = false) {
-        this.setToPixel(canvas.getPixelById(activePixelId));
+      drawLayer(activePixel, force = false) {
+        this.setToPixel(activePixel);
         let fromPixel = this.fromPixel;
         let toPixel = this.toPixel;
         let verticalDiff = toPixel.row - fromPixel.row;
         let lateralDiff = toPixel.col - fromPixel.col;
         let absVerticalDiff = Math.abs(verticalDiff);
         let absLateralDiff = Math.abs(lateralDiff);
-
         /*
         Try and draw the switch line both ways e.g
             _____
@@ -2837,25 +2876,25 @@ It stresses portability, simplicity, and immediateness."
         var drawCol = fromPixelCol;
         var drawRow = fromPixelRow;
         /*
-         The following three loops represent each part of a
-         switch layer in order.
+        The following three loops represent each part of a
+        switch layer in order.
 
-         E.g
+        E.g
 
         "Lateral"
-                               __________
-                               |     3
-                     __________| 2
-                         1
+                             __________
+                             |     3
+                   __________| 2
+                       1
 
         "Vertical"
 
-                          | 1
-                          |
-                          |____
-                            2  |
-                               | 3
-                               |
+                        | 1
+                        |
+                        |____
+                          2  |
+                             | 3
+                             |
 
         Note, the logic is the same both ways, but to draw laterally,
         this method is called with cols and rows swapped.
@@ -3036,10 +3075,10 @@ It stresses portability, simplicity, and immediateness."
         }
       }
 
-      drawLayer(activePixelId, force = false) {
+      drawLayer(activePixel, force = false) {
+        this.setToPixel(activePixel);
         let lateralChar = charManager.getLateralLine(this.lineForm);
         let verticalChar = charManager.getVerticalLine(this.lineForm);
-        this.setToPixel(canvas.getPixelById(activePixelId));
         var value = "";
         if (FreeLayer.freeChar == "_lines") {
           let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
@@ -3137,11 +3176,14 @@ It stresses portability, simplicity, and immediateness."
         );
       }
 
-      drawLayer(activePixelId, force = false) {
+      drawLayer(activePixel, force = false) {
+        this.setToPixel(activePixel);
+
         let lateralChar = charManager.getLateralLine(this.lineForm);
         let verticalChar = charManager.getVerticalLine(this.lineForm);
+
         this.empty();
-        this.setToPixel(canvas.getPixelById(activePixelId));
+
         let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
         let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
         var diff = verticalDiff > lateralDiff ? verticalDiff : roundHalf(lateralDiff / 2);
@@ -3221,13 +3263,14 @@ It stresses portability, simplicity, and immediateness."
         );
       }
 
-      drawLayer(activePixelId, force = false) {
+      drawLayer(activePixel, force = false) {
+        this.setToPixel(activePixel);
+
         let diagBackChar = charManager.getDiagBackLine(this.lineForm);
         let diagForwardChar = charManager.getDiagForwardLine(this.lineForm);
         let cornerDiamondVerticalChar = charManager.getDiamondCorner(this.lineForm, "vertical");
         let cornerDiamondLateralChar = charManager.getDiamondCorner(this.lineForm, "lateral");
 
-        this.setToPixel(canvas.getPixelById(activePixelId));
         let verticalDiff = Math.abs(this.toPixel.row - this.fromPixel.row);
         let lateralDiff = Math.abs(this.toPixel.col - this.fromPixel.col);
         var diff = verticalDiff > lateralDiff ? verticalDiff : roundHalf(lateralDiff / 2);
@@ -3294,7 +3337,9 @@ It stresses portability, simplicity, and immediateness."
         };
       }
 
-      drawLayer(activePixelId, force = false) {
+      drawLayer(activePixel, force = false) {
+        this.setToPixel(activePixel);
+
         let lateralChar = charManager.getLateralLine(this.lineForm);
         let verticalChar = charManager.getVerticalLine(this.lineForm);
         let cornerTopLeftChar = charManager.getCorner(this.lineForm, "top-left");
@@ -3302,7 +3347,6 @@ It stresses portability, simplicity, and immediateness."
         let cornerBottomLeftChar = charManager.getCorner(this.lineForm, "bottom-left");
         let cornerBottomRightChar = charManager.getCorner(this.lineForm, "bottom-right");
 
-        this.setToPixel(canvas.getPixelById(activePixelId));
         let topLeftPixel = canvas.getPixelByRowCol(
           Math.min(this.toPixel.row, this.fromPixel.row),
           Math.min(this.toPixel.col, this.fromPixel.col)
@@ -3469,8 +3513,8 @@ It stresses portability, simplicity, and immediateness."
         return Math.abs(this.tblCols + roundHalf(relLateralDiff / nextColWidth));
       }
 
-      drawLayer(activePixelId, force = false) {
-        this.setToPixel(canvas.getPixelById(activePixelId));
+      drawLayer(activePixel, force = false) {
+        this.setToPixel(activePixel);
         let topLeftPixel = this.getTopLeftPixel();
         let bottomRightPixel = this.getBottomRightPixel();
         let newTblRows = this.getNewTblRows(bottomRightPixel.row - topLeftPixel.row);
@@ -3852,7 +3896,7 @@ It stresses portability, simplicity, and immediateness."
       render(parent) {
         this.create();
         this.setId();
-        this.setValue(this.value); // TODO: this.value should be called initialValue or use prop_value
+        this.setValue(this.value);
         this.registerMagicProps();
         this.renderChildren();
         this.assignParent(parent);
@@ -4078,7 +4122,9 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getPixelById(id) {
-        return this.pixels[id];
+        let pixel = this.pixels[id];
+        if (!pixel) debugError(`Pixel with id ${id} not found`);
+        return pixel;
       }
 
       getPixelByRowCol(row, col) {
@@ -4235,64 +4281,64 @@ It stresses portability, simplicity, and immediateness."
       css_overflow = "scroll";
       css_scrollbarWidth = "none";
       value = `
-<div style='text-align: center;'><h2>Cascii</h2>
-<h3>${VERSION}</h3>
-<p>
-This is one of the few well-equipped ASCII diagram builders freely available on the internet.
-It stresses portability, simplicity, and immediateness. ASCII diagrams are
-the best balance between pen to paper and advanced graphical builders, while also allowing
-users to present visual information in places that can
-only render text (such as in code, consoles, primitive displays, and so on).
-</p>
-<p>
-By using text, you avoid the need for file formats, attaching documents and over-styled distractions.
-</p>
-<h2>FAQ</h2>
- <h4>ASCII or Unicode?</h4>
- Unicode is prettier but less reliable. Depending on where it's used,
- it could display in unexpected ways. Here, both modes try their best
- to use the most appropriate characters, but each mode does not promise
- absolute ASCII or Unicode. You can change mode in Settings.
- <h4>How do I export my drawing?</h4>
- Simply select Export on the top menu, and your drawing
- will be copied to your clipboard. A short link will be included
- so that you / others can edit the drawing later. It's recommended
- you keep this short link to avoid loosing the ability to find / edit it later.
- Exported drawings are immutable; editing via a short link is a copy of the original.
- <br><br>
- <b>Remember, the view in which you paste the drawing must use a fixed-width font,
- and have a width greater than what you've drawn or not wrap text.
- Otherwise you'll see a mess.</b>
+    <div style='text-align: center;'><h2>Cascii</h2>
+    <h3>${VERSION}</h3>
+    <p>
+    This is one of the few well-equipped ASCII diagram builders freely available on the internet.
+    It stresses portability, simplicity, and immediateness. ASCII diagrams are
+    the best balance between pen to paper and advanced graphical builders, while also allowing
+    users to present visual information in places that can
+    only render text (such as in code, consoles, primitive displays, and so on).
+    </p>
+    <p>
+    By using text, you avoid the need for file formats, attaching documents and over-styled distractions.
+    </p>
+    <h2>FAQ</h2>
+     <h4>ASCII or Unicode?</h4>
+     Unicode is prettier but less reliable. Depending on where it's used,
+     it could display in unexpected ways. Here, both modes try their best
+     to use the most appropriate characters, but each mode does not promise
+     absolute ASCII or Unicode. You can change mode in Settings.
+     <h4>How do I export my drawing?</h4>
+     Simply select Export on the top menu, and your drawing
+     will be copied to your clipboard. A short link will be included
+     so that you / others can edit the drawing later. It's recommended
+     you keep this short link to avoid loosing the ability to find / edit it later.
+     Exported drawings are immutable; editing via a short link is a copy of the original.
+     <br><br>
+     <b>Remember, the view in which you paste the drawing must use a fixed-width font,
+     and have a width greater than what you've drawn or not wrap text.
+     Otherwise you'll see a mess.</b>
 
- <h4>Why sign up?</h4>
- If using Cascii locally, please see <a href="cascii.app">cascii.app</a> to sign up.
- Only sign up if you care about managing and tracking your drawings.
- For convenience, your active drawing is saved to the browser, but
- to save multiple reliably and cross-device, an account is recommended.
- <h4>Account Management</h4>
- If you wish to delete your account, recover a lost account, or anything else,
- please get in touch at <b>casparwylie@gmail.com</b>, using the email you
- originally signed up with.
- <h4>How do I contribute?</h4>
- Feel free to contribute on <a href="https://github.com/casparwylie/cascii-core">GitHub</a>.
- <h4>Feature requests / bug reporting?</h4>
- Please use the Issue Tracker on <a href="https://github.com/casparwylie/cascii-core">GitHub</a>.
- <h4></h4>
-<h2>Usage</h2>
-<h2>Shortcuts</h2>
-</div>
-<span style='white-space: pre-wrap'>
-<b>ctrl-g</b>              Group
-<b>ctrl-c</b>              Copy layer
-<b>ctrl-z</b>              Undo
-<b>ctrl-shift-z</b>        Redo
-<b>ctrl-a</b>              Select all
-<b>backspace/delete</b>    Delete layer
-<b>shift-click</b>         Multi-select | single-select member of group.
-<b>arrow keys</b>          Move layer
-<b>ctrl-v</b>              Paste text (when editing text)
-</span>
-  `;
+     <h4>Why sign up?</h4>
+     If using Cascii locally, please see <a href="cascii.app">cascii.app</a> to sign up.
+     Only sign up if you care about managing and tracking your drawings.
+     For convenience, your active drawing is saved to the browser, but
+     to save multiple reliably and cross-device, an account is recommended.
+     <h4>Account Management</h4>
+     If you wish to delete your account, recover a lost account, or anything else,
+     please get in touch at <b>casparwylie@gmail.com</b>, using the email you
+     originally signed up with.
+     <h4>How do I contribute?</h4>
+     Feel free to contribute on <a href="https://github.com/casparwylie/cascii-core">GitHub</a>.
+     <h4>Feature requests / bug reporting?</h4>
+     Please use the Issue Tracker on <a href="https://github.com/casparwylie/cascii-core">GitHub</a>.
+     <h4></h4>
+    <h2>Usage</h2>
+    <h2>Shortcuts</h2>
+    </div>
+    <span style='white-space: pre-wrap'>
+    <b>ctrl-g</b>              Group
+    <b>ctrl-c</b>              Copy layer
+    <b>ctrl-z</b>              Undo
+    <b>ctrl-shift-z</b>        Redo
+    <b>ctrl-a</b>              Select all
+    <b>backspace/delete</b>    Delete layer
+    <b>shift-click</b>         Multi-select | single-select member of group.
+    <b>arrow keys</b>          Move layer
+    <b>ctrl-v</b>              Paste text (when editing text)
+    </span>
+      `;
 
       defineChildren() {
         return [];
