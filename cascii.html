@@ -64,6 +64,7 @@ It stresses portability, simplicity, and immediateness."
     }
 
     function debugError(message) {
+      console.trace();
       console.log(`[DEBUG]: ${message}`);
     }
 
@@ -94,7 +95,6 @@ It stresses portability, simplicity, and immediateness."
     ///////////////////
     ////// THEMES /////
     ///////////////////
-
     class Theme {
       static Color = {
         blue: "#0394fc",
@@ -112,7 +112,6 @@ It stresses portability, simplicity, and immediateness."
         green: "#49d65c",
         darkGreen: "#11381b",
         lightGreen: "#bdffdb",
-        orange: "orange",
         grey: "#525252",
       };
 
@@ -136,7 +135,7 @@ It stresses portability, simplicity, and immediateness."
         pixelResizeBgColor: Theme.Color.red,
         pixelJointBgColor: Theme.Color.pink,
         pixelJointNearBgColor: Theme.Color.green,
-        pixelCursorColor: Theme.Color.orange,
+        pixelCursorColor: Theme.Color.red,
 
         areaSelectionBgColor: Theme.Color.blue,
 
@@ -254,8 +253,12 @@ It stresses portability, simplicity, and immediateness."
       }
 
       makeFunc(instruction) {
-        // This just gives dispatchers a prettier notation...
-        // e.g () => modeMaster.has("x", "y") becomes [modeMaster.has, "x", "y"]
+        // This just gives dispatchers a prettier notation, and
+        // restricts us from getting carried away with complicated mode conditions.
+        // If a condition can't be described by this notation, there's probably a cleaner
+        // implementation (e.g introducing another mode or making custom method on the ModeMaster).
+
+        // () => modeMaster.has("x", "y") becomes [modeMaster.has, "x", "y"]
         return instruction.length ? instruction[0].bind(this, ...instruction.slice(1)) : () => true;
       }
 
@@ -267,11 +270,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       toggle(mode) {
-        if (this.has(mode)) {
-          this.remove(mode);
-        } else {
-          this.add(mode);
-        }
+        this.has(mode) ? this.remove(mode) : this.add(mode);
       }
 
       remove(...modes) {
@@ -299,6 +298,8 @@ It stresses portability, simplicity, and immediateness."
       }
 
       hasAny() {
+        // This is useful to determine if Cascii itself is active (any modes are on).
+        // E.g if not, we shouldn't prevent default browser events by capturing ctrl commands.
         return this._modes.length > 0;
       }
 
@@ -326,6 +327,7 @@ It stresses portability, simplicity, and immediateness."
           if (this.has(type)) return type;
         }
       }
+
       setSelectedLayerMode(layer) {
         this.removeLayerModes();
         this.add(layer.getType());
@@ -425,6 +427,7 @@ It stresses portability, simplicity, and immediateness."
             },
           },
         },
+
         window: {
           mouseEvents: {
             resize: [new EventDef([], [], (event) => canvas.scale())],
@@ -434,6 +437,7 @@ It stresses portability, simplicity, and immediateness."
               ),
               new EventDef([modeMaster.hasAny], [], (event) => layerManager.pasteAsTextLayerEvent(event)),
             ],
+            // A mouseup should be detected beyond the canvas, so it's here instead.
             mouseup: [
               new EventDef([modeMaster.has, "drawing"], [modeMaster.change, "drawing", "draw"], (event) =>
                 layerManager.changeEvent(event)
@@ -451,6 +455,7 @@ It stresses portability, simplicity, and immediateness."
             ],
           },
         },
+
         canvas: {
           mouseEvents: {
             mousedown: [
@@ -466,6 +471,7 @@ It stresses portability, simplicity, and immediateness."
               ),
               new EventDef([modeMaster.hasOr, "selected", "select"], [], Layer.selectMouseDownEvent),
             ],
+
             mouseover: [
               new EventDef(
                 [modeMaster.has, "draw", "line"], // Technically this should be for any joiner layer...
@@ -484,6 +490,7 @@ It stresses portability, simplicity, and immediateness."
                 layerManager.selectMouseOverEvent(event)
               ),
             ],
+
             dblclick: [
               new EventDef(
                 [modeMaster.has, "selected", "text"],
@@ -537,6 +544,10 @@ It stresses portability, simplicity, and immediateness."
         }
       }
     }
+
+    ///////////////
+    //// CHARS ////
+    ///////////////
 
     class CharManager {
       // Useful: https://www.w3.org/TR/xml-entity-names/025.html
@@ -664,6 +675,10 @@ It stresses portability, simplicity, and immediateness."
       }
     }
 
+    //////////////
+    //// CORE ////
+    //////////////
+
     class GroupManager {
       constructor() {
         this.layerGroups = [];
@@ -781,15 +796,12 @@ It stresses portability, simplicity, and immediateness."
         for (var layer of layerManager.layers) {
           let layerPixelIds = layer.pixels.map((pixel) => pixel.id());
           let selectedPixelIds = this.areaSelectionPixels.map((pixel) => pixel.id());
-          if (layerPixelIds.filter((pixel) => !selectedPixelIds.includes(pixel)).length) {
-            if (layer.isSelected()) {
-              layer.unselect();
-            }
-          } else {
-            layersToSelect.push(layer);
+          if (layerPixelIds.filter(pixel => !selectedPixelIds.includes(pixel)).length) {
+            if (layer.isSelected()) layer.unselect();
+            return;
           }
+          layersToSelect.push(layer);
         }
-
         if (layersToSelect.length) modeMaster.change("select", "selected");
         for (let layer of layersToSelect) {
           layer.select();
@@ -821,17 +833,15 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getLayerTypes() {
-        return this.LayerRegister.map((cls) => cls.type);
+        return this.LayerRegister.map(cls => cls.type);
       }
 
       getLineBasedLayerTypes() {
-        return this.LayerRegister.filter((cls) => cls.lineBased).map((cls) => cls.type);
+        return this.LayerRegister.filter(cls => cls.lineBased).map(cls => cls.type);
       }
 
       getLayerClassByType(type) {
-        for (let cls of this.LayerRegister) {
-          if (type == cls.type) return cls;
-        }
+        for (let cls of this.LayerRegister) if (type == cls.type) return cls;
       }
 
       add(layer) {
@@ -3952,6 +3962,9 @@ It stresses portability, simplicity, and immediateness."
     }
 
     class Pixel extends Component {
+      // It's no question that using DOM elements to represent a pixel is pretty CPU intensive.
+      // Pixel and Canvas classes should eventually rewritten to interface something
+      // more optimal.
       type = "pixel";
 
       css_position = "absolute";
@@ -4126,13 +4139,16 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getPixelById(id) {
+        // This method is used under the assumption the ID does exist.
+        // If it doesn't, we need to find out why.
         let pixel = this.pixels[id];
         if (!pixel) debugError(`Pixel with id ${id} not found`);
         return pixel;
       }
 
       getPixelByRowCol(row, col) {
-        return this.getPixelById(Pixel.makeId(row, col));
+        // This method is only used when prepared for an undefined result.
+        return this.pixels[Pixel.makeId(row, col)];
       }
 
       clearPixels(pixels) {
@@ -4689,7 +4705,9 @@ It stresses portability, simplicity, and immediateness."
         ),
         new ModeMenuButtonComponent("↺", "Undo", [], [], [], (event) => layerManager.undoEvent(event)),
         new ModeMenuButtonComponent("↻", "Redo", [], [], [], (event) => layerManager.redoEvent(event)),
-        new ModeMenuButtonComponent("x", "Restart", [], [], [], () => layerManager.refresh(() => layerManager.emptyEvent())),
+        new ModeMenuButtonComponent("x", "Restart", [], [], [], () =>
+          layerManager.refresh(() => layerManager.emptyEvent())
+        ),
         new ModeMenuButtonComponent("->", "<b>Export</b>", [], [], [], () => canvas.exportToClipboard()),
         new ModeMenuButtonComponent("⚙", "<b>Settings</b>", [], [], [], () =>
           bodyComponent.settingsComponent.toggle()
