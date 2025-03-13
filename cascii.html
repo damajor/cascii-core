@@ -2689,7 +2689,7 @@ It stresses portability, simplicity, and immediateness."
 
         and choose which ever is more visible depending on other layers overlapping.
         */
-        let layersToAvoid = [SquareLayer.type, CircleLayer.type, DiamondLayer.type, TableLayer.type];
+        let layersToAvoid = [TextLayer.type, SquareLayer.type, CircleLayer.type, DiamondLayer.type, TableLayer.type];
         this.drawFromTo(this.fromPixel, this.toPixel);
         let resultNorm = layerManager.getNearOverlappingCount(this, layersToAvoid);
         this.drawFromTo(this.toPixel, this.fromPixel);
@@ -2836,7 +2836,7 @@ It stresses portability, simplicity, and immediateness."
         and choose which ever is more visible depending on other layers overlapping.
         If there aren't notable overlaps, choose based on which direction is favoured.
         */
-        let layersToAvoid = [SquareLayer.type, CircleLayer.type, DiamondLayer.type, TableLayer.type];
+        let layersToAvoid = [TextLayer.type, SquareLayer.type, CircleLayer.type, DiamondLayer.type, TableLayer.type];
         this.drawVertical(fromPixel, toPixel);
         let verticalOverlap = layerManager.getNearOverlappingCount(this, layersToAvoid);
         this.drawLateral(fromPixel, toPixel);
