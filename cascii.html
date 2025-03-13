@@ -1924,19 +1924,19 @@ It stresses portability, simplicity, and immediateness."
 
       getResizePixelIndex(targetPixel) {
         return this.getResizePixels()
-          .map((pixel) => pixel.id())
+          .map(pixel => pixel.id())
           .indexOf(targetPixel.id());
       }
 
       hasJoinerPixel(pixelId) {
         return this.getJoinerPixels()
-          .map((pixel) => pixel.id())
+          .map(pixel => pixel.id())
           .includes(pixelId);
       }
 
       hasJointPixel(pixelId) {
         return this.getJointPixels()
-          .map((pixel) => pixel.id())
+          .map(pixel => pixel.id())
           .includes(pixelId);
       }
 
@@ -2329,6 +2329,8 @@ It stresses portability, simplicity, and immediateness."
 
       getKeyedJointPixels() {
         if (this.hasTable()) return {}; // The table itself will be joinable instead.
+        let firstPixel = this.getFirstPixel();
+        if (this.pixels.length < 2) return {l: firstPixel, r: firstPixel, t: firstPixel, b: firstPixel};
         let [maxCol, minCol, maxRow, minRow] = this.getMinMaxRowsCols();
         let halfwayRow = minRow + roundHalf((maxRow - minRow) / 2);
         let halfwayCol = minCol + roundHalf((maxCol - minCol) / 2);
