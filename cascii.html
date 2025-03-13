@@ -798,9 +798,9 @@ It stresses portability, simplicity, and immediateness."
           let selectedPixelIds = this.areaSelectionPixels.map((pixel) => pixel.id());
           if (layerPixelIds.filter(pixel => !selectedPixelIds.includes(pixel)).length) {
             if (layer.isSelected()) layer.unselect();
-            return;
+          } else {
+            layersToSelect.push(layer);
           }
-          layersToSelect.push(layer);
         }
         if (layersToSelect.length) modeMaster.change("select", "selected");
         for (let layer of layersToSelect) {
