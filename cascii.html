@@ -50,6 +50,7 @@ It stresses portability, simplicity, and immediateness."
     //////////////////
     ////// UTILS /////
     //////////////////
+
     function getClipboardText(limit) {
       let clipboardData = event.clipboardData || window.clipboardData;
       return clipboardData.getData("Text").substring(0, limit);
@@ -871,6 +872,10 @@ It stresses portability, simplicity, and immediateness."
         }
       }
 
+      setLayers(layers) {
+        this.layers = layers;
+      }
+
       encodeAll() {
         let encodedLayers = this.layers.map(layer => layer.encode());
         let data = {
@@ -887,19 +892,11 @@ It stresses portability, simplicity, and immediateness."
       import(encodedData) {
         this.refresh(() => this.empty());
         let data = JSON.parse(encodedData);
-        this.layers = this.decodeLayers(data.layers);
+        this.setLayers(this.decodeLayers(data.layers));
         this.groupManager.layerGroups = data.groups;
 
-        // Why do we redraw twice? Because only once everything
-        // is drawn, can the correct draw be fully determined.
-        // For example, step line flipping needs to inspect other layers,
-        // which can only be done once all drawn.
-        this.refresh(() => {
-          this.layers.forEach(layer => layer.redraw());
-        });
-        this.refresh(() => {
-          this.layers.forEach(layer => layer.redraw());
-        });
+        // We don't encode pixel data, so until we redraw, layers are empty
+        this.redrawAll();
 
         // Ensure the newly imported data is aligned with local storage
         this.saveToLocalStorage();
@@ -909,12 +906,23 @@ It stresses portability, simplicity, and immediateness."
       }
 
       importFromLocalStorage() {
-        let data = localStorage.getItem("savedWorkspace");
+        let data = localStorage.getItem("savedDrawing");
         if (data && JSON.parse(data).layers.length) this.import(data);
       }
 
       saveToLocalStorage() {
-        localStorage.setItem("savedWorkspace", this.encodeAll());
+        localStorage.setItem("savedDrawing", this.encodeAll());
+      }
+
+      redrawAll() {
+        // Why do we redraw twice? Because only once everything
+        // is drawn, can the correct draw be fully determined.
+        // For example, step line flipping needs to inspect other layers,
+        // which can only be done once all drawn.
+        this.refresh(() => {
+          this.layers.forEach(layer => layer.redraw());
+          this.layers.forEach(layer => layer.redraw());
+        });
       }
 
       getSelectedLayers() {
@@ -934,24 +942,18 @@ It stresses portability, simplicity, and immediateness."
       undo() {
         let limit = this.layerHistory.length - 1;
         this.historyCursor = this.historyCursor < limit ? this.historyCursor + 1 : limit;
-        // Copy historic layers to avoid mutating them now that they're current.
-        // Past will otherwise show as present...
-        this.layers = this.copyReplaceLayers(this.layerHistory[this.historyCursor]);
-        this.groupManager.jumpHistory(this.historyCursor);
-
-        // Put latest visuals to local storage (we can't rely on capture as undo should not capture).
-        this.saveToLocalStorage();
-
-        // Unset this as changing history makes this out of date, and
-        // tracking it is a bit overkill (a user can just re-select the layer after an undo)
-        this.editingTextLayer = null;
+        this.jumpHistory();
       }
 
       redo() {
         this.historyCursor = this.historyCursor > 0 ? this.historyCursor - 1 : 0;
+        this.jumpHistory();
+      }
+
+      jumpHistory() {
         // Copy historic layers to avoid mutating them now that they're current.
-        // Past will otherwise show as present...
-        this.layers = this.copyReplaceLayers(this.layerHistory[this.historyCursor]);
+        // The past version will otherwise mutate with the present...
+        this.setLayers(this.copyLayersIdentically(this.layerHistory[this.historyCursor]));
         this.groupManager.jumpHistory(this.historyCursor);
 
         // Put latest visuals to local storage (we can't rely on capture as redo should not capture).
@@ -962,7 +964,7 @@ It stresses portability, simplicity, and immediateness."
         this.editingTextLayer = null;
       }
 
-      copyReplaceLayers(layers) {
+      copyLayersIdentically(layers) {
         return layers.map(layer => layer.copy(true));
       }
 
@@ -972,11 +974,7 @@ It stresses portability, simplicity, and immediateness."
         // and states (given those of old layers).
         let layerLookup = {};
         let layersToCopy = this.getSelectedLayers();
-        for (var layer of layersToCopy)
-          layerLookup[layer.id] = {
-            old: layer,
-            new: layer.copyAndRender(),
-          };
+        for (var layer of layersToCopy) layerLookup[layer.id] = { old: layer, new: layer.copyAndRender() };
         this.moveLayersToAvailableSpace(Object.values(layerLookup).map(oldNewLayer => oldNewLayer.new));
 
         this.repointJointsForCopiedLayers(layerLookup);
@@ -1084,7 +1082,7 @@ It stresses portability, simplicity, and immediateness."
         let layersToDelete = this.layers.filter(layer => !layer.pixels.length).map(layer => layer.id);
 
         // Delete empty layers
-        this.layers = this.layers.filter(layer => !layersToDelete.includes(layer.id));
+        this.setLayers(this.layers.filter(layer => !layersToDelete.includes(layer.id)));
 
         // Delete references to empty layers in groups
         this.groupManager.tidy(layersToDelete);
@@ -1156,7 +1154,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       empty() {
-        this.layers = [];
+        this.setLayers([]);
         this.layerHistory = [];
         this.groupManager.empty();
       }
@@ -1178,7 +1176,7 @@ It stresses portability, simplicity, and immediateness."
       capture() {
         // This is used to record history for undo/redo state.
         this.historyCursor = 0;
-        this.layerHistory.unshift(this.copyReplaceLayers(this.layers));
+        this.layerHistory.unshift(this.copyLayersIdentically(this.layers));
         this.groupManager.capture();
       }
 
@@ -1209,7 +1207,8 @@ It stresses portability, simplicity, and immediateness."
         // together to avoid breaking joints. If one layer hits
         // the canvas boundary, none should move. Hence, here
         // we ensure all moves are doable before keeping them.
-        let success = this.atomicCommit(...layers.map(layer => [layer, () => layer.move(verticalDiff, lateralDiff)]));
+        let jobs = layers.map(layer => [layer, () => layer.move(verticalDiff, lateralDiff)]);
+        let success = this.atomicCommit(...jobs);
         if (!success) return;
 
         // If we are here, all layers have moved, so we can now resize
@@ -1481,9 +1480,7 @@ It stresses portability, simplicity, and immediateness."
 
       redrawLinesEvent(direction) {
         for (var layer of this.getSelectedLayers()) {
-          if (layer.getType().includes("line")) {
-            this.refresh(() => layer.toggleArrows(direction));
-          }
+          if (layer.isLine()) this.refresh(() => layer.toggleArrows(direction));
         }
         this.triggerChanged();
       }
@@ -1516,6 +1513,7 @@ It stresses portability, simplicity, and immediateness."
         // This ensures the first ever layer is set to 0 given that
         // layers use this method during initialization to determine
         // the next zindex needed.
+        // (Math.max() with nothing returns infinity... :/ )
         if (this.layers.length == 0) return 0;
 
         return Math.max(...this.getZindexes());
@@ -1692,7 +1690,7 @@ It stresses portability, simplicity, and immediateness."
       static drawingMouseOverEvent(event) {
         let layer = layerManager.getLatestLayer();
         let activePixel = canvas.getPixelById(event.target.id);
-        // Extremely rare, but somehow activePixel can be undefined.
+        // Extremely rare, but somehow activePixel can be undefined. TBC.
         if (!activePixel) return;
         layerManager.refresh(() => layer.draw(activePixel));
         layerManager.findJoints([layer]);
@@ -4207,7 +4205,6 @@ It stresses portability, simplicity, and immediateness."
             let value = pixelValue == "" ? " " : pixelValue;
             rowText += value;
           }
-          if (rowText.split("").filter(v => v != " ").length == 0) continue;
           text += `${rowText}\n`;
         }
 
