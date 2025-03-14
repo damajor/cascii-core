@@ -274,7 +274,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       remove(...modes) {
-        modes.forEach((mode) => {
+        modes.forEach(mode => {
           let index = this._modes.indexOf(mode);
           if (index == -1) return;
           this._modes.splice(index, 1);
@@ -288,13 +288,13 @@ It stresses portability, simplicity, and immediateness."
       }
 
       add(...modes) {
-        modes = modes.filter((mode) => !this.has(mode));
+        modes = modes.filter(mode => !this.has(mode));
         this._modes = this._modes.concat(modes);
         this.modeChangedCallback();
       }
 
       has(...modes) {
-        return modes.map((mode) => this._modes.includes(mode)).every(Boolean);
+        return modes.map(mode => this._modes.includes(mode)).every(Boolean);
       }
 
       hasAny() {
@@ -304,7 +304,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       hasOr(...modes) {
-        return modes.map((mode) => this._modes.includes(mode)).some(Boolean);
+        return modes.map(mode => this._modes.includes(mode)).some(Boolean);
       }
 
       is(...modes) {
@@ -317,7 +317,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       removeLayerModes() {
-        layerManager.getLayerTypes().forEach((name) => this.remove(name));
+        layerManager.getLayerTypes().forEach(name => this.remove(name));
         this.remove("line");
         this.remove("line-based");
       }
@@ -386,7 +386,7 @@ It stresses portability, simplicity, and immediateness."
             },
             keydown: {
               [keyGroup(...ArrowKeyGroup)]: [
-                new EventDef([modeMaster.has, "selected"], [], (event) =>
+                new EventDef([modeMaster.has, "selected"], [], event =>
                   layerManager.selectedArrowKeyDownEvent(event.key)
                 ),
               ],
@@ -406,14 +406,14 @@ It stresses portability, simplicity, and immediateness."
               ],
               [keyGroup("Control")]: [new EventDef([modeMaster.hasAny], [modeMaster.add, "ctrl"])],
               [keyGroup("Z", "z")]: [
-                new EventDef([modeMaster.has, "shift", "ctrl"], [], (event) => layerManager.redoEvent(event)),
+                new EventDef([modeMaster.has, "shift", "ctrl"], [], event => layerManager.redoEvent(event)),
               ],
-              [keyGroup("z")]: [new EventDef([modeMaster.has, "ctrl"], [], (event) => layerManager.undoEvent(event))],
+              [keyGroup("z")]: [new EventDef([modeMaster.has, "ctrl"], [], event => layerManager.undoEvent(event))],
               [keyGroup("c")]: [
                 new EventDef([modeMaster.has, "ctrl", "selected"], [], () => layerManager.copySelectedLayersEvent()),
               ],
               [keyGroup("a")]: [
-                new EventDef([modeMaster.has, "ctrl"], [modeMaster.reset, "selected"], (event) =>
+                new EventDef([modeMaster.has, "ctrl"], [modeMaster.reset, "selected"], event =>
                   layerManager.selectAllEvent(event)
                 ),
               ],
@@ -430,26 +430,24 @@ It stresses portability, simplicity, and immediateness."
 
         window: {
           mouseEvents: {
-            resize: [new EventDef([], [], (event) => canvas.scale())],
+            resize: [new EventDef([], [], event => canvas.scale())],
             paste: [
-              new EventDef([modeMaster.has, "writing", "text"], [], (event) =>
-                layerManager.pasteToTextLayerEvent(event)
-              ),
-              new EventDef([modeMaster.hasAny], [], (event) => layerManager.pasteAsTextLayerEvent(event)),
+              new EventDef([modeMaster.has, "writing", "text"], [], event => layerManager.pasteToTextLayerEvent(event)),
+              new EventDef([modeMaster.hasAny], [], event => layerManager.pasteAsTextLayerEvent(event)),
             ],
             // A mouseup should be detected beyond the canvas, so it's here instead.
             mouseup: [
-              new EventDef([modeMaster.has, "drawing"], [modeMaster.change, "drawing", "draw"], (event) =>
+              new EventDef([modeMaster.has, "drawing"], [modeMaster.change, "drawing", "draw"], event =>
                 layerManager.changeEvent(event)
               ),
               new EventDef([modeMaster.has, "erasing"], [modeMaster.change, "erasing", "erase"]),
-              new EventDef([modeMaster.has, "moving"], [modeMaster.remove, "moving"], (event) =>
+              new EventDef([modeMaster.has, "moving"], [modeMaster.remove, "moving"], event =>
                 layerManager.changeEvent(event)
               ),
-              new EventDef([modeMaster.has, "area-selecting"], [modeMaster.remove, "area-selecting"], (event) =>
+              new EventDef([modeMaster.has, "area-selecting"], [modeMaster.remove, "area-selecting"], event =>
                 areaSelectManager.areaSelectingMouseUpEvent(event)
               ),
-              new EventDef([modeMaster.has, "resizing"], [modeMaster.remove, "resizing"], (event) =>
+              new EventDef([modeMaster.has, "resizing"], [modeMaster.remove, "resizing"], event =>
                 layerManager.changeEvent(event)
               ),
             ],
@@ -466,7 +464,7 @@ It stresses portability, simplicity, and immediateness."
               ),
               new EventDef([modeMaster.has, "draw"], [modeMaster.change, "draw", "drawing"], Layer.drawMouseDownEvent),
               new EventDef([modeMaster.has, "writing", "text"], [], TextLayer.writingMouseDownEvent),
-              new EventDef([modeMaster.has, "erase"], [modeMaster.change, "erase", "erasing"], (event) =>
+              new EventDef([modeMaster.has, "erase"], [modeMaster.change, "erase", "erasing"], event =>
                 layerManager.erasePixelEvent(event)
               ),
               new EventDef([modeMaster.hasOr, "selected", "select"], [], Layer.selectMouseDownEvent),
@@ -480,13 +478,13 @@ It stresses portability, simplicity, and immediateness."
               ),
               new EventDef([modeMaster.has, "draw"], [], Layer.drawMouseOver),
               new EventDef([modeMaster.has, "drawing"], [], Layer.drawingMouseOverEvent),
-              new EventDef([modeMaster.has, "erasing"], [], (event) => layerManager.erasePixelEvent(event)),
-              new EventDef([modeMaster.has, "area-selecting"], [], (event) =>
+              new EventDef([modeMaster.has, "erasing"], [], event => layerManager.erasePixelEvent(event)),
+              new EventDef([modeMaster.has, "area-selecting"], [], event =>
                 areaSelectManager.areaSelectingMouseOverEvent(event)
               ),
-              new EventDef([modeMaster.has, "moving"], [], (event) => layerManager.movingMouseOverEvent(event)),
-              new EventDef([modeMaster.has, "resizing"], [], (event) => layerManager.resizingMouseOverEvent(event)),
-              new EventDef([modeMaster.hasOr, "selected", "select"], [], (event) =>
+              new EventDef([modeMaster.has, "moving"], [], event => layerManager.movingMouseOverEvent(event)),
+              new EventDef([modeMaster.has, "resizing"], [], event => layerManager.resizingMouseOverEvent(event)),
+              new EventDef([modeMaster.hasOr, "selected", "select"], [], event =>
                 layerManager.selectMouseOverEvent(event)
               ),
             ],
@@ -505,15 +503,15 @@ It stresses portability, simplicity, and immediateness."
 
       assignMouseEventDefs(element, allDefs) {
         for (const [eventType, defs] of Object.entries(allDefs)) {
-          element.addEventListener(eventType, (event) => {
+          element.addEventListener(eventType, event => {
             for (var def of defs) if (def.run(event)) return;
           });
         }
       }
 
       assignKeyEventDefs(element, defs) {
-        Object.keys(defs).forEach((eventType) => {
-          element.addEventListener(eventType, (event) => {
+        Object.keys(defs).forEach(eventType => {
+          element.addEventListener(eventType, event => {
             // This maps apple Command key to Ctrl.
             var eventKey = event.key == "Meta" ? "Control" : event.key;
             for (var keys in defs[eventType]) {
@@ -624,7 +622,7 @@ It stresses portability, simplicity, and immediateness."
         var lastChar = null;
         for (let character in this.charset) {
           let tags = this.charset[character];
-          let matches = tags.filter((tag) => description.includes(tag)).length;
+          let matches = tags.filter(tag => description.includes(tag)).length;
           if (matches > lastMatches) {
             lastMatches = matches;
             lastChar = character;
@@ -712,9 +710,9 @@ It stresses portability, simplicity, and immediateness."
         if (!layers.every(Boolean)) return [];
 
         var foundGroups = [];
-        let layerIds = layers.map((layer) => layer.id);
+        let layerIds = layers.map(layer => layer.id);
         for (var groupLayerIds of this.layerGroups) {
-          if (groupLayerIds.map((layerId) => layerIds.includes(layerId)).every(Boolean)) {
+          if (groupLayerIds.map(layerId => layerIds.includes(layerId)).every(Boolean)) {
             foundGroups.push(groupLayerIds);
           }
         }
@@ -722,12 +720,12 @@ It stresses portability, simplicity, and immediateness."
       }
 
       ungroupLayers(layers) {
-        let groups = this.findGroupsFromLayers(layers).map((group) => group.toString());
-        this.layerGroups = this.layerGroups.filter((group) => !groups.includes(group.toString()));
+        let groups = this.findGroupsFromLayers(layers).map(group => group.toString());
+        this.layerGroups = this.layerGroups.filter(group => !groups.includes(group.toString()));
       }
 
       groupLayers(layers) {
-        this.layerGroups.push(layers.map((layer) => layer.id));
+        this.layerGroups.push(layers.map(layer => layer.id));
       }
 
       getSiblingLayerIds(memberLayer) {
@@ -741,11 +739,11 @@ It stresses portability, simplicity, and immediateness."
       tidy(layers) {
         var index = 0;
         for (var layerGroup of this.layerGroups) {
-          this.layerGroups[index] = layerGroup.filter((layerId) => !layers.includes(layerId));
+          this.layerGroups[index] = layerGroup.filter(layerId => !layers.includes(layerId));
           index++;
         }
         // Tidy empty / one layer groups
-        this.layerGroups = this.layerGroups.filter((group) => group.length > 1);
+        this.layerGroups = this.layerGroups.filter(group => group.length > 1);
       }
     }
 
@@ -755,14 +753,14 @@ It stresses portability, simplicity, and immediateness."
       }
 
       clearAreaSelection() {
-        this.areaSelectionPixels.forEach((pixel) => pixel.renderNormal());
+        this.areaSelectionPixels.forEach(pixel => pixel.renderNormal());
         this.areaSelectionPixels = [];
       }
 
       areaSelectingMouseUpEvent(event) {
         this.clearAreaSelection();
         // Re-render selected layers having just cleared pixels.
-        layerManager.getSelectedLayers().forEach((layer) => layer.renderSelected());
+        layerManager.getSelectedLayers().forEach(layer => layer.renderSelected());
       }
 
       areaSelectingMouseOverEvent(event) {
@@ -788,14 +786,14 @@ It stresses portability, simplicity, and immediateness."
         }
 
         this.selectLayersInAreaSelection();
-        this.areaSelectionPixels.forEach((pixel) => pixel.renderAreaSelected());
+        this.areaSelectionPixels.forEach(pixel => pixel.renderAreaSelected());
       }
 
       selectLayersInAreaSelection() {
         let layersToSelect = [];
         for (var layer of layerManager.layers) {
-          let layerPixelIds = layer.pixels.map((pixel) => pixel.id());
-          let selectedPixelIds = this.areaSelectionPixels.map((pixel) => pixel.id());
+          let layerPixelIds = layer.pixels.map(pixel => pixel.id());
+          let selectedPixelIds = this.areaSelectionPixels.map(pixel => pixel.id());
           if (layerPixelIds.filter(pixel => !selectedPixelIds.includes(pixel)).length) {
             if (layer.isSelected()) layer.unselect();
           } else {
@@ -857,7 +855,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       hasLayer(layerId) {
-        return this.layers.map((layer) => layer.id).includes(layerId);
+        return this.layers.map(layer => layer.id).includes(layerId);
       }
 
       getLayerById(layerId) {
@@ -874,7 +872,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       encodeAll() {
-        let encodedLayers = this.layers.map((layer) => layer.encode());
+        let encodedLayers = this.layers.map(layer => layer.encode());
         let data = {
           layers: encodedLayers,
           groups: this.groupManager.layerGroups,
@@ -883,7 +881,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       decodeLayers(layers) {
-        return layers.map((layer) => this.getLayerClassByType(layer.ty).decode(layer));
+        return layers.map(layer => this.getLayerClassByType(layer.ty).decode(layer));
       }
 
       import(encodedData) {
@@ -897,10 +895,10 @@ It stresses portability, simplicity, and immediateness."
         // For example, step line flipping needs to inspect other layers,
         // which can only be done once all drawn.
         this.refresh(() => {
-          this.layers.forEach((layer) => layer.redraw());
+          this.layers.forEach(layer => layer.redraw());
         });
         this.refresh(() => {
-          this.layers.forEach((layer) => layer.redraw());
+          this.layers.forEach(layer => layer.redraw());
         });
 
         // Ensure the newly imported data is aligned with local storage
@@ -920,17 +918,17 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getSelectedLayers() {
-        return this.layers.filter((layer) => layer.isSelected());
+        return this.layers.filter(layer => layer.isSelected());
       }
 
       deleteSelectedLayers() {
-        this.getSelectedLayers().forEach((layer) => layer.empty());
+        this.getSelectedLayers().forEach(layer => layer.empty());
         this.triggerChanged();
       }
 
       selectGroupsByMemberLayer(memberLayer) {
         let siblingLayerIds = this.groupManager.getSiblingLayerIds(memberLayer);
-        siblingLayerIds.forEach((layerId) => this.getLayerById(layerId).select());
+        siblingLayerIds.forEach(layerId => this.getLayerById(layerId).select());
       }
 
       undo() {
@@ -965,7 +963,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       copyReplaceLayers(layers) {
-        return layers.map((layer) => layer.copy(true));
+        return layers.map(layer => layer.copy(true));
       }
 
       copyAndRenderSelectedLayers() {
@@ -979,7 +977,7 @@ It stresses portability, simplicity, and immediateness."
             old: layer,
             new: layer.copyAndRender(),
           };
-        this.moveLayersToAvailableSpace(Object.values(layerLookup).map((oldNewLayer) => oldNewLayer.new));
+        this.moveLayersToAvailableSpace(Object.values(layerLookup).map(oldNewLayer => oldNewLayer.new));
 
         this.repointJointsForCopiedLayers(layerLookup);
         this.regroupForCopiedLayers(layerLookup);
@@ -1013,10 +1011,10 @@ It stresses portability, simplicity, and immediateness."
 
       regroupForCopiedLayers(layerLookup) {
         // This groups the newly copied layers which were grouped before being copied.
-        let layersToCopy = Object.values(layerLookup).map((oldNewLayer) => oldNewLayer.old);
+        let layersToCopy = Object.values(layerLookup).map(oldNewLayer => oldNewLayer.old);
         let groupsToCopy = this.groupManager.findGroupsFromLayers(layersToCopy);
         for (var group of groupsToCopy) {
-          var newGroup = group.map((layerId) => layerLookup[layerId].new);
+          var newGroup = group.map(layerId => layerLookup[layerId].new);
           this.groupManager.groupLayers(newGroup);
         }
         this.capture();
@@ -1057,7 +1055,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       unselectAll() {
-        this.layers.forEach((layer) => layer.unselect());
+        this.layers.forEach(layer => layer.unselect());
         if (this.editingTextLayer) this.editingTextLayer.clearLastCursor();
       }
 
@@ -1076,17 +1074,17 @@ It stresses portability, simplicity, and immediateness."
 
       tidyAllJoints(layersToDelete) {
         for (var layer of this.layers) {
-          layer.joints = layer.joints.filter((joint) => !layersToDelete.includes(joint.layerId));
+          layer.joints = layer.joints.filter(joint => !layersToDelete.includes(joint.layerId));
           layer.tidyJoints();
         }
       }
 
       tidyLayers() {
         // Find layer IDs for dereferencing
-        let layersToDelete = this.layers.filter((layer) => !layer.pixels.length).map((layer) => layer.id);
+        let layersToDelete = this.layers.filter(layer => !layer.pixels.length).map(layer => layer.id);
 
         // Delete empty layers
-        this.layers = this.layers.filter((layer) => !layersToDelete.includes(layer.id));
+        this.layers = this.layers.filter(layer => !layersToDelete.includes(layer.id));
 
         // Delete references to empty layers in groups
         this.groupManager.tidy(layersToDelete);
@@ -1100,7 +1098,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       tidyAllTables(layersToDelete) {
-        for (let layer of this.layers.filter((layer) => layer.is("table"))) {
+        for (let layer of this.layers.filter(layer => layer.is("table"))) {
           for (let key in layer.textLayers) {
             if (layersToDelete.includes(layer.textLayers[key])) delete layer.textLayers[key];
           }
@@ -1108,7 +1106,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       clearAll() {
-        this.layers.forEach((layer) => layer.clear());
+        this.layers.forEach(layer => layer.clear());
       }
 
       getLayersOrderedByZindex() {
@@ -1117,7 +1115,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       renderAll() {
-        this.getLayersOrderedByZindex().forEach((layer) => layer.render());
+        this.getLayersOrderedByZindex().forEach(layer => layer.render());
       }
 
       layerPixelIsVisible(targetLayer, targetPixel) {
@@ -1198,7 +1196,7 @@ It stresses portability, simplicity, and immediateness."
           let committed = layer.commit(() => func(layer));
           if (!committed) {
             // If a the layer failed to move, then rollback the others that did move.
-            committedLayers.forEach((layer) => layer.rollback());
+            committedLayers.forEach(layer => layer.rollback());
             return;
           }
           committedLayers.push(layer);
@@ -1211,7 +1209,7 @@ It stresses portability, simplicity, and immediateness."
         // together to avoid breaking joints. If one layer hits
         // the canvas boundary, none should move. Hence, here
         // we ensure all moves are doable before keeping them.
-        let success = this.atomicCommit(...layers.map((layer) => [layer, () => layer.move(verticalDiff, lateralDiff)]));
+        let success = this.atomicCommit(...layers.map(layer => [layer, () => layer.move(verticalDiff, lateralDiff)]));
         if (!success) return;
 
         // If we are here, all layers have moved, so we can now resize
@@ -1499,7 +1497,7 @@ It stresses portability, simplicity, and immediateness."
 
       selectAllEvent(event) {
         event.preventDefault();
-        this.layers.forEach((layer) => layer.select());
+        this.layers.forEach(layer => layer.select());
       }
 
       erasePixelEvent(event) {
@@ -1524,34 +1522,34 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getZindexes() {
-        return this.layers.map((layer) => layer.zindex);
+        return this.layers.map(layer => layer.zindex);
       }
 
       getLowestZindex() {
-        return Math.min(...this.layers.map((layer) => layer.zindex));
+        return Math.min(...this.layers.map(layer => layer.zindex));
       }
 
       bringForwardEvent(event) {
         let highestZindex = this.getHighestZindex();
-        this.refresh(() => this.getSelectedLayers().forEach((layer) => layer.zindex++));
+        this.refresh(() => this.getSelectedLayers().forEach(layer => layer.zindex++));
         this.triggerChanged();
       }
 
       sendBackwardsEvent(event) {
         let lowestZindex = this.getLowestZindex();
-        this.refresh(() => this.getSelectedLayers().forEach((layer) => layer.zindex--));
+        this.refresh(() => this.getSelectedLayers().forEach(layer => layer.zindex--));
         this.triggerChanged();
       }
 
       bringToFrontEvent(event) {
         let highestZindex = this.getHighestZindex();
-        this.refresh(() => this.getSelectedLayers().forEach((layer) => (layer.zindex = highestZindex + 1)));
+        this.refresh(() => this.getSelectedLayers().forEach(layer => (layer.zindex = highestZindex + 1)));
         this.triggerChanged();
       }
 
       sendToBackEvent(event) {
         let lowestZindex = this.getLowestZindex();
-        this.refresh(() => this.getSelectedLayers().forEach((layer) => (layer.zindex = lowestZindex - 1)));
+        this.refresh(() => this.getSelectedLayers().forEach(layer => (layer.zindex = lowestZindex - 1)));
         this.triggerChanged();
       }
 
@@ -1776,7 +1774,7 @@ It stresses portability, simplicity, and immediateness."
         this.lastKeyedJointPixels = this.getKeyedJointPixels();
 
         // Attempted  the requested changes
-        updateFuncs.forEach((func) => func());
+        updateFuncs.forEach(func => func());
 
         let isHappy = this.isHappy();
 
@@ -1804,8 +1802,8 @@ It stresses portability, simplicity, and immediateness."
         this.stashed = {};
         this.stashed.fromPixel = this.fromPixel;
         this.stashed.toPixel = this.toPixel;
-        this.stashed.pixels = this.pixels.map((p) => p);
-        this.stashed.values = this.values.map((v) => v);
+        this.stashed.pixels = this.pixels.map(p => p);
+        this.stashed.values = this.values.map(v => v);
       }
 
       rollback() {
@@ -1941,7 +1939,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       clear() {
-        this.pixels.forEach((pixel) => pixel.clear());
+        this.pixels.forEach(pixel => pixel.clear());
       }
 
       tidyJoints() {
@@ -1955,7 +1953,7 @@ It stresses portability, simplicity, and immediateness."
               if (
                 layer
                   .getJoinerPixels()
-                  .map((pixel) => pixel.id())
+                  .map(pixel => pixel.id())
                   .includes(jointPixel.id())
               ) {
                 continue;
@@ -1981,8 +1979,8 @@ It stresses portability, simplicity, and immediateness."
         let layerCopy = new this.constructor(this.fromPixel.id());
         layerCopy.setFromPixel(this.fromPixel);
         layerCopy.setToPixel(this.toPixel);
-        layerCopy.pixels = this.pixels.map((pixel) => pixel);
-        layerCopy.values = this.values.map((value) => value);
+        layerCopy.pixels = this.pixels.map(pixel => pixel);
+        layerCopy.values = this.values.map(value => value);
 
         // By default, a copied layer should appear infront of it's original.
         layerCopy.zindex = this.zindex + 1;
@@ -1994,7 +1992,7 @@ It stresses portability, simplicity, and immediateness."
           // reverting history.
           // We only copy joints here, as other use cases need to manually
           // repoint joints to new layers.
-          layerCopy.joints = this.joints.map((joint) => structuredClone(joint));
+          layerCopy.joints = this.joints.map(joint => structuredClone(joint));
           layerCopy.id = this.id;
           layerCopy.zindex = this.zindex;
         }
@@ -2014,7 +2012,7 @@ It stresses portability, simplicity, and immediateness."
         // Or, nearly the same by 1 pixel in any direction.
         var total = 0;
         if (targetLayer.id == this.id) return 0;
-        let layerPixelIds = this.pixels.map((pixel) => pixel.id());
+        let layerPixelIds = this.pixels.map(pixel => pixel.id());
         let directions = [
           [0, 0],
           [1, 1],
@@ -2025,21 +2023,21 @@ It stresses portability, simplicity, and immediateness."
         for (let direction of directions) {
           total += targetLayer
             .getMove(...direction)
-            .filter((pixel) => pixel && layerPixelIds.includes(pixel.id())).length;
+            .filter(pixel => pixel && layerPixelIds.includes(pixel.id())).length;
         }
         return total;
       }
 
       renderUnselected() {
-        this.getJointPixels().forEach((pixel) => pixel.renderWasSelected());
-        this.pixels.forEach((pixel) => pixel.renderUnselected());
+        this.getJointPixels().forEach(pixel => pixel.renderWasSelected());
+        this.pixels.forEach(pixel => pixel.renderUnselected());
       }
 
       renderSelected() {
         // Don't show joint pixels if the layer is selected.
-        this.getJointPixels().forEach((pixel) => pixel.renderWasSelected());
-        this.pixels.forEach((pixel) => pixel.renderSelected());
-        this.getResizePixels().forEach((pixel) => pixel.renderResizable());
+        this.getJointPixels().forEach(pixel => pixel.renderWasSelected());
+        this.pixels.forEach(pixel => pixel.renderSelected());
+        this.getResizePixels().forEach(pixel => pixel.renderResizable());
       }
 
       render() {
@@ -2049,7 +2047,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getMove(verticalDiff, lateralDiff) {
-        return this.pixels.map((pixel) => canvas.getPixelByRowCol(pixel.row + verticalDiff, pixel.col + lateralDiff));
+        return this.pixels.map(pixel => canvas.getPixelByRowCol(pixel.row + verticalDiff, pixel.col + lateralDiff));
       }
 
       move(verticalDiff, lateralDiff) {
@@ -2318,7 +2316,7 @@ It stresses portability, simplicity, and immediateness."
       stash() {
         super.stash();
         this.stashed.cursor = this.cursor;
-        this.stashed.contents = this.contents.map((c) => c);
+        this.stashed.contents = this.contents.map(c => c);
       }
 
       rollback() {
@@ -2330,7 +2328,7 @@ It stresses portability, simplicity, and immediateness."
       getKeyedJointPixels() {
         if (this.hasTable()) return {}; // The table itself will be joinable instead.
         let firstPixel = this.getFirstPixel();
-        if (this.pixels.length < 2) return {l: firstPixel, r: firstPixel, t: firstPixel, b: firstPixel};
+        if (this.pixels.length < 2) return { l: firstPixel, r: firstPixel, t: firstPixel, b: firstPixel };
         let [maxCol, minCol, maxRow, minRow] = this.getMinMaxRowsCols();
         let halfwayRow = minRow + roundHalf((maxRow - minRow) / 2);
         let halfwayCol = minCol + roundHalf((maxCol - minCol) / 2);
@@ -3071,14 +3069,14 @@ It stresses portability, simplicity, and immediateness."
 
       static decode(encodedLayer) {
         let layer = Layer.decode(encodedLayer);
-        layer.pixels = encodedLayer.pxs.map((pixelId) => canvas.getPixelById(pixelId));
+        layer.pixels = encodedLayer.pxs.map(pixelId => canvas.getPixelById(pixelId));
         layer.values = encodedLayer.vls;
         return layer;
       }
 
       encode() {
         let encoded = super.encode();
-        encoded.pxs = this.pixels.map((pixel) => pixel.id());
+        encoded.pxs = this.pixels.map(pixel => pixel.id());
         encoded.vls = this.values;
         return encoded;
       }
@@ -3665,7 +3663,7 @@ It stresses portability, simplicity, and immediateness."
       group() {
         // Group all existing visible layers, and ensure the table is always selected together.
         let textLayers = this.getTextLayers();
-        if (this.isSelected()) textLayers.forEach((layer) => layer.select());
+        if (this.isSelected()) textLayers.forEach(layer => layer.select());
         layerManager.groupManager.groupLayers(textLayers.concat(this));
       }
 
@@ -3684,7 +3682,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       getTextLayers() {
-        return Object.values(this.textLayers).map((layerId) => layerManager.getLayerById(layerId));
+        return Object.values(this.textLayers).map(layerId => layerManager.getLayerById(layerId));
       }
 
       getCellFromTextLayerId(textLayerId) {
@@ -3847,12 +3845,12 @@ It stresses portability, simplicity, and immediateness."
         let allMethods = new Set();
         while ((obj = Reflect.getPrototypeOf(obj))) {
           let keys = Reflect.ownKeys(obj);
-          keys.forEach((key) => allMethods.add(key));
+          keys.forEach(key => allMethods.add(key));
         }
         props = props.concat(Array.from(allMethods.values()));
 
         // Assign magic functionality to each magic property type
-        let mainProps = props.filter((prop) => prop.includes("_"));
+        let mainProps = props.filter(prop => prop.includes("_"));
 
         // TODO: Consider if this priority logic is worth while.
         // If there is an intermediate class, Javascript constructors initialize
@@ -3860,8 +3858,8 @@ It stresses portability, simplicity, and immediateness."
         // This overrides properties being reasonably sent from a child class.
         // Here, we hack together a 'feature' where we can capitalize the derived property's
         // first letter so it takes priority.
-        let highPriorProps = mainProps.filter((prop) => /^[A-Z]*$/.test(prop.substring(0, 1)));
-        let lowPriorProps = mainProps.filter((prop) => /^[a-z]*$/.test(prop.substring(0, 1)));
+        let highPriorProps = mainProps.filter(prop => /^[A-Z]*$/.test(prop.substring(0, 1)));
+        let lowPriorProps = mainProps.filter(prop => /^[a-z]*$/.test(prop.substring(0, 1)));
 
         for (let prop of lowPriorProps.concat(highPriorProps)) {
           let [type, name] = prop.split("_");
@@ -3894,7 +3892,7 @@ It stresses portability, simplicity, and immediateness."
         if (this.skipTheme) return;
         this.defineTheme();
         if (this.skipChildrenTheme) return;
-        this.children.forEach((child) => child.renderTheme());
+        this.children.forEach(child => child.renderTheme());
       }
 
       renderCallback() {}
@@ -4044,7 +4042,7 @@ It stresses portability, simplicity, and immediateness."
         this.renderCursor();
         setTimeout(() => this.renderNoCursor(), 500);
         this.cursorFlashInterval = setInterval(
-          (pixel) => {
+          pixel => {
             pixel.renderCursor();
             setTimeout(() => pixel.renderNoCursor(), 500);
           },
@@ -4154,7 +4152,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       clearPixels(pixels) {
-        pixels.forEach((pixel) => pixel.clear());
+        pixels.forEach(pixel => pixel.clear());
       }
 
       clear() {
@@ -4209,7 +4207,7 @@ It stresses portability, simplicity, and immediateness."
             let value = pixelValue == "" ? " " : pixelValue;
             rowText += value;
           }
-          if (rowText.split("").filter((v) => v != " ").length == 0) continue;
+          if (rowText.split("").filter(v => v != " ").length == 0) continue;
           text += `${rowText}\n`;
         }
 
@@ -4257,7 +4255,7 @@ It stresses portability, simplicity, and immediateness."
         this.css("width", `${this.colCount * pixelSize * this.pixelWidthDivider}px`);
         this.css("height", `${this.rowCount * pixelSize}px`);
         this.css("fontSize", `${pixelSize}px`);
-        Object.values(this.pixels).forEach((pixel) => pixel.scale(pixelSize, this.pixelWidthDivider));
+        Object.values(this.pixels).forEach(pixel => pixel.scale(pixelSize, this.pixelWidthDivider));
       }
 
       renderCallback() {
@@ -4582,7 +4580,7 @@ It stresses portability, simplicity, and immediateness."
 
     class MenuComponent extends Component {
       unselectAll() {
-        this.buttons.forEach((button) => button.unselect());
+        this.buttons.forEach(button => button.unselect());
       }
 
       defineChildren() {
@@ -4592,7 +4590,7 @@ It stresses portability, simplicity, and immediateness."
 
     class ModeMenuComponent extends MenuComponent {
       refresh() {
-        this.buttons.forEach((button) => button.refresh());
+        this.buttons.forEach(button => button.refresh());
       }
 
       renderCallback() {
@@ -4705,8 +4703,8 @@ It stresses portability, simplicity, and immediateness."
           [modeMaster.hasOr, "erasing", "erase"],
           () => layerManager.switchModeCallback()
         ),
-        new ModeMenuButtonComponent("↺", "Undo", [], [], [], (event) => layerManager.undoEvent(event)),
-        new ModeMenuButtonComponent("↻", "Redo", [], [], [], (event) => layerManager.redoEvent(event)),
+        new ModeMenuButtonComponent("↺", "Undo", [], [], [], event => layerManager.undoEvent(event)),
+        new ModeMenuButtonComponent("↻", "Redo", [], [], [], event => layerManager.redoEvent(event)),
         new ModeMenuButtonComponent("x", "Restart", [], [], [], () =>
           layerManager.refresh(() => layerManager.emptyEvent())
         ),
@@ -4739,13 +4737,13 @@ It stresses portability, simplicity, and immediateness."
       ];
 
       buttons = [
-        new MenuButtonLeftComponent("⧉", "Copy", [modeMaster.has, "selected"], [], [], (event) =>
+        new MenuButtonLeftComponent("⧉", "Copy", [modeMaster.has, "selected"], [], [], event =>
           layerManager.copySelectedLayersEvent(event)
         ),
-        new MenuButtonLeftComponent("⧓", "Group", [modeMaster.has, "multi-select", "selected"], [], [], (event) =>
+        new MenuButtonLeftComponent("⧓", "Group", [modeMaster.has, "multi-select", "selected"], [], [], event =>
           layerManager.groupSelectedLayersEvent(event)
         ),
-        new MenuButtonLeftComponent("⧎", "Ungroup", [modeMaster.has, "multi-select", "selected"], [], [], (event) =>
+        new MenuButtonLeftComponent("⧎", "Ungroup", [modeMaster.has, "multi-select", "selected"], [], [], event =>
           layerManager.ungroupSelectedLayersEvent(event)
         ),
         new MenuButtonLeftComponent(
@@ -4754,18 +4752,18 @@ It stresses portability, simplicity, and immediateness."
           [modeMaster.has, "selected"],
           [modeMaster.reset, "select"],
           [],
-          (event) => layerManager.deleteLayersEvent(event)
+          event => layerManager.deleteLayersEvent(event)
         ),
-        new MenuButtonLeftComponent("⎘", "Forward", [modeMaster.has, "selected"], [], [], (event) =>
+        new MenuButtonLeftComponent("⎘", "Forward", [modeMaster.has, "selected"], [], [], event =>
           layerManager.bringForwardEvent(event)
         ),
-        new MenuButtonLeftComponent("⎗", "Backwards", [modeMaster.has, "selected"], [], [], (event) =>
+        new MenuButtonLeftComponent("⎗", "Backwards", [modeMaster.has, "selected"], [], [], event =>
           layerManager.sendBackwardsEvent(event)
         ),
-        new MenuButtonLeftComponent("⎘", "Front", [modeMaster.has, "selected"], [], [], (event) =>
+        new MenuButtonLeftComponent("⎘", "Front", [modeMaster.has, "selected"], [], [], event =>
           layerManager.bringToFrontEvent(event)
         ),
-        new MenuButtonLeftComponent("⎗", "Back", [modeMaster.has, "selected"], [], [], (event) =>
+        new MenuButtonLeftComponent("⎗", "Back", [modeMaster.has, "selected"], [], [], event =>
           layerManager.sendToBackEvent(event)
         ),
         new MenuButtonLeftComponent("⏴", "Arrow", [modeMaster.has, "selected", "line"], [], [], () =>
@@ -4798,7 +4796,7 @@ It stresses portability, simplicity, and immediateness."
               [modeMaster.has, "draw", "free"],
               [modeMaster.reset, "draw", "free", "dfbutton", char],
               [modeMaster.has, char],
-              (event) => FreeLayer.setFreeChar(char)
+              event => FreeLayer.setFreeChar(char)
             )
           );
         }
@@ -4808,7 +4806,7 @@ It stresses portability, simplicity, and immediateness."
       refresh() {
         super.refresh();
         this.hide();
-        if (this.buttons.map((button) => button.showCondition()).some(Boolean)) this.show();
+        if (this.buttons.map(button => button.showCondition()).some(Boolean)) this.show();
       }
 
       defineChildren() {
@@ -4931,7 +4929,7 @@ It stresses portability, simplicity, and immediateness."
 
       hidePopups() {
         modeMaster.setDefault();
-        this.children.filter((child) => child.isPopup).forEach((child) => child.hide());
+        this.children.filter(child => child.isPopup).forEach(child => child.hide());
       }
 
       defineTheme() {
