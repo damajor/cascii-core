@@ -959,6 +959,9 @@ It stresses portability, simplicity, and immediateness."
         // Put latest visuals to local storage (we can't rely on capture as redo should not capture).
         this.saveToLocalStorage();
 
+        // We also trigger a change directly as to not capture.
+        externalHookManager.triggerDrawingChanged();
+
         // Unset this as changing history makes this out of date, and
         // tracking it is a bit overkill (a user can just re-select the layer after an undo)
         this.editingTextLayer = null;
