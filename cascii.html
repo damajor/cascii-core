@@ -1621,7 +1621,7 @@ It stresses portability, simplicity, and immediateness."
         this.joints = [];
         this.zindex = layerManager.getHighestZindex() + 1;
         this._isSelected = false;
-        this.commitMutex = false;
+        this.commitLock = false;
         this.setFromPixel(canvas.getPixelById(firstPixelId));
         this.setToPixel(null);
         this.stashed = {};
@@ -1787,15 +1787,15 @@ It stresses portability, simplicity, and immediateness."
       }
 
       isCommitting() {
-        return this.commitMutex;
+        return this.commitLock;
       }
 
       beginCommit() {
-        this.commitMutex = true;
+        this.commitLock = true;
       }
 
       releaseCommit() {
-        this.commitMutex = false;
+        this.commitLock = false;
       }
 
       stash() {
@@ -1810,7 +1810,7 @@ It stresses portability, simplicity, and immediateness."
       rollback() {
         // This puts a layer back into it's last working state.
 
-        // We can therefore lift the commit mutex, so that future commits
+        // We can therefore lift the commit lock, so that future commits
         // stash happy states again.
         this.releaseCommit();
 
@@ -2200,10 +2200,9 @@ It stresses portability, simplicity, and immediateness."
         this.contents = [];
         this.cursor = 0;
         this.tableId = tableId;
-        if (tableId) this.zindex = layerManager.getLayerById(tableId).zindex;
-        this.setToPixel(this.fromPixel);
-
+        if (tableId) this.zindex = this.getTable().zindex;
         // TextLayer's don't use toPixels, but it's easier to just set it.
+        this.setToPixel(this.fromPixel);
       }
 
       static decode(encodedLayer) {
@@ -2298,7 +2297,7 @@ It stresses portability, simplicity, and immediateness."
           // If the textLayer has a parent table, it's happiness
           // should also depend on the parent (it should rollback if the parent has
           // become unhappy)
-          return layerManager.getLayerById(this.tableId).isHappy() && super.isHappy();
+          return this.getTable().isHappy() && super.isHappy();
         }
         return super.isHappy();
       }
@@ -2362,11 +2361,13 @@ It stresses portability, simplicity, and immediateness."
       getCursorLineOffset() {
         for (var i = this.cursor; i >= 0; i--) {
           if (i == 0) {
-            return this.cursor - i;
+            // If i can decrement to 0, it hasn't hit a \n, so it's the first line,
+            // meaning the cursor itself is the offset.
+            return this.cursor;
           } else if (this.contents[i] == "\n") {
-            if (this.cursor - i == 0) {
-              continue;
-            }
+            // If the cursor is at the new line, go to the previous by continuing.
+            if (this.cursor - i == 0) continue;
+            // Otherwise, we've reached the start of the line, so give the offset.
             return this.cursor - i - 1;
           }
         }
@@ -2434,7 +2435,6 @@ It stresses portability, simplicity, and immediateness."
         let length = this.getLength();
         let currentLine = this.getCurrentLine();
         let lineLengths = this.getLineLengths();
-        let cursorLineOffset = this.getCursorLineOffset();
         switch (key) {
           case "ArrowDown":
             this.cursor = this.getVerticalCursor("down");
