@@ -62,7 +62,7 @@ Simply download and open the `cascii.html` file!
 
 <b>...Or...</b>
 
-If you are not making changes, it's recommended to use <a href="https://casci.app">cascii.app</a>
+If you are not making changes, it's recommended to use <a href="https://cascii.app">cascii.app</a>
 directly so you can take advantage of short links and save your work. Locally, short links will not appear in your exports.
 
 ## Features
