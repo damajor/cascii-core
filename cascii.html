@@ -4434,6 +4434,7 @@ It stresses portability, simplicity, and immediateness."
         try {
           jsonData = decodeURIComponent(escape(atob(base64Data)));
           layerManager.import(jsonData);
+          externalHookManager.triggerDrawingChanged();
         } catch {
           bodyComponent.informerComponent.report("Failed to understand provided data :(", "bad");
           return;
