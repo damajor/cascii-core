@@ -3977,6 +3977,8 @@ It stresses portability, simplicity, and immediateness."
       type = "pixel";
 
       css_position = "absolute";
+      css_borderRight = "1px solid";
+      css_borderTop = "1px solid";
 
       constructor(row, col) {
         super();
@@ -4040,10 +4042,6 @@ It stresses portability, simplicity, and immediateness."
       }
 
       renderNoCursor() {
-        this.css("borderRight", this.defaultBorder);
-        this.css("borderTop", this.defaultBorder);
-        this.css("borderLeft", "none");
-        this.css("borderBottom", "none");
         this.setBorderColor();
       }
 
@@ -4052,11 +4050,16 @@ It stresses portability, simplicity, and immediateness."
       }
 
       setBorderColor () {
-        localStorage.getItem("showingGrid")? this.css("borderColor", "gridColor"): this.css("borderColor", "transparent");
+        this.css("borderColor", this.getBorderColor());
+      }
+
+      getBorderColor() {
+        return localStorage.getItem("grid")? "gridColor": "transparent";
       }
 
       renderCursor() {
-        this.css("borderRight", `1px solid ${themeManager.getTheme().pixelCursorColor}`);
+        this.css("borderRightColor", "pixelCursorColor");
+        this.css("borderTopColor", this.getBorderColor());
       }
 
       startCursor() {
@@ -4277,7 +4280,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       toggleGrid() {
-        localStorage.setItem("showingGrid", localStorage.getItem("showingGrid")? "": "true");
+        localStorage.setItem("grid", localStorage.getItem("grid")? "": "true");
         this.renderTheme();
       }
 
