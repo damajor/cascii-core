@@ -32,7 +32,7 @@ It stresses portability, simplicity, and immediateness."
   <meta name="keywords" content="ASCII, ascii, unicode, diagrams, drawing" />
   <meta name="author" content="Caspar Wylie" />
   <script>
-    const VERSION = "v1.0.1";
+    const VERSION = "v1.0.2";
 
     var layerManager;
     var eventManager;
@@ -115,6 +115,9 @@ It stresses portability, simplicity, and immediateness."
         darkGreen: "#11381b",
         lightGreen: "#bdffdb",
         grey: "#525252",
+        nearWhite: "#dedede",
+        nearBlack: "#1c1c1c",
+        nearGreenBlack: "#1a261a",
       };
 
       config = {
@@ -152,6 +155,8 @@ It stresses portability, simplicity, and immediateness."
         canvasFont: "monospace",
 
         warningRed: Theme.Color.red,
+
+        gridColor: Theme.Color.none,
       };
 
       constructor(config) {
@@ -178,6 +183,7 @@ It stresses portability, simplicity, and immediateness."
           pixelJointNearBgColor: Theme.Color.pink,
           pixelJointBgColor: Theme.Color.green,
           areaSelectionBgColor: Theme.Color.darkestBlue,
+          gridColor: Theme.Color.nearBlack,
         }),
         lightTheme: new Theme({
           bodyBgColor: Theme.Color.white,
@@ -191,8 +197,8 @@ It stresses portability, simplicity, and immediateness."
           pixelResizeBgColor: Theme.Color.blue,
           pixelJointNearBgColor: Theme.Color.pink,
           pixelJointBgColor: Theme.Color.green,
-
           areaSelectionBgColor: Theme.Color.lightestBlue,
+          gridColor: Theme.Color.nearWhite,
         }),
         consoleTheme: new Theme({
           bodyBgColor: Theme.Color.black,
@@ -210,6 +216,7 @@ It stresses portability, simplicity, and immediateness."
           pixelJointBgColor: Theme.Color.red,
 
           areaSelectionBgColor: Theme.Color.darkRed,
+          gridColor: Theme.Color.nearGreenBlack,
         }),
       };
 
@@ -3892,7 +3899,6 @@ It stresses portability, simplicity, and immediateness."
       defineTheme() {}
 
       renderTheme() {
-        if (this.skipTheme) return;
         this.defineTheme();
         if (this.skipChildrenTheme) return;
         this.children.forEach(child => child.renderTheme());
@@ -3971,12 +3977,13 @@ It stresses portability, simplicity, and immediateness."
       type = "pixel";
 
       css_position = "absolute";
+      css_borderRight = "1px solid";
+      css_borderTop = "1px solid";
 
       constructor(row, col) {
         super();
         this.row = row;
         this.col = col;
-        this.defaultBorder = "none";
         this.cursorFlashInterval = null;
         this.selected = false;
       }
@@ -4034,11 +4041,24 @@ It stresses portability, simplicity, and immediateness."
       }
 
       renderNoCursor() {
-        this.css("border", this.defaultBorder);
+        this.setBorderColor();
+      }
+
+      defineTheme() {
+        this.setBorderColor();
+      }
+
+      setBorderColor () {
+        this.css("borderColor", this.getBorderColor());
+      }
+
+      getBorderColor() {
+        return localStorage.getItem("grid")? "gridColor": "transparent";
       }
 
       renderCursor() {
-        this.css("borderRight", `1px solid ${themeManager.getTheme().pixelCursorColor}`);
+        this.css("borderRightColor", "pixelCursorColor");
+        this.css("borderTopColor", this.getBorderColor());
       }
 
       startCursor() {
@@ -4052,10 +4072,6 @@ It stresses portability, simplicity, and immediateness."
           1000,
           this
         );
-      }
-
-      defineTheme() {
-        this.renderNormal();
       }
 
       renderNormal() {
@@ -4117,9 +4133,6 @@ It stresses portability, simplicity, and immediateness."
     }
 
     class CanvasComponent extends Component {
-      // Skip the theme to avoid all pixels being traversed.
-      skipChildrenTheme = true;
-      skipTheme = false;
 
       accessibleBy = "canvasComponent";
 
@@ -4264,6 +4277,12 @@ It stresses portability, simplicity, and immediateness."
         this.scale();
         modeMaster.registerCallback(() => this.setModeCursor());
       }
+
+      toggleGrid() {
+        localStorage.setItem("grid", localStorage.getItem("grid")? "": "true");
+        this.renderTheme();
+      }
+
     }
 
     class PopupComponent extends Component {
@@ -4449,7 +4468,7 @@ It stresses portability, simplicity, and immediateness."
       accessibleBy = "settingsComponent";
 
       css_width = "300px";
-      css_height = "250px";
+      css_height = "300px";
       css_marginLeft = "calc(50vw - 150px)";
 
       charsetButtons = [
@@ -4542,6 +4561,24 @@ It stresses portability, simplicity, and immediateness."
             css_width: "100%",
             css_marginTop: "5px",
             children: this.themeButtons,
+          }),
+          new Component({
+            css_textAlign: "center",
+            css_marginTop: "20px",
+            value: "Grid",
+          }),
+          new Component({
+            css_display: "flex",
+            css_justifyContent: "center",
+            css_width: "100%",
+            css_marginTop: "5px",
+            children: [
+              new ButtonComponent({
+                css_width: "50%",
+                on_click: () => canvas.toggleGrid(),
+                value: "Toggle",
+              }),
+            ],
           }),
         ];
       }

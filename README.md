@@ -17,7 +17,7 @@ Use <a href="https://github.com/casparwylie/cascii-server">Cascii server repo</a
 <br>
 <img src="https://i.postimg.cc/FzK68HLQ/cascii-logo.png" width="150">
 <br>
-Cascii v1.0.1 (beta)
+Cascii v1.0.2 (beta)
 
 </h1>
 <p align="center">
@@ -96,7 +96,9 @@ directly so you can take advantage of short links and save your work. Locally, s
 - History (undo/redo)
 - Line styling
 - ASCII and Unicode
+- Themes
 - Base64 import / export for offline work
+- Optional grid view
 
 ## Shortcuts
 
