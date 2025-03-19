@@ -3899,7 +3899,6 @@ It stresses portability, simplicity, and immediateness."
       defineTheme() {}
 
       renderTheme() {
-        if (this.skipTheme) return;
         this.defineTheme();
         if (this.skipChildrenTheme) return;
         this.children.forEach(child => child.renderTheme());
@@ -4045,10 +4044,14 @@ It stresses portability, simplicity, and immediateness."
         this.css("borderTop", this.defaultBorder);
         this.css("borderLeft", "none");
         this.css("borderBottom", "none");
-        this.css("borderColor", "gridColor");
+        this.setBorderColor();
       }
 
       defineTheme() {
+        this.setBorderColor();
+      }
+
+      setBorderColor () {
         localStorage.getItem("showingGrid")? this.css("borderColor", "gridColor"): this.css("borderColor", "transparent");
       }
 
@@ -4128,9 +4131,6 @@ It stresses portability, simplicity, and immediateness."
     }
 
     class CanvasComponent extends Component {
-      // Skip the theme to avoid all pixels being traversed.
-      //skipChildrenTheme = true;
-      skipTheme = false;
 
       accessibleBy = "canvasComponent";
 
