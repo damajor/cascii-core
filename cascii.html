@@ -26,13 +26,12 @@ limitations under the License.
   <meta charset="UTF-8" />
   <meta
     name="description"
-    content="A well-equipped ASCII diagram builders freely available on the internet.
-It stresses portability, simplicity, and immediateness."
+    content="A free, open-source ASCII diagram builder written in vanilla Javascript"
   />
-  <meta name="keywords" content="ASCII, ascii, unicode, diagrams, drawing" />
+  <meta name="keywords" content="Cascii, CASCII, ASCII, ascii, unicode, diagrams, drawing" />
   <meta name="author" content="Caspar Wylie" />
   <script>
-    const VERSION = "v1.0.2";
+    const VERSION = "v1.0.3";
 
     var layerManager;
     var eventManager;
@@ -689,7 +688,7 @@ It stresses portability, simplicity, and immediateness."
     class GroupManager {
       constructor() {
         this.layerGroups = [];
-        this.layerGroupHistory = [];
+        this.layerGroupHistory = [[]];
       }
 
       empty() {
@@ -702,7 +701,7 @@ It stresses portability, simplicity, and immediateness."
       }
 
       jumpHistory(cursor) {
-        this.layerGroups = this.layerGroupHistory[cursor];
+        this.layerGroups = this.layerGroupHistory[cursor] || [];
       }
 
       findGroupsFromLayers(layers) {
@@ -888,7 +887,7 @@ It stresses portability, simplicity, and immediateness."
         let encodedLayers = this.layers.map(layer => layer.encode());
         let data = {
           layers: encodedLayers,
-          groups: this.groupManager.layerGroups,
+          groups: this.groupManager.layerGroups || [],
         };
         return JSON.stringify(data);
       }
@@ -901,7 +900,7 @@ It stresses portability, simplicity, and immediateness."
         let data = JSON.parse(encodedData);
         this.refresh(() => this.empty());
         this.setLayers(this.decodeLayers(data.layers));
-        this.groupManager.layerGroups = data.groups;
+        this.groupManager.layerGroups = data.groups || [];
 
         // We don't encode pixel data, so until we redraw, layers are empty
         this.redrawAll();

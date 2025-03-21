@@ -17,7 +17,7 @@ Use <a href="https://github.com/casparwylie/cascii-server">Cascii server repo</a
 <br>
 <img src="https://i.postimg.cc/FzK68HLQ/cascii-logo.png" width="150">
 <br>
-Cascii v1.0.2 (beta)
+Cascii v1.0.3 (beta)
 
 </h1>
 <p align="center">
