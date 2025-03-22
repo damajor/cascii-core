@@ -61,12 +61,13 @@ limitations under the License.
     }
 
     function mobilePage() {
+      let helpContent = new HelpComponent().value;
       document.body.innerHTML = `
-        <h2 style='font-family:monospace' align='center'>
+        <h4 style='font-family:monospace' align='center'>
           <img src="https://i.postimg.cc/FzK68HLQ/cascii-logo.png" width="150"><br><br>
-          Cascii is not available on mobile devices.<br>
-          Please checkout the <a href='https://github.com/casparwylie/cascii-core'>GitHub page</a>!
-        </h2>
+          Desktop only - Please see the <a href="https://github.com/casparwylie/cascii-core">GitHub</a> page!
+        ${helpContent}
+        </h4>
       `;
     }
 
