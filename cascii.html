@@ -60,6 +60,17 @@ limitations under the License.
       return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     }
 
+    function mobilePage() {
+      let helpContent = new HelpComponent().value;
+      document.body.innerHTML = `
+        <h4 style='font-family:monospace' align='center'>
+          <img src="https://i.postimg.cc/FzK68HLQ/cascii-logo.png" width="150"><br><br>
+          Desktop only - Please see the <a href="https://github.com/casparwylie/cascii-core">GitHub</a> page!
+        ${helpContent}
+        </h4>
+      `;
+    }
+
     function reportError(message) {
       console.log(message);
     }
@@ -5097,8 +5108,7 @@ limitations under the License.
 
     function main() {
       if (isTablet()) {
-        alert("Cascii is not available on mobile devices. Taking you to GitHub...");
-        window.location.replace("https://github.com/casparwylie/cascii-core");
+        mobilePage();
         return;
       }
       initManagers();
