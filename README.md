@@ -2,7 +2,7 @@
 <br>
 <img src="https://i.postimg.cc/FzK68HLQ/cascii-logo.png" width="150">
 <br>
-Cascii v1.0.3 (beta)
+Cascii v1.0.4 (beta)
 
 </h1>
 <p align="center">
@@ -87,15 +87,16 @@ directly so you can take advantage of short links and save your work. Locally, s
 
 ## Shortcuts
 
-- `ctrl-g` Group
-- `ctrl-c` Copy layer
-- `ctrl-z` Undo
-- `ctrl-shift-z` Redo
-- `ctrl-a` Select all
-- `backspace/delete` Delete layer
-- `shift-click` Multi-select | single-select member of group
-- `arrow keys` Move layer
-- `ctrl-v` Paste text (when editing text), or paste as a layer in any other mode
+    ctrl-g              Group
+    ctrl-c              Copy layer
+    ctrl-z              Undo
+    ctrl-shift-z        Redo
+    ctrl-a              Select all
+    ctrl-v              Paste text
+    ctrl-click          Single-select member of group
+    shift-click         Multi-select
+    backspace/delete    Delete layer
+    arrow keys          Move layer / navigate text
 
 ## Contributing
 

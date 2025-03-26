@@ -24,14 +24,11 @@ limitations under the License.
   <title>CASCII</title>
   <meta name="title" content="Cascii: A web-based ASCII diagram builder" />
   <meta charset="UTF-8" />
-  <meta
-    name="description"
-    content="A free, open-source ASCII diagram builder written in vanilla Javascript"
-  />
+  <meta name="description" content="A free, open-source ASCII diagram builder written in vanilla Javascript" />
   <meta name="keywords" content="Cascii, CASCII, ASCII, ascii, unicode, diagrams, drawing" />
   <meta name="author" content="Caspar Wylie" />
   <script>
-    const VERSION = "v1.0.3";
+    const VERSION = "v1.0.4";
 
     var layerManager;
     var eventManager;
@@ -1762,7 +1759,7 @@ limitations under the License.
         modeMaster.change("select", "selected");
         modeMaster.setSelectedLayerMode(layer);
         modeMaster.add(layerManager.prepareLayerResizing(activePixel, layer) ? "resizing" : "moving");
-        if (!modeMaster.has("shift") || layer.is("table") || layer.hasTable()) {
+        if (!modeMaster.has("ctrl") || layer.is("table") || layer.hasTable()) {
           // Select all members of a group if not bypassed by ctrl to select a grouped
           // layer.
           // This bypass shouldn't work for tables / table children to avoid undefined behaviour.
@@ -4067,12 +4064,12 @@ limitations under the License.
         this.setBorderColor();
       }
 
-      setBorderColor () {
+      setBorderColor() {
         this.css("borderColor", this.getBorderColor());
       }
 
       getBorderColor() {
-        return localStorage.getItem("grid")? "gridColor": "transparent";
+        return localStorage.getItem("grid") ? "gridColor" : "transparent";
       }
 
       renderCursor() {
@@ -4152,7 +4149,6 @@ limitations under the License.
     }
 
     class CanvasComponent extends Component {
-
       accessibleBy = "canvasComponent";
 
       rowCount = 65;
@@ -4298,10 +4294,9 @@ limitations under the License.
       }
 
       toggleGrid() {
-        localStorage.setItem("grid", localStorage.getItem("grid")? "": "true");
+        localStorage.setItem("grid", localStorage.getItem("grid") ? "" : "true");
         this.renderTheme();
       }
-
     }
 
     class PopupComponent extends Component {
@@ -4389,15 +4384,16 @@ limitations under the License.
     <h2>Shortcuts</h2>
     </div>
     <span style='white-space: pre-wrap'>
-    <b>ctrl-g</b>              Group
-    <b>ctrl-c</b>              Copy layer
-    <b>ctrl-z</b>              Undo
-    <b>ctrl-shift-z</b>        Redo
-    <b>ctrl-a</b>              Select all
-    <b>backspace/delete</b>    Delete layer
-    <b>shift-click</b>         Multi-select | single-select member of group.
-    <b>arrow keys</b>          Move layer
-    <b>ctrl-v</b>              Paste text (when editing text)
+    ctrl-g              Group
+    ctrl-c              Copy layer
+    ctrl-z              Undo
+    ctrl-shift-z        Redo
+    ctrl-a              Select all
+    ctrl-v              Paste text
+    ctrl-click          Single-select member of group
+    shift-click         Multi-select
+    backspace/delete    Delete layer
+    arrow keys          Move layer / navigate text
     </span>
       `;
 
